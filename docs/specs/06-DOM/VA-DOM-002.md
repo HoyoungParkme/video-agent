@@ -449,9 +449,7 @@ flowchart LR
 
 규칙: 영상 하나에 진행 중 작업은 하나(`job-already-running`). 비용 = 받아쓰기 분 × 단가(설정값). 남은 시간 = 미완료 조각 수 × 지금까지 조각당 평균.
 
-##### 파이프라인 (job/pipeline.py)
-
-함수 하나 `run(job_id)`가 `JobStage` 순서대로 단계를 실행한다. 각 단계 앞에서 `stage` 갱신, 단계 실패 시 `failed`+`error` 기록 후 중단. 재개는 `stage`를 보고 그 단계부터. 받아쓰기 단계는 `done=false` 조각만 골라 병렬(설정값 3)로 보낸다. 성공 시 `data/tmp/{video_id}` 삭제, `VideoService.mark_analyzed`. 클래스가 아니라 함수 모듈이므로 항목으로 두지 않고 JobService 아래에 적는다.
+**파이프라인 (`job/pipeline.py`)** — 함수 하나 `run(job_id)`가 `JobStage` 순서대로 단계를 실행한다. 각 단계 앞에서 `stage` 갱신, 단계 실패 시 `failed`+`error` 기록 후 중단. 재개는 `stage`를 보고 그 단계부터. 받아쓰기 단계는 `done=false` 조각만 골라 병렬(설정값 3)로 보낸다. 성공 시 `data/tmp/{video_id}` 삭제, `VideoService.mark_analyzed`. 클래스가 아니라 함수 모듈이므로 항목으로 두지 않고 JobService 아래에 적는다.
 
 #### AnalysisService 결과 서비스
 
