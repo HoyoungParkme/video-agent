@@ -10,7 +10,7 @@ upstream: [VA-DOM-001, VA-INFRA-001]
 
 ## 0. 이 문서가 다루는 것
 
-[[VA-DOM-001]]의 개념을 **코드 구조**로 옮긴다. 폴더 배치, 엔티티 클래스, 서비스의 책임과 메서드 이름. 테이블·컬럼은 [[VA-DOM-003]]이 맡는다.
+[[VA-DOM-001]]의 개념을 **코드 구조**로 옮긴다. 폴더 배치, 엔티티 클래스, 서비스의 책임과 메서드 이름. 테이블·컬럼은 ERD·DD 문서가 맡는다.
 
 | 종류 | 역할 | 우리 구조 | 정의하는 곳 |
 |---|---|---|---|
@@ -96,7 +96,7 @@ video-agent/                    저장소 = 프로젝트
 
 #### Video 영상
 
-테이블: [[VA-DOM-003#videos]] · 도메인: [[VA-DOM-001#Video]]
+도메인: [[VA-DOM-001#Video]]
 
 ```mermaid
 classDiagram
@@ -124,7 +124,7 @@ classDiagram
 
 #### AnalysisJob 작업
 
-테이블: [[VA-DOM-003#analysis_jobs]] · 도메인: [[VA-DOM-001#AnalysisJob]]
+도메인: [[VA-DOM-001#AnalysisJob]]
 
 ```mermaid
 classDiagram
@@ -149,7 +149,7 @@ classDiagram
 
 #### AudioChunk 조각
 
-테이블: [[VA-DOM-003#audio_chunks]] · 도메인: [[VA-DOM-001#AudioChunk]]
+도메인: [[VA-DOM-001#AudioChunk]]
 
 ```mermaid
 classDiagram
@@ -173,7 +173,7 @@ classDiagram
 
 #### Transcript 스크립트
 
-테이블: [[VA-DOM-003#transcripts]] · 도메인: [[VA-DOM-001#Transcript]]
+도메인: [[VA-DOM-001#Transcript]]
 
 ```mermaid
 classDiagram
@@ -193,7 +193,7 @@ classDiagram
 
 #### Segment 구간
 
-테이블: [[VA-DOM-003#segments]] · 도메인: [[VA-DOM-001#Segment]]
+도메인: [[VA-DOM-001#Segment]]
 
 ```mermaid
 classDiagram
@@ -214,7 +214,7 @@ classDiagram
 
 #### Summary 요약
 
-테이블: [[VA-DOM-003#summaries]] · 도메인: [[VA-DOM-001#Summary]]
+도메인: [[VA-DOM-001#Summary]]
 
 ```mermaid
 classDiagram
@@ -233,7 +233,7 @@ classDiagram
 
 #### Insight 인사이트
 
-테이블: [[VA-DOM-003#insights]] · 도메인: [[VA-DOM-001#Insight]]
+도메인: [[VA-DOM-001#Insight]]
 
 ```mermaid
 classDiagram
@@ -253,7 +253,7 @@ classDiagram
 
 #### Part 파트
 
-테이블: [[VA-DOM-003#parts]] · 도메인: [[VA-DOM-001#Part]]
+도메인: [[VA-DOM-001#Part]]
 
 ```mermaid
 classDiagram
@@ -272,7 +272,7 @@ classDiagram
 
 #### Chapter 챕터
 
-테이블: [[VA-DOM-003#chapters]] · 도메인: [[VA-DOM-001#Chapter]]
+도메인: [[VA-DOM-001#Chapter]]
 
 ```mermaid
 classDiagram
@@ -293,7 +293,7 @@ classDiagram
 
 #### SuggestedQuestion 추천 질문
 
-테이블: [[VA-DOM-003#suggested_questions]] · 도메인: [[VA-DOM-001#SuggestedQuestion]]
+도메인: [[VA-DOM-001#SuggestedQuestion]]
 
 ```mermaid
 classDiagram
@@ -312,7 +312,7 @@ classDiagram
 
 #### ChatTurn 대화 턴
 
-테이블: [[VA-DOM-003#chat_turns]] · 도메인: [[VA-DOM-001#ChatTurn]]
+도메인: [[VA-DOM-001#ChatTurn]]
 
 ```mermaid
 classDiagram
@@ -492,6 +492,6 @@ flowchart LR
 
 ## 5. 미결사항
 
-- [x] `Insight.source_secs`·`Chapter.bullets`·`ChatTurn.cited_secs`를 JSONB로 둘지 자식 테이블로 뺄지 — [[VA-DOM-003]]에서 **JSONB**로 결정. 단독 조회가 없다
+- [x] `Insight.source_secs`·`Chapter.bullets`·`ChatTurn.cited_secs`를 JSONB로 둘지 자식 테이블로 뺄지 — ERD·DD에서 **JSONB**로 결정. 단독 조회가 없다
 - [ ] 백그라운드 태스크가 서버 재시작으로 죽었을 때 — `stage`가 중간인 채 남는다. 시작 시 그런 작업을 `failed`로 돌리고 재시도 가능하게. MINISPEC에서
 - [ ] 서비스 메서드 시그니처 확정 — API·SEQ 뒤 v2에서
