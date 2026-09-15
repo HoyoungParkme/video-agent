@@ -419,11 +419,13 @@ flowchart LR
 
 ---
 
-## 4. 서비스 책임 (v1 — 이름과 책임)
+## 4. 설계 클래스 — 서비스 책임 (v1)
 
-메서드 시그니처는 API·SEQ 단계에서 확정한다. 여기는 **무엇을 책임지는지**와 **규칙이 사는 곳**.
+메서드 시그니처는 API·SEQ 단계에서 확정하고 v2에서 설계 클래스 다이어그램으로 그린다. 여기는 **무엇을 책임지는지**와 **규칙이 사는 곳**.
 
-#### VideoService
+### 4.1 서비스
+
+#### VideoService 영상 서비스
 
 | 메서드 | 책임 | 유스케이스 |
 |---|---|---|
@@ -435,7 +437,7 @@ flowchart LR
 
 규칙: URL 형식은 watch·youtu.be·shorts 셋. 3시간 초과는 여기서 거부(`video-too-long`). inbox 밖 경로는 거부(`path-outside-inbox`). 확장자는 mp4·mkv·mov·webm·mp3·m4a·wav.
 
-#### JobService
+#### JobService 작업 서비스
 
 | 메서드 | 책임 | 유스케이스 |
 |---|---|---|
@@ -447,11 +449,11 @@ flowchart LR
 
 규칙: 영상 하나에 진행 중 작업은 하나(`job-already-running`). 비용 = 받아쓰기 분 × 단가(설정값). 남은 시간 = 미완료 조각 수 × 지금까지 조각당 평균.
 
-#### pipeline (job/pipeline.py)
+##### 파이프라인 (job/pipeline.py)
 
-함수 하나 `run(job_id)`가 `JobStage` 순서대로 단계를 실행한다. 각 단계 앞에서 `stage` 갱신, 단계 실패 시 `failed`+`error` 기록 후 중단. 재개는 `stage`를 보고 그 단계부터. 받아쓰기 단계는 `done=false` 조각만 골라 병렬(설정값 3)로 보낸다. 성공 시 `data/tmp/{video_id}` 삭제, `VideoService.mark_analyzed`.
+함수 하나 `run(job_id)`가 `JobStage` 순서대로 단계를 실행한다. 각 단계 앞에서 `stage` 갱신, 단계 실패 시 `failed`+`error` 기록 후 중단. 재개는 `stage`를 보고 그 단계부터. 받아쓰기 단계는 `done=false` 조각만 골라 병렬(설정값 3)로 보낸다. 성공 시 `data/tmp/{video_id}` 삭제, `VideoService.mark_analyzed`. 클래스가 아니라 함수 모듈이므로 항목으로 두지 않고 JobService 아래에 적는다.
 
-#### AnalysisService
+#### AnalysisService 결과 서비스
 
 | 메서드 | 책임 | 유스케이스 |
 |---|---|---|
@@ -465,7 +467,7 @@ flowchart LR
 
 규칙: 인사이트 수 = 길이 ≤ 60분이면 5~8, 초과면 ≤ 10. 챕터 수 목표 = 길이(분) ÷ 6 (10분 → 5개 안팎, 3시간 → 30개). 파트는 60분 초과에만. 시각이 `[0, duration]` 밖이면 가장 가까운 구간 시각으로 보정. 요약 언어는 한국어.
 
-#### ChatService
+#### ChatService 대화 서비스
 
 | 메서드 | 책임 | 유스케이스 |
 |---|---|---|
@@ -474,7 +476,7 @@ flowchart LR
 
 규칙: 맥락에 넣는 앞선 턴은 최근 10개. 스크립트가 설정된 토큰 상한을 넘으면 챕터 제목으로 관련 챕터를 고르고 그 구간만 넣는다([[VA-UC-001#UC-H4]] 3b). 근거 없는 답이면 `cited_secs=[]`.
 
-#### 포트 (외부 연동 인터페이스)
+### 4.2 포트 (외부 연동 인터페이스)
 
 | 포트 | 메서드 | 어댑터 | 묶음 |
 |---|---|---|---|
@@ -486,12 +488,12 @@ flowchart LR
 | `SummarizerPort` | `summary(segments, duration) → SummaryDraft` · `chapters(segments, duration) → ChapterDraft` · `questions(segments) → list[str]` | OpenAI gpt-5-mini | analysis |
 | `AnswererPort` | `answer(question, context_segments, history) → AnswerDraft` | OpenAI gpt-5-mini | chat |
 
-어댑터는 Protocol을 구현하는 클래스 하나씩. 테스트는 가짜 어댑터로 바꿔 끼운다. 두 번째 구현체(예: 로컬 whisper)는 생길 때 만든다.
+어댑터는 Protocol을 구현하는 클래스 하나씩. 테스트는 가짜 어댑터로 바꿔 끼운다. 두 번째 구현체(예: 로컬 whisper)는 생길 때 만든다. 포트·어댑터는 항목으로 두지 않는다 — 시그니처가 MINISPEC에서 함수 단위로 정의된다.
 
 ---
 
 ## 5. 미결사항
 
-- [ ] `Insight.source_secs`·`Chapter.bullets`·`ChatTurn.cited_secs`를 JSONB로 둘지 자식 테이블로 뺄지 — ERD에서 결정. 단독 조회가 없으면 JSONB
+- [x] `Insight.source_secs`·`Chapter.bullets`·`ChatTurn.cited_secs`를 JSONB로 둘지 자식 테이블로 뺄지 — [[VA-DOM-003]]에서 **JSONB**로 결정. 단독 조회가 없다
 - [ ] 백그라운드 태스크가 서버 재시작으로 죽었을 때 — `stage`가 중간인 채 남는다. 시작 시 그런 작업을 `failed`로 돌리고 재시도 가능하게. MINISPEC에서
 - [ ] 서비스 메서드 시그니처 확정 — API·SEQ 뒤 v2에서
