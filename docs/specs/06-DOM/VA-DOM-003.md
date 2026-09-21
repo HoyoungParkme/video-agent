@@ -72,6 +72,7 @@ erDiagram
         int error_chunk_seq
         int error_attempts
         jsonb stage_durations_sec
+        timestamptz stage_started_at
         timestamptz started_at
         timestamptz finished_at
     }
@@ -203,6 +204,7 @@ erDiagram
 | error_chunk_seq | int | null 허용 | 실패한 조각 번호(k). 받아쓰기 밖 단계면 null | `16` |
 | error_attempts | int | null 허용 | 그 조각 · 단계를 보낸 횟수(자동 재시도 포함) | `3` |
 | stage_durations_sec | jsonb | not null, default `{}` | 완료한 단계마다 걸린 시간(초). 키는 JobStage | `{"extract": 41, "transcribe": 512}` |
+| stage_started_at | timestamptz | not null | 지금 단계가 시작된 때. 단계가 바뀔 때마다 갱신. 걸린 시간·남은 시간의 기준 — 재시도 뒤에는 `started_at`으로 잴 수 없다(MINISPEC 되먹임) | |
 | started_at | timestamptz | not null | 시작한 때. 목록의 최근 순 기준 | |
 | finished_at | timestamptz | null 허용 | `done`이 된 때 = 영상의 분석 완료 시각 | |
 
