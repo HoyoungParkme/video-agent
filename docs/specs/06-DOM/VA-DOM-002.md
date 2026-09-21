@@ -67,7 +67,7 @@ video-agent/                    저장소 = 프로젝트
 ```
 app/
 ├── main.py                 앱 조립. 라우터 등록, 시작 때 저장된 키 확인(SettingsService.check_stored_key),
-│                           서버가 죽어 running인 채 남은 작업을 failed로 되돌림 (6장)
+│                           서버가 죽어 running인 채 남은 작업을 failed로 되돌림(JobService.fail_orphans)
 ├── core/                   도메인에 속하지 않는 것
 │   ├── config.py           .env → Config (DB URL · OPENAI_API_KEY · 모델명 · inbox/data 경로 · 조각 길이 · 동시 수 · 단가)
 │   ├── db.py               async 엔진 · 세션
@@ -252,6 +252,7 @@ classDiagram
         +str path
         +ChunkState state
         +int attempts
+        +list~SttSegment~ result
         +datetime done_at
     }
 ```
@@ -259,7 +260,7 @@ classDiagram
 관계
 - `AudioChunk` * — 1 `AnalysisJob` (job_id)
 
-`seq`는 1부터. `path`는 `data/tmp/{video_id}/{seq}.mp3`이고 받아쓰기가 끝나 파일을 지우면 null. `state`는 waiting · in_flight · done · failed 넷([[VA-UI-002#UI-3]] 조각 격자). `attempts`는 그 조각을 보낸 횟수 — 자동 재시도 상한(설정값, 첫 값 3)에 닿으면 `failed`. `done_at`으로 조각당 평균 시간을 재서 남은 시간을 계산한다([[VA-UC-001#UC-S6]] 2번). 작업이 끝나도 행은 남긴다([[VA-DOM-001]] 5장 2).
+`seq`는 1부터. `path`는 `data/tmp/{video_id}/{seq}.mp3`이고 받아쓰기가 끝나 파일을 지우면 null. `state`는 waiting · in_flight · done · failed 넷([[VA-UI-002#UI-3]] 조각 격자). `attempts`는 그 조각을 보낸 횟수 — 자동 재시도 상한(설정값, 첫 값 3)에 닿으면 `failed`. `done_at`으로 조각당 평균 시간을 재서 남은 시간을 계산한다([[VA-UC-001#UC-S6]] 2번). **`result`는 그 조각의 받아쓰기 결과**(`SttSegment` 목록, 오프셋을 더하기 전)다. 조각이 `done`이 될 때 저장하고, 스크립트를 만든 뒤에도 남긴다 — 실패 뒤 재시도가 `done` 조각을 다시 보내지 않으려면 결과가 행에 있어야 한다([[VA-UC-001#UC-H0]] 최소 보장 「이미 받아쓴 조각은 버려지지 않는다」, 시퀀스 되먹임). 작업이 끝나도 행은 남긴다([[VA-DOM-001]] 5장 2).
 
 ### 2.3 analysis
 
@@ -457,7 +458,7 @@ classDiagram
 | `SourceInfo` | `source_kind` · `source_id` · `title` · `channel` · `duration_sec` · `origin` · `has_captions` · `caption_language` · `caption_kind` | YouTubeInfoPort · MediaProbePort → VideoService.register |
 | `CaptionLine` | `start_sec` · `end_sec` · `text` | AudioSourcePort.captions → AnalysisService.save_transcript |
 | `ChunkPlan` | `seq` · `offset_sec` · `duration_sec` · `path` | AudioSplitPort.split → JobService.plan_chunks |
-| `SttSegment` | `start_sec` · `end_sec` · `text` · `language` | SttPort.transcribe → 오프셋을 더해 CaptionLine과 같은 모양으로 |
+| `SttSegment` | `start_sec` · `end_sec` · `text` · `language` | SttPort.transcribe → `AudioChunk.result`에 저장 → 이어 붙일 때 오프셋을 더해 CaptionLine과 같은 모양으로 |
 | `SummaryDraft` | `one_liner` · `insights: list[(text, source_secs)]` | SummarizerPort.summary → AnalysisService |
 | `ChapterDraft` | `parts: list[(title, start_sec)]` · `chapters: list[(part_seq, start_sec, title, bullets)]` | SummarizerPort.chapters → AnalysisService |
 | `AnswerDraft` | `answer` · `cited_secs` | AnswererPort.answer → ChatService |
@@ -516,7 +517,7 @@ flowchart LR
 | `video/router` | `JobService.cancel(video_id)` | [[VA-API-001#DELETE/api/videos/{id}]] — 진행 중이면 먼저 멈춘다. 없으면 아무것도 안 한다 |
 | `job/router` | `VideoService.get(video_id)` | 시작 · 재시도가 `Video` DTO를 받는다. 작업 묶음은 영상 테이블을 모른다 |
 | `analysis/router` | `VideoService.get(video_id)` · `ChatService.history(video_id)` | 결과 · 내보내기가 `Video`를 받고, `with_chat`이면 대화 턴을 받는다 |
-| `chat/router` | `VideoService.get(video_id)` | 질문이 `Video`를 받는다(결과 유무 · 길이) |
+| `chat/router` | `VideoService.get(video_id)` | 질문이 `Video`를 받는다(결과 유무 · 길이). 기록 조회도 영상이 없으면 404를 내야 하므로 먼저 부른다 |
 
 ### 3.2 Control 사이와 바깥
 
@@ -645,9 +646,10 @@ classDiagram
         +latest_by_videos(video_ids: list~int~) dict~int,JobSummary~
         +mark_stage(job_id: int, stage: JobStage) None
         +plan_chunks(job_id: int, plans: list~ChunkPlan~) None
-        +mark_chunk(job_id: int, seq: int, state: ChunkState) None
+        +mark_chunk(job_id: int, seq: int, state: ChunkState, result: list~SttSegment~) None
         +finish(job_id: int) None
         +fail(job_id: int, error: JobError) None
+        +fail_orphans() int
         -stages_for(video: Video) list~JobStage~
         -remaining_sec(job: AnalysisJobRow) int
         -to_job(row: AnalysisJobRow, chunks: list~AudioChunkRow~) Job
@@ -681,6 +683,7 @@ classDiagram
         +str path
         +ChunkState state
         +int attempts
+        +list~SttSegment~ result
         +datetime done_at
     }
     JobService --> AnalysisJob
@@ -696,6 +699,7 @@ classDiagram
 | `cancel` | video/router ([[VA-API-001#DELETE/api/videos/{id}]]) | [[VA-UC-001#UC-H6]] 4 | |
 | `latest` · `latest_by_videos` | VideoService | [[VA-UC-001#UC-H5]] 1 | |
 | `mark_stage` · `plan_chunks` · `mark_chunk` · `finish` · `fail` | pipeline | [[VA-UC-001#UC-S6]] 1~3 · [[VA-UC-001#UC-S3]] 2~3 | |
+| `fail_orphans` | `main.py` 시작 절차 | — (5장 8) | |
 
 **규칙이 사는 곳**
 - `estimate`: 작업이 있으면 null. 자막 있음이면 `needs_stt = false` · 약 60초 · 받아쓰기 비용 0. 받아쓰기 필요면 조각 수 = 길이 ÷ 조각 길이(설정값), 동시 수 = 설정값, 받아쓰기 비용 = 분 × 단가(설정값 — `SettingsService.current_models`의 모델 단가), 예상 시간 = 조각 수 ÷ 동시 수 × 조각당 예상 시간. 텍스트 모델 비용 추정식은 7장. 화면은 이 숫자를 그대로 보인다([[VA-UI-002#UI-2]] 규칙)
@@ -704,22 +708,26 @@ classDiagram
 - `retry`: `status`가 `failed`가 아니면 `job-not-failed`. `error_*`를 비우고 `running`으로 되돌린 뒤 `pipeline.resume`을 띄운다 — 같은 행, 같은 `id`
 - `cancel`: 태스크 핸들이 있으면 취소하고 기다린다. 행은 지우지 않는다(cascade가 지운다). 없으면 아무것도 안 한다
 - `progress` · `to_job`: `remaining_sec` = 받아쓰기 단계면 미완료 조각 수 × 지금까지 조각당 평균(`done_at` 차이), 다른 단계는 null(7장). `chunks.next_seq`는 `done`이 아닌 첫 조각. `Chunks`의 집계(done · in_flight · failed · waiting)는 조각 행에서 센다. `progress_pct`는 파이프라인이 단계 가중치로 갱신한 값을 그대로
+- `mark_chunk`: `in_flight`로 바꿀 때 `attempts`를 1 올린다. `done`으로 바꿀 때 `done_at` · `result`를 저장하고 `progress_pct`를 완료 조각 비율로 갱신한다. `waiting`(재시도 대기) · `failed`는 상태만 바꾼다
+- `fail_orphans`: 시작 때 `running`인 작업을 `failed`(kind `unknown`, reason '서버가 다시 시작됨')로, 그 작업의 `in_flight` 조각을 `waiting`으로 돌린다. 핸들이 없는 작업은 돌지 않는데 화면에는 도는 것처럼 보이기 때문이다(5장 8)
 - 영상 하나에 `running` 하나, 프로세스 전체에도 하나 — 동시 분석 하나([[VA-INFRA-001]] 3절). 대기열은 7장
 
 **파이프라인 (`job/pipeline.py`)** — 클래스가 아니라 함수 모듈이다. 항목으로 두지 않고 여기 적는다.
 
 ```
 run(job_id: int, video: Video) -> None          start가 띄운다. stages 첫 단계부터
-resume(job_id: int, video: Video) -> None       retry가 띄운다. 행의 stage부터. transcribe면 done이 아닌 조각만
+resume(job_id: int, video: Video) -> None       retry가 띄운다. 행의 stage부터. transcribe면 done이 아닌 조각만 보내고 done 조각은 result를 쓴다
 
 단계마다:
   mark_stage(job_id, stage)                     시작 시각 기록 → 끝나면 stage_durations_sec에 걸린 시간
   download   자막 있음: AudioSourcePort.captions → AnalysisService.save_transcript(caption_manual|caption_auto)
              자막 없음: AudioSourcePort.download_audio → data/tmp/{video_id}/audio
   extract    AudioSourcePort.extract_audio (로컬 영상 → mp3 64kbps 모노). 로컬 음성은 그대로
-  transcribe AudioSplitPort.split → plan_chunks · 조각을 동시 수만큼 병렬로 SttPort.transcribe
-             조각마다 attempts ≤ 상한(3)까지 자동 재시도, 넘으면 mark_chunk(failed) → fail
-             전부 done이면 오프셋을 더해 이어 붙여 AnalysisService.save_transcript(stt) → 조각 파일 삭제
+  transcribe AudioSplitPort.split → plan_chunks · done이 아닌 조각을 동시 수만큼 병렬로 SttPort.transcribe
+             성공하면 mark_chunk(done, result) · 조각 파일 삭제
+             조각마다 attempts ≤ 상한(3)까지 자동 재시도(waiting으로 되돌려 다시), 넘으면 mark_chunk(failed)
+             → 돌고 있던 다른 조각이 끝나기를 기다린 뒤 fail (완료 수와 다음 조각 번호가 화면 규칙과 맞도록)
+             전부 done이면 조각 행의 result를 순서대로 오프셋을 더해 이어 붙여 AnalysisService.save_transcript(stt)
   summarize  AnalysisService.generate_summary(video)
   chapter    AnalysisService.generate_chapters(video)
   suggest    AnalysisService.generate_questions(video) → finish(job_id) → data/tmp/{video_id} 삭제
@@ -972,7 +980,7 @@ openai.chat(client, model, messages) -> str
 **5. 도메인 모델과 다른 곳 — [[VA-DOM-001#Video]]의 「분석완료시각」이 컬럼이 아니고, 「작업」의 단계가 상태와 단계 둘로 나뉜다.** 둘 다 [[VA-API-001]] 5장 1 · 2에서 온 결정이다. 도메인 모델 갱신 요청을 7장에 둔다.
 
 **6. 조각의 완료 여부는 bool이 아니라 상태 넷 — 결정: `ChunkState`.**
-화면이 조각 격자에 완료 · 받아쓰는 중 · 실패 · 대기를 그린다([[VA-UI-002#UI-3]]). `done` 하나로는 받아쓰는 중과 대기를 못 가른다. `attempts`도 같은 이유로 행에 둔다 — 실패 알림이 「몇 번 다시 보냈는지」를 말한다.
+화면이 조각 격자에 완료 · 받아쓰는 중 · 실패 · 대기를 그린다([[VA-UI-002#UI-3]]). `done` 하나로는 받아쓰는 중과 대기를 못 가른다. `attempts`도 같은 이유로 행에 둔다 — 실패 알림이 「몇 번 다시 보냈는지」를 말한다. `result`도 행에 둔다 — 메모리에만 있으면 실패 뒤 재시도가 이어지지 않는다(시퀀스 되먹임).
 
 **7. 화면 폴더 이름 — 결정: `screens/`.** Next.js가 `pages/`를 예약한다(1장). 역할은 기본형의 `pages/`와 같다.
 
