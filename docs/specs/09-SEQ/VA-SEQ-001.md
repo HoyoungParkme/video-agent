@@ -38,7 +38,7 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | main | MN | `main.py` 시작 절차(lifespan) | Boundary | [[VA-DOM-002]] 1장 |
 | VideoService | VS | `domains/video/service.py` | Control | [[VA-DOM-002#VideoService]] |
 | JobService | JS | `domains/job/service.py` | Control | [[VA-DOM-002#JobService]] |
-| pipeline | PL | `domains/job/pipeline.py` — 백그라운드 태스크 안에서 돈다 | Control | [[VA-DOM-002#JobService]] 파이프라인 |
+| pipeline | PL | `domains/job/pipeline.py` — 대기열 워커(`worker`)와, 워커가 띄운 백그라운드 태스크 안에서 도는 `run` · `resume` | Control | [[VA-DOM-002#JobService]] 파이프라인 |
 | AnalysisService | AS | `domains/analysis/service.py` | Control | [[VA-DOM-002#AnalysisService]] |
 | ChatService | CS | `domains/chat/service.py` | Control | [[VA-DOM-002#ChatService]] |
 | SettingsService | SS | `core/settings.py` | Control | [[VA-DOM-002#SettingsService]] |
@@ -51,7 +51,7 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | answerer_openai | AN | `chat/adapters/answerer_openai.py` → `infra/openai` → OpenAI 텍스트 모델 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | infra/openai | OA | `infra/openai.py` — 키 확인(모델 목록 조회). SettingsService만 직접 부른다 | 어댑터 | [[VA-DOM-002]] 4.7 |
 | DB | DB | PostgreSQL. 어느 묶음이든 자기 테이블 | 저장소 | [[VA-DOM-003]] |
-| 파일 | FS | `data/tmp/{video_id}/` · `data/export/` · `inbox/`(읽기만) | 저장소 | [[VA-INFRA-001]] 6절 |
+| 파일 | FS | `data/tmp/{video_id}/` · `data/export/` · `inbox/`(읽기만) · `.env`(키 · 모델 줄) | 저장소 | [[VA-INFRA-001]] 6절 |
 | 입구 (공통) | B | 라우터 하나 — [[#SEQ-C1]]의 표가 지정 | Boundary | [[VA-DOM-002]] 3.1 |
 | 서비스 (공통) | SV | 서비스 하나 — [[#SEQ-C1]]의 표가 지정 | Control | [[VA-DOM-002]] 4장 |
 | 닿는 곳 (공통) | X | DB 또는 파일 또는 어댑터 — [[#SEQ-C1]]의 표가 지정 | 저장소 | — |
@@ -76,12 +76,13 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | [[VA-API-001#DELETE/api/videos/{id}]] | [[#SEQ-11]] | ○ | 파일 |
 | [[VA-API-001#POST/api/settings/key]] | [[#SEQ-12]] | | OpenAI(키 확인) |
 | 서버 시작 | [[#SEQ-13]] | ○ | OpenAI(키 확인) |
+| 대기열 워커 | [[#SEQ-14]] | | |
 | [[VA-API-001#GET/api/settings]] | [[#SEQ-C1]] | | |
 | [[VA-API-001#PUT/api/settings/models]] | [[#SEQ-C1]] | | |
 | [[VA-API-001#GET/api/inbox]] | [[#SEQ-C1]] | | ffprobe |
 | [[VA-API-001#GET/api/videos/{id}/chat]] | [[#SEQ-8]] | ○ | |
 
-18행 중 묶음을 넘는 것이 13행이다. 넘지 않는 것은 설정 셋 · inbox · 폴링뿐이고, 대화 기록 조회도 영상이 있는지 보느라 `VideoService`를 한 번 부른다.
+19행 중 묶음을 넘는 것이 13행이다. 넘지 않는 것은 설정 셋 · inbox · 폴링 · 대기열 워커뿐이고, 대화 기록 조회도 영상이 있는지 보느라 `VideoService`를 한 번 부른다.
 
 ---
 
@@ -187,7 +188,7 @@ sequenceDiagram
 
 ## SEQ-2 분석을 시작한다
 
-[[VA-UC-001#UC-H0]] 3번, 확장 3a. 입구 [[VA-API-001#POST/api/videos/{id}/job]]. 화면 [[VA-UI-002#UI-2]] [분석 시작] → [[VA-UI-002#UI-3]].
+[[VA-UC-001#UC-H0]] 3번, 확장 3a · 3b. 입구 [[VA-API-001#POST/api/videos/{id}/job]]. 화면 [[VA-UI-002#UI-2]] [분석 시작] → [[VA-UI-002#UI-3]].
 
 ```mermaid
 sequenceDiagram
@@ -221,28 +222,27 @@ sequenceDiagram
         JS-->>RJ: JobExists {job_id, job_status}
         RJ-->>W: 409 job-exists
     end
-    JS->>DB: analysis_jobs where status = running
-    alt 다른 영상이 돌고 있음
-        JS-->>RJ: AnotherJobRunning {video_id}
-        RJ-->>W: 409 another-job-running
-        W-->>U: 잠금 풀고 안내 (미결)
-    end
     JS->>JS: stages_for(video) · estimate(video)
     JS->>SS: current_models()
     SS-->>JS: Models
-    JS->>DB: analysis_jobs insert (running · pending · stages · 모델 · 동시 수 · 예상치)
-    Note over JS,DB: 부분 unique 인덱스가 running 둘을 막는다 (DOM-003 3장)
-    JS->>PL: create_task(run(job_id, video)) — 핸들을 video_id로 보관
-    JS-->>RJ: Job
+    JS->>DB: analysis_jobs insert (queued · pending · queued_at = 지금 · stages · 모델 · 동시 수 · 예상치)
+    JS->>PL: 워커를 깨운다
+    Note over PL: 도는 작업이 없으면 곧바로 꺼내 돌린다 — SEQ-14
+    JS->>DB: 방금 넣은 행 다시 읽기 · queued면 자기보다 이른 queued 수
+    JS-->>RJ: Job (running 또는 queued · queue_position)
     RJ-->>W: 201 Job
-    W-->>U: UI-3 분석 진행 (history.replace)
-    Note over PL: 이후는 SEQ-3 또는 SEQ-4
+    alt status = queued
+        W-->>U: UI-3 대기 상태 '차례를 기다리는 중 · 앞 영상 {n}개' (history.replace)
+    else running
+        W-->>U: UI-3 분석 진행 (history.replace)
+    end
 ```
 
 **읽을 때 볼 것**
 - 라우터가 `VideoService.get`을 먼저 부르는 것은 `JobService.start`가 `Video` DTO를 받기 때문이다([[VA-DOM-002]] 3.1 표). 작업 묶음은 영상 테이블을 모른다
-- 두 검사(이 영상의 작업 · 다른 영상의 `running`)는 앱이 하지만, `running` 하나는 DB의 부분 unique 인덱스가 다시 막는다. 두 요청이 겹쳐 둘 다 검사를 통과해도 insert 하나가 실패한다 — 그 실패는 `another-job-running`으로 접는다
-- 응답은 태스크를 **띄우자마자** 나간다. 파이프라인은 기다리지 않는다. 화면은 201을 받으면 UI-3으로 가서 [[#SEQ-5]] 폴링을 시작한다
+- **거절하지 않는다.** 다른 영상이 돌고 있어도 `queued`로 들어간다(사용자 결정 2026-09-21, [[VA-API-001]] 5장 8). `start`는 `running`인 작업이 있는지 보지 않는다 — 늘 `queued`로 넣고, `running`으로 바꾸는 것은 워커 하나다([[#SEQ-14]]). 시작하는 길이 하나라 「둘이 동시에 시작」이 생길 자리가 없다
+- 응답의 `status`는 그 순간의 값이다. 도는 작업이 없으면 워커가 곧바로 꺼내므로 보통 `running`이고, 워커가 아직 안 꺼냈으면 `queued`(`queue_position = 1`)로 나갔다가 첫 폴링에서 `running`이 된다. 화면은 어느 쪽이든 UI-3을 연다
+- 응답은 워커를 **깨우자마자** 나간다. 파이프라인은 기다리지 않는다. 화면은 201을 받으면 UI-3으로 가서 [[#SEQ-5]] 폴링을 시작한다
 - `est_seconds` · `est_cost_usd`는 사전 안내와 같은 계산을 다시 해 행에 남긴다 — 설정이 바뀌어도 그때의 예상치가 이력으로 남는다([[VA-DOM-003#analysis_jobs]])
 
 ---
@@ -412,7 +412,7 @@ sequenceDiagram
     participant DB
 
     W->>RJ: GET /api/videos/{id} (UI-3 처음 열 때 한 번 — SEQ-7)
-    loop 1초마다, status가 running인 동안
+    loop 1초마다, status가 queued 또는 running인 동안
         W->>RJ: GET /api/videos/{id}/job
         RJ->>JS: progress(video_id)
         JS->>DB: analysis_jobs where video_id order by started_at desc limit 1
@@ -422,13 +422,18 @@ sequenceDiagram
             W->>W: UI-1로 넘긴다
         end
         JS->>DB: audio_chunks where job_id (있으면)
-        JS->>JS: to_job — remaining_sec · chunks 집계 · next_seq
+        opt status = queued
+            JS->>DB: analysis_jobs where status = queued and queued_at < 내 것 (개수)
+        end
+        JS->>JS: to_job — remaining_sec · chunks 집계 · next_seq · queue_position
         JS-->>RJ: Job
         RJ-->>W: 200 Job
         alt status = done
             W->>W: UI-4로 넘긴다 (history.replace) — SEQ-8
         else status = failed
             W->>W: 실패 상태를 그린다. 폴링을 멈춘다
+        else status = queued
+            W->>W: 대기 상태 — '차례를 기다리는 중' · '앞 영상 {queue_position}개가 끝나면 시작해요'
         else running
             W->>W: 헤드라인·부제·퍼센트·단계 목록·조각 격자·전송 표시 갱신
         end
@@ -436,7 +441,8 @@ sequenceDiagram
 ```
 
 **읽을 때 볼 것**
-- 읽기만 한다. 파이프라인이 쓴 행을 `JobService`가 응답 형태로 만든다. `remaining_sec`은 받아쓰기 단계에서만 값이 있다(미완료 조각 수 × `done_at` 간격의 평균). 다른 단계는 null이고 화면은 남은 시간을 비운다 — 계산식은 MINISPEC 미결([[VA-API-001]] 6장)
+- 읽기만 한다. 파이프라인이 쓴 행을 `JobService`가 응답 형태로 만든다. `remaining_sec`은 받아쓰기 단계면 미완료 조각 수 × `done_at` 간격의 평균, 다른 단계면 예상 전체 시간 − 지난 시간이다. 0이면 화면이 남은 시간을 비우고, `running`이 아니면 null이다([[VA-API-001#GET/api/videos/{id}/job]])
+- 대기 중에도 같은 폴링이다. `queue_position`이 줄어들다가 `status`가 `running`으로 바뀌면 같은 화면이 진행 상태가 된다 — 화면을 새로 열지 않는다([[VA-UI-002#UI-3]] 규칙)
 - 화면은 계산하지 않는다. 표의 값을 그대로 쓴다([[VA-API-001#GET/api/videos/{id}/job]]의 요소 ↔ 필드 표)
 - 폴링이 `done`을 보면 UI-4로 넘긴다. 서버가 화면을 밀어 주는 길(SSE)은 없다([[VA-INFRA-001]] 3절)
 - 영상 머리(제목 · 출처 · 길이 · 자막)는 폴링 응답에 없다. UI-3이 열릴 때 [[#SEQ-7]]의 `GET /api/videos/{id}`로 한 번 받는다
@@ -478,11 +484,12 @@ sequenceDiagram
         JS-->>RJ: JobNotFailed {job_status}
         RJ-->>W: 409 job-not-failed
     end
-    JS->>DB: status = running · error_* = null (같은 행)
-    JS->>PL: create_task(resume(job_id, video)) — 핸들 보관
-    JS-->>RJ: Job (running)
+    JS->>DB: status = queued · queued_at = 지금 · error_* = null (같은 행 · stage는 그대로)
+    JS->>PL: 워커를 깨운다
+    Note over PL: 차례가 오면 resume으로 돌린다 — SEQ-14
+    JS-->>RJ: Job (running 또는 queued)
     RJ-->>W: 200 Job
-    W-->>U: 실패 알림 사라지고 진행 상태로. 폴링 계속 (SEQ-5)
+    W-->>U: 실패 알림 사라지고 진행 상태 또는 대기 상태로. 폴링 계속 (SEQ-5)
     alt 실패한 단계 = transcribe
         PL->>DB: audio_chunks where job_id and state != done
         Note over PL: waiting·failed 조각만 다시 보낸다. SEQ-4 17번부터
@@ -494,9 +501,9 @@ sequenceDiagram
 ```
 
 **읽을 때 볼 것**
-- 새 작업을 만들지 않는다. `id` · `started_at` · `stages` · 모델이 그대로다([[VA-DOM-002#AnalysisJob]]). 목록 순서도 바뀌지 않는다
+- 새 작업을 만들지 않는다. `id` · `started_at` · `stages` · 모델이 그대로다([[VA-DOM-002#AnalysisJob]]). 목록 순서도 바뀌지 않는다. 바뀌는 것은 `queued_at`뿐이다 — 다른 영상이 돌고 있으면 대기열 **끝**에서 기다린다([[VA-DOM-003#analysis_jobs]])
 - `resume`은 행의 `stage`를 보고 그 단계부터 돈다. 받아쓰기면 `done`이 아닌 조각만 — 그런데 `done`인 조각의 결과 텍스트가 어디에도 없다. 이어 붙이려면 다시 보내야 한다 → 되먹일 것 #1 (조각 결과를 `audio_chunks`에 두거나 파일로 남긴다)
-- 키가 없는 동안 화면은 버튼을 막은 상태이지만 서버도 다시 검사한다. 화면 규칙과 서버 규칙이 같은 것을 두 번 지킨다
+- 키가 없는 동안 화면은 버튼을 막은 상태이지만 서버도 다시 검사한다. 화면 규칙과 서버 규칙이 같은 것을 두 번 지킨다. 마지막 확인이 연결 실패(`network`)였으면 화면은 막지 않고, `require_key`가 그 자리에서 한 번 다시 확인한다([[#SEQ-13]] 읽을 때 볼 것)
 
 ---
 
@@ -773,6 +780,7 @@ sequenceDiagram
         PL->>PL: CancelledError — 열린 세션 롤백, 조각 파일은 둔다
         PL-->>JS: 끝남
     end
+    Note over JS: 대기 중이면 할 일이 없다 — 행이 지워지면 대기열에서 빠진 것이다
     JS-->>RV: 완료
     RV->>VS: delete(video_id)
     VS->>DB: videos where id
@@ -791,12 +799,14 @@ sequenceDiagram
         W-->>U: 다이얼로그 열린 채 실패 한 줄 · 잠금 해제
     end
     VS-->>RV: 완료
+    RV->>JS: 워커를 깨운다
+    Note over JS: 도는 작업을 지웠으면 다음 대기 작업이 시작된다 — SEQ-14
     RV-->>W: 204
     W-->>U: UI-1 (행 빠짐, 개수 -1). UI-4에서 열었으면 history.replace
 ```
 
 **읽을 때 볼 것**
-- 라우터가 `JobService.cancel`을 먼저, `VideoService.delete`를 다음에 부른다. 순서만 있고 판단이 없어 조율 모듈을 두지 않았다([[VA-DOM-002]] 5장 3). 진행 중이 아니면 `cancel`은 아무것도 안 한다
+- 라우터가 `JobService.cancel`을 먼저, `VideoService.delete`를 다음에 부른다. 순서만 있고 판단이 없어 조율 모듈을 두지 않았다([[VA-DOM-002]] 5장 3). 진행 중이 아니면(대기 중 · 실패 · 완료) `cancel`은 아무것도 안 한다. 워커를 깨우는 것은 행이 지워진 **뒤**다 — 먼저 깨우면 워커가 지워질 행을 꺼낼 수 있다 → 되먹일 것 #8
 - 앱이 지우는 행은 `videos` 하나다. 나머지 열 종류는 FK cascade가 지운다([[VA-DOM-003]] 4장 5). 빠뜨릴 것이 없다
 - 취소된 파이프라인은 `await` 지점에서 멈춘다. 열린 DB 세션은 롤백되고, 진행 중이던 OpenAI 요청의 응답은 버려진다. 이미 보낸 요청의 비용은 든다
 - 남는 것은 inbox 원본(로컬)뿐이다([[VA-INFRA-001#C4]]). 다시 넣으면 처음부터 분석한다
@@ -838,7 +848,7 @@ sequenceDiagram
         W-->>U: 이유 한 줄. 전 키 그대로
     end
     OA-->>SS: KeyCheck(ok, checked_at)
-    SS->>FS: 키 저장 (위치는 미결 — .env 또는 별도 파일)
+    SS->>FS: .env의 OPENAI_API_KEY 줄을 고친다 (다른 줄은 그대로 · 임시 파일 → rename)
     SS->>SS: last_check = ok
     SS-->>RS: Settings
     RS-->>W: 200 Settings
@@ -848,14 +858,14 @@ sequenceDiagram
 **읽을 때 볼 것**
 - 확인이 통과해야 저장한다. 실패 두 종류(거부 · 네트워크) 모두 저장하지 않고 `last_check`도 바꾸지 않는다 — 배너와 막힌 버튼은 **저장된 키**의 결과만 따른다([[VA-UI-002#UI-5]] 규칙)
 - 키 전체는 응답에 없다. `Settings.key.masked`뿐이다
-- 저장 위치는 미결([[VA-DOM-002]] 7장). 어디든 `SettingsService`만 읽고 쓴다. 어댑터는 키를 `SettingsService`에서 받는다([[VA-DOM-002]] 4.7 규칙)
+- 저장하는 곳은 `.env` 파일 하나다([[VA-INFRA-001#C6]], [[VA-DOM-002#SettingsService]]). `SettingsService`만 읽고 쓴다. 어댑터는 키를 `SettingsService`에서 받는다([[VA-DOM-002]] 4.7 규칙)
 - 이 요청이 통과하면 UI-1의 배너가 사라지고 분석 버튼이 켜진다 — 화면이 `GET /api/settings`를 다시 불러 안다
 
 ---
 
 ## SEQ-13 서버가 시작한다
 
-[[VA-UC-001#UC-H8]] 확장 1a(환경 변수의 키) · [[VA-DOM-002]] 5장 8(죽은 작업). 입구는 `main.py` lifespan. 화면 없음.
+[[VA-UC-001#UC-H8]] 확장 1a(`.env`에 직접 적은 키) · [[VA-DOM-002]] 5장 8(죽은 작업 · 대기열 워커). 입구는 `main.py` lifespan. 화면 없음.
 
 ```mermaid
 sequenceDiagram
@@ -865,8 +875,9 @@ sequenceDiagram
     participant OA as infra/openai
     participant JS as JobService
     participant DB
+    participant PL as pipeline
 
-    MN->>MN: Config 읽기 (.env) · DB 엔진
+    MN->>MN: Config 읽기 (환경 변수) · DB 엔진
     MN->>SS: check_stored_key()
     alt 키 없음
         SS->>SS: last_check = missing
@@ -882,13 +893,70 @@ sequenceDiagram
         JS->>DB: status = failed · error_kind = unknown · error_reason = '서버가 다시 시작됨' · in_flight 조각 → waiting
     end
     JS-->>MN: 건수
+    MN->>PL: create_task(worker()) — 하나. 서버를 끌 때 취소한다
+    Note over PL: queued로 남아 있던 작업이 있으면 이어서 돈다 — SEQ-14
     MN->>MN: 라우터 등록 · 127.0.0.1에 바인딩
 ```
 
 **읽을 때 볼 것**
 - 시작 때 키 확인이 세 확인 시점 중 첫째다(시작 · 분석 버튼 · 키 저장). 실패해도 서버는 뜬다 — 읽기는 키 없이도 되고 배너가 알린다([[VA-API-001]] 1장)
-- `running`인 채 남은 작업은 핸들이 없어 영원히 돈다고 보인다. `failed`로 돌려야 재시도가 된다. `JobService.fail_orphans`는 클래스 명세에 없다 → 되먹일 것 #3
-- 네트워크가 없어 확인이 `network`로 실패한 키는 `invalid`로 본다. 분석 버튼을 누르면 다시 확인하므로([[#SEQ-1]]) 네트워크가 돌아오면 저절로 풀린다
+- `running`인 채 남은 작업은 핸들이 없어 영원히 돈다고 보인다. `failed`로 돌려야 재시도가 된다. `JobService.fail_orphans`는 클래스 명세에 없다 → 되먹일 것 #3. `queued`는 건드리지 않는다 — 돌던 것이 아니라 기다리던 것이라 워커가 뜨면 이어서 돈다
+- 순서가 있다. `fail_orphans`가 **먼저**, 워커가 **다음**이다. 거꾸로면 `running`인 채 남은 행 때문에 워커가 아무것도 꺼내지 못한다
+- 네트워크가 없어 확인이 `network`로 실패한 키는 `invalid`로 본다. 분석 버튼을 누르면 다시 확인하고([[#SEQ-1]]), 다시 시도와 질문도 마지막 결과가 `network`면 `require_key`가 그 자리에서 한 번 다시 확인하므로([[VA-DOM-002#SettingsService]]) 네트워크가 돌아오면 저절로 풀린다. 그동안 배너 문구는 '연결을 확인하지 못했어요 — …'이고 버튼은 막지 않는다([[VA-UI-002]] 1.4)
+
+---
+
+## SEQ-14 워커가 대기열에서 다음 작업을 꺼낸다
+
+[[VA-UC-001#UC-H0]] 확장 3b · [[VA-DOM-002]] 5장 8(대기열은 DB, 워커 하나). 입구는 [[#SEQ-13]]이 띄운 `pipeline.worker`. 화면 없음 — 화면은 [[#SEQ-5]] 폴링으로 안다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant PL as pipeline
+    participant JS as JobService
+    participant DB
+
+    loop 서버가 떠 있는 동안
+        PL->>JS: claim_next()
+        rect rgb(240,244,240)
+            Note over JS,DB: 한 트랜잭션
+            JS->>DB: analysis_jobs where status = running
+            alt 도는 작업이 있다
+                JS-->>PL: None
+            else 없다
+                JS->>DB: analysis_jobs where status = queued order by queued_at limit 1
+                alt 기다리는 작업이 없다
+                    JS-->>PL: None
+                else 있다
+                    JS->>DB: status = running · stage_started_at = 지금
+                    Note over JS,DB: 부분 unique 인덱스가 running 둘을 막는다 (DOM-003 3장)
+                    JS-->>PL: AnalysisJobRow
+                end
+            end
+        end
+        alt None
+            PL->>JS: wait_for_work()
+            Note over PL,JS: start · retry · finish · fail · cancel이 깨운다
+        else 작업을 받았다
+            alt stage = pending
+                PL->>PL: create_task(run(job_id, video)) — 핸들은 JobService가 video_id로 보관
+                Note over PL: SEQ-3 또는 SEQ-4
+            else 다시 시도한 작업 (stage = 실패한 단계)
+                PL->>PL: create_task(resume(job_id, video)) — 핸들 보관
+                Note over PL: SEQ-6의 끝 갈래
+            end
+            PL->>PL: 태스크가 끝나기를 기다린다 (완료 · 실패 · 취소 어느 것이든)
+        end
+    end
+```
+
+**읽을 때 볼 것**
+- 시작하는 길이 하나다. `start`([[#SEQ-2]])도 `retry`([[#SEQ-6]])도 `queued`로 넣고 깨울 뿐이고, `running`으로 바꾸는 것은 여기 하나다. 도는 작업이 없으면 깨어나자마자 꺼내므로 기다림이 없다
+- 대기열은 메모리에 없다. `queued` 행이 곧 대기열이라 서버가 다시 떠도 기다리던 작업이 남고([[#SEQ-13]]), 워커가 뜨면 이어서 돈다. 메모리에 있는 것은 깨우는 신호 하나뿐이다
+- 앞 작업이 **실패해도** 다음 작업은 시작된다. 실패한 작업은 `failed`로 남을 뿐 대기열을 막지 않는다([[VA-UI-002#UI-3]] 규칙)
+- 워커는 태스크의 예외로 죽지 않는다. 파이프라인 안의 실패는 `fail`로 접히고([[#SEQ-4]]), 취소는 [[#SEQ-11]]이 한다
+- `video`는 워커가 `VideoService`에서 받지 않는다 — 작업 묶음은 영상 테이블을 모른다. `run` · `resume`에 넘길 `Video`를 어떻게 얻는지는 되먹일 것 #7
 
 ---
 
@@ -941,6 +1009,8 @@ sequenceDiagram
 | 4 | 실패 조각 하나가 나오면 돌고 있던 다른 조각을 **끝까지 기다린 뒤** `fail`한다([[#SEQ-4]]). 클래스 명세는 「넘으면 fail」만 적었다 | [[VA-DOM-002#JobService]] 파이프라인 | 문장 추가. 그래야 완료 수(j)와 다음 조각(r)이 화면 규칙과 맞는다 |
 | 5 | 대화 기록 조회([[VA-API-001#GET/api/videos/{id}/chat]])도 영상 존재 확인 때문에 `VideoService.get`을 먼저 부른다. 3.1 표는 질문만 적었다 | [[VA-DOM-002]] 3.1 표 | chat/router 점선 설명에 「기록 조회의 404 판정」 추가 |
 | 6 | 서버 시작 때 네트워크 실패로 키 확인이 안 되면 `invalid`로 남고 배너가 뜬다. 분석 버튼이 다시 확인하므로 풀리지만, 화면 문구 '키를 확인하지 못했어요 — {이유}'가 네트워크 이유를 보이게 된다 | MINISPEC(SettingsService) | `reason_kind = network`면 배너 문구를 '연결을 확인하지 못했어요'로 가를지 — 미결로 넘긴다 |
+| 7 | 워커([[#SEQ-14]])가 `run` · `resume`에 넘길 `Video`를 얻는 길이 없다. 작업 묶음은 영상 테이블을 모르고, `job → video` 호출은 허용된 방향이 아니다([[VA-DOM-002]] 3.2) | [[VA-DOM-002#JobService]] 파이프라인 · MINISPEC(작업 서비스) | 파이프라인이 `Video` 전체가 아니라 필요한 값만 쓰게 한다 — `video_id` · 출처 종류 · 출처 ID · 파일 경로 · 길이 · 자막 유무. `start`가 받은 `Video`에서 뽑아 작업 행에 두거나(컬럼 추가), `run(job_id)`가 `AnalysisService` 쪽으로 `video_id`만 넘기게 시그니처를 고친다 |
+| 8 | 삭제([[#SEQ-11]])에서 워커를 깨우는 때 — `cancel` 안에서 깨우면 워커가 곧 지워질 `queued` 행을 꺼낼 수 있다 | [[VA-DOM-002#JobService]] 규칙 · MINISPEC(작업 서비스) | `cancel`은 깨우지 않고, 라우터가 `VideoService.delete` 뒤에 `JobService.wake`(공개 메서드 추가)를 부른다 |
 
 **1번이 핵심이다.** 조각 상태 넷은 DB에 뒀지만 결과는 안 뒀다. 그러면 「이어서 다시 시도」가 이어지지 않는다. 클래스 명세와 ERD·DD를 고친 뒤에 MINISPEC으로 간다.
 
@@ -948,7 +1018,8 @@ sequenceDiagram
 
 ## 3. 미결사항
 
-- [ ] 되먹일 것 #1~#5를 [[VA-DOM-002]] · [[VA-DOM-003]]에 반영한다 — 다음 문서 전에
-- [ ] 키 확인이 네트워크로 실패했을 때의 배너 문구(되먹일 것 #6) — 와이어프레임 1.4 문구를 가를지 사용자 확인
+- [x] 되먹일 것 #1~#5를 [[VA-DOM-002]] · [[VA-DOM-003]]에 반영한다 — 반영: 클래스 명세 v8 · ERD v2
+- [x] 키 확인이 네트워크로 실패했을 때의 배너 문구(되먹일 것 #6) — 결정: 문구를 가르고 버튼을 막지 않는다(사용자 결정 2026-09-21, [[VA-UI-002]] 1.4)
+- [ ] 되먹일 것 #7 · #8(워커가 `Video`를 얻는 길 · 삭제 뒤 워커 깨우기)을 [[VA-DOM-002]]와 MINISPEC(작업 서비스)에 반영한다
 - [ ] UI-1이 열려 있는 동안 진행 중 행을 갱신하는 주기([[#SEQ-7]]) — 목록 전체를 몇 초마다 다시 부를지 MINISPEC
 - [ ] 취소된 파이프라인이 OpenAI에 이미 보낸 조각([[#SEQ-11]]) — 응답을 버리므로 비용만 든다. 삭제 다이얼로그에 알릴지 사용자 확인
