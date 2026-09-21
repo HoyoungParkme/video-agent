@@ -84,6 +84,7 @@ erDiagram
         varchar path
         varchar state
         smallint attempts
+        jsonb result
         timestamptz done_at
     }
     transcripts {
@@ -155,7 +156,7 @@ erDiagram
 - 열거형은 `varchar` + 앱 검증. 값 목록은 [[VA-DOM-002]] 2.5
 - FK는 전부 `on delete cascade`. 영상을 지우면 작업 · 조각 · 스크립트 · 구간 · 요약 · 인사이트 · 파트 · 챕터 · 추천 질문 · 대화가 한 번에 사라진다([[VA-UC-001#UC-H6]] 성공 보장). `chapters.part_id`는 `on delete set null`이 아니라 cascade다 — 파트는 영상과 함께만 지워진다
 - 1:1 관계(`transcripts` · `summaries`)는 `video_id`에 UK를 걸어 강제한다. 재분석은 행을 교체한다([[VA-DOM-001]] 6장, [[VA-DOM-002#AnalysisService]] `save_transcript`)
-- 목록 속성(`stages` · `stage_durations_sec` · `source_secs` · `bullets` · `cited_secs`)은 `jsonb`다. 단독으로 조회 · 조인하는 일이 없어 자식 테이블을 만들지 않는다(3장 정규화)
+- 목록 속성(`stages` · `stage_durations_sec` · `result` · `source_secs` · `bullets` · `cited_secs`)은 `jsonb`다. 단독으로 조회 · 조인하는 일이 없어 자식 테이블을 만들지 않는다(3장 정규화)
 - **`videos`에 `status` · `analyzed_at`이 없다.** 가장 최근 `analysis_jobs` 행에서 계산한다([[VA-DOM-002#Video]]). 상태가 두 곳에 있으면 어긋난다
 - **`running`인 작업은 프로세스 전체에 하나다.** 앱이 검사하고([[VA-DOM-002#JobService]] `start`), DB도 부분 unique 인덱스로 막는다(3장)
 
@@ -220,9 +221,10 @@ CHECK: `status = 'failed'`이면 `error_kind` · `error_reason`이 not null, 아
 | path | varchar(500) | null 허용 | 임시 파일 경로. 받아쓰기가 끝나 파일을 지우면 null | `data/tmp/12/16.mp3` |
 | state | varchar(10) | not null, ChunkState | waiting · in_flight · done · failed | `done` |
 | attempts | smallint | not null, default 0 | 보낸 횟수. 상한(설정값 3)에 닿으면 failed | `3` |
+| result | jsonb | null 허용 | 그 조각의 받아쓰기 결과 — `{start_sec, end_sec, text, language}` 배열, 오프셋을 더하기 전. `done`이 될 때 저장. 실패 뒤 재시도가 `done` 조각을 다시 보내지 않는 근거([[VA-DOM-002#AudioChunk]], 시퀀스 되먹임). 스크립트를 만든 뒤에도 남긴다 | `[{"start_sec": 0.0, "end_sec": 4.2, "text": "…", "language": "ko"}]` |
 | done_at | timestamptz | null 허용 | `done`이 된 때. 조각당 평균 시간 → 남은 시간 계산([[VA-UC-001#UC-S6]] 2번) | |
 
-작업이 끝나도 행은 남긴다 — "30조각으로 받아썼다"는 이력이다([[VA-DOM-001]] 5장 2). 영상을 지우면 cascade로 사라진다.
+작업이 끝나도 행은 남긴다 — "30조각으로 받아썼다"는 이력이고 `result`가 그 증거다([[VA-DOM-001]] 5장 2). 영상을 지우면 cascade로 사라진다.
 
 ### transcripts
 
@@ -338,7 +340,7 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 
 없는 것 — `videos.source_kind` · `analysis_jobs.stage` · `chapters.part_id` 단독 인덱스. 값 종류가 적거나 FK 인덱스로 충분하다. 사용자 한 명이 분석한 영상 수십 개 규모라 대부분의 조회는 `video_id` FK 인덱스 하나로 끝난다.
 
-**정규화** — 전 테이블 3NF. 1NF에서 벗어난 `jsonb` 배열이 다섯이고 이유는 같다 — **단독으로 조회 · 조인하지 않는다.** `insights.source_secs` · `chapters.bullets` · `chat_turns.cited_secs`는 부모 행과 함께만 읽고 쓰며([[VA-DOM-002]] 7장 이전 결정), `analysis_jobs.stages` · `stage_durations_sec`는 작업 행의 부속 값이다. 자식 테이블로 빼면 조회마다 조인이 늘고 얻는 것이 없다. 여섯째가 생기면 여기 이유를 적는다.
+**정규화** — 전 테이블 3NF. 1NF에서 벗어난 `jsonb` 배열이 여섯이고 이유는 같다 — **단독으로 조회 · 조인하지 않는다.** `insights.source_secs` · `chapters.bullets` · `chat_turns.cited_secs`는 부모 행과 함께만 읽고 쓰며([[VA-DOM-002]] 7장 이전 결정), `analysis_jobs.stages` · `stage_durations_sec`는 작업 행의 부속 값이다. `audio_chunks.result`는 스크립트를 만들기 전까지만 읽고 그 뒤는 이력이다 — 구간 하나를 조각에서 찾는 일이 없다. 자식 테이블로 빼면 조회마다 조인이 늘고 얻는 것이 없다. 일곱째가 생기면 여기 이유를 적는다.
 
 비정규화(중복 저장)는 없다. `videos`의 상태 · 분석 완료 시각을 컬럼으로 두지 않은 것이 그 결정이다(1장 설계 규칙). `analysis_jobs.est_*`는 사전 안내 값의 사본처럼 보이지만 설정(단가 · 조각 길이)이 바뀌면 다시 계산되는 값이라 그때의 예상치를 남기는 이력이다.
 
