@@ -3,7 +3,7 @@ doc_id: VA-DOM-002
 type: DOM
 title: 클래스 명세 — 영상 분석 에이전트
 status: draft
-upstream: [VA-DOM-001, VA-INFRA-001, VA-API-001, VA-UI-001, VA-UI-002]
+upstream: [VA-DOM-001, VA-INFRA-001, VA-API-001, VA-UI-001, VA-UI-002, VA-DOM-003]
 ---
 
 # 클래스 명세
@@ -166,13 +166,13 @@ frontend/
 ---
 ## 2. 엔티티
 
-묶음별. **클래스마다 항목 헤딩 + 그 클래스의 다이어그램.** 테이블은 다음 문서(ERD·DD)가 정하고, 그 문서가 생기면 여기 각 항목에 `테이블:` 참조를 더한다(7장). 다이어그램의 속성은 4장 설계 클래스 그림에 그대로 다시 그린다 — 어긋나면 2장이 진실이다.
+묶음별. **클래스마다 항목 헤딩 + 그 클래스의 다이어그램.** 테이블 · 컬럼은 [[VA-DOM-003]]이 정한다. 다이어그램의 속성은 4장 설계 클래스 그림에 그대로 다시 그린다 — 어긋나면 2장이 진실이다.
 
 ### 2.1 video
 
 #### Video 영상
 
-도메인: [[VA-DOM-001#Video]]
+테이블: [[VA-DOM-003#videos]] · 도메인: [[VA-DOM-001#Video]]
 
 ```mermaid
 classDiagram
@@ -203,7 +203,7 @@ classDiagram
 
 #### AnalysisJob 작업
 
-도메인: [[VA-DOM-001#AnalysisJob]]
+테이블: [[VA-DOM-003#analysis_jobs]] · 도메인: [[VA-DOM-001#AnalysisJob]]
 
 ```mermaid
 classDiagram
@@ -239,7 +239,7 @@ classDiagram
 
 #### AudioChunk 조각
 
-도메인: [[VA-DOM-001#AudioChunk]]
+테이블: [[VA-DOM-003#audio_chunks]] · 도메인: [[VA-DOM-001#AudioChunk]]
 
 ```mermaid
 classDiagram
@@ -265,7 +265,7 @@ classDiagram
 
 #### Transcript 스크립트
 
-도메인: [[VA-DOM-001#Transcript]]
+테이블: [[VA-DOM-003#transcripts]] · 도메인: [[VA-DOM-001#Transcript]]
 
 ```mermaid
 classDiagram
@@ -287,7 +287,7 @@ classDiagram
 
 #### Segment 구간
 
-도메인: [[VA-DOM-001#Segment]]
+테이블: [[VA-DOM-003#segments]] · 도메인: [[VA-DOM-001#Segment]]
 
 ```mermaid
 classDiagram
@@ -308,7 +308,7 @@ classDiagram
 
 #### Summary 요약
 
-도메인: [[VA-DOM-001#Summary]]
+테이블: [[VA-DOM-003#summaries]] · 도메인: [[VA-DOM-001#Summary]]
 
 ```mermaid
 classDiagram
@@ -327,7 +327,7 @@ classDiagram
 
 #### Insight 인사이트
 
-도메인: [[VA-DOM-001#Insight]]
+테이블: [[VA-DOM-003#insights]] · 도메인: [[VA-DOM-001#Insight]]
 
 ```mermaid
 classDiagram
@@ -347,7 +347,7 @@ classDiagram
 
 #### Part 파트
 
-도메인: [[VA-DOM-001#Part]]
+테이블: [[VA-DOM-003#parts]] · 도메인: [[VA-DOM-001#Part]]
 
 ```mermaid
 classDiagram
@@ -368,7 +368,7 @@ classDiagram
 
 #### Chapter 챕터
 
-도메인: [[VA-DOM-001#Chapter]]
+테이블: [[VA-DOM-003#chapters]] · 도메인: [[VA-DOM-001#Chapter]]
 
 ```mermaid
 classDiagram
@@ -389,7 +389,7 @@ classDiagram
 
 #### SuggestedQuestion 추천 질문
 
-도메인: [[VA-DOM-001#SuggestedQuestion]]
+테이블: [[VA-DOM-003#suggested_questions]] · 도메인: [[VA-DOM-001#SuggestedQuestion]]
 
 ```mermaid
 classDiagram
@@ -410,7 +410,7 @@ classDiagram
 
 #### ChatTurn 대화 턴
 
-도메인: [[VA-DOM-001#ChatTurn]]
+테이블: [[VA-DOM-003#chat_turns]] · 도메인: [[VA-DOM-001#ChatTurn]]
 
 ```mermaid
 classDiagram
@@ -1020,7 +1020,7 @@ class VideoRow(Base):
 - [ ] 웹에서 받은 키의 저장 위치 — `.env` 쓰기 마운트 · DB · `data/settings.json`. DB면 도메인 모델부터 고치고 설정이 묶음이 된다(5장 1). [[VA-INFRA-001#C6]] 갱신 요청, [[VA-UI-001]] 8장 · [[VA-API-001]] 6장과 같은 항목
 - [ ] 유스케이스 갱신 요청 — [[VA-UC-001#UC-S4]] 2~3번과 1a2의 「챕터 먼저」를 「핵심 요약 → 챕터」로, 긴 영상의 요약 재료를 「구간별 중간 요약」으로(5장 10)
 - [ ] 도메인 모델 갱신 요청 — [[VA-DOM-001#Video]]에 작업 없는 영상(`registered`)과 실패 구분, 「분석완료시각」이 계산값이라는 것 · [[VA-DOM-001#AnalysisJob]]에 상태와 단계 분리(5장 4 · 5)
-- [ ] ERD·DD가 생기면 2장 각 항목에 `테이블: [[…]]` 참조를 더한다. 그때 JSONB로 둘 속성(6장)을 확정
+- [x] ERD·DD가 생기면 2장 각 항목에 테이블 참조를 더한다 — 반영. JSONB 속성 다섯은 [[VA-DOM-003]] 3장에서 확정
 - [ ] 텍스트 모델 비용 추정식(`JobService.estimate`) — MINISPEC. [[VA-API-001]] 6장과 같은 항목
 - [ ] 조각이 없는 단계의 남은 시간 — 지금 null. 사전 안내 예상 시간 − 지난 시간으로 할지 MINISPEC
 - [ ] `progress_pct`의 단계 가중치 — 받아쓰기가 대부분이라 조각 비율을 그대로 쓸지, 단계마다 고정 몫을 둘지 MINISPEC
