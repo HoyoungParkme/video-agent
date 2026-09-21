@@ -17,6 +17,18 @@
     {
       "assignee": "HoyoungParkme",
       "cause": null,
+      "cause_version": "VA-DOM-002@78c428f6a1c2e55db34656a48ff29d7e1ec4e39a",
+      "kind": "upstream_impact",
+      "raised_at": "2026-09-21T06:09:08.014183+00:00",
+      "resolved_at": null,
+      "resolved_by": null,
+      "resolved_with_edit": null,
+      "target": "VA-DOM-001#AnalysisJob",
+      "target_version": "VA-DOM-001@6f7bb84098d1a991affb210652079f54e0904b9d"
+    },
+    {
+      "assignee": "HoyoungParkme",
+      "cause": null,
       "cause_version": "VA-DOM-002@91d828b204bc5ae300e7412679e3d04728ec2013",
       "kind": "needs_check",
       "raised_at": "2026-09-15T06:23:21.752480+00:00",
@@ -53,6 +65,18 @@
     {
       "assignee": "HoyoungParkme",
       "cause": null,
+      "cause_version": "VA-DOM-002@78c428f6a1c2e55db34656a48ff29d7e1ec4e39a",
+      "kind": "upstream_impact",
+      "raised_at": "2026-09-21T06:09:07.993416+00:00",
+      "resolved_at": null,
+      "resolved_by": null,
+      "resolved_with_edit": null,
+      "target": "VA-DOM-001#Video",
+      "target_version": "VA-DOM-001@6f7bb84098d1a991affb210652079f54e0904b9d"
+    },
+    {
+      "assignee": "HoyoungParkme",
+      "cause": null,
       "cause_version": "VA-DOM-001@6f7bb84098d1a991affb210652079f54e0904b9d",
       "kind": "needs_check",
       "raised_at": "2026-09-15T09:02:00.907333+00:00",
@@ -80,6 +104,18 @@
       "cause_version": "VA-UI-001@8870b85c5c9d99d4e5d4c06c307ced5a33b9f354",
       "kind": "upstream_impact",
       "raised_at": "2026-09-17T01:26:28.642778+00:00",
+      "resolved_at": null,
+      "resolved_by": null,
+      "resolved_with_edit": null,
+      "target": "VA-INFRA-001#C6",
+      "target_version": "VA-INFRA-001@2ef17e018366c85343bdc2aa27343c792766df60"
+    },
+    {
+      "assignee": "HoyoungParkme",
+      "cause": null,
+      "cause_version": "VA-DOM-002@78c428f6a1c2e55db34656a48ff29d7e1ec4e39a",
+      "kind": "upstream_impact",
+      "raised_at": "2026-09-21T06:09:08.028272+00:00",
       "resolved_at": null,
       "resolved_by": null,
       "resolved_with_edit": null,
@@ -420,6 +456,18 @@
       "resolved_by": null,
       "resolved_with_edit": null,
       "target": "VA-UC-001#UC-S3",
+      "target_version": "VA-UC-001@c7801d6e28d08700626f119d14db0955231233a2"
+    },
+    {
+      "assignee": "HoyoungParkme",
+      "cause": null,
+      "cause_version": "VA-DOM-002@78c428f6a1c2e55db34656a48ff29d7e1ec4e39a",
+      "kind": "upstream_impact",
+      "raised_at": "2026-09-21T06:09:08.023017+00:00",
+      "resolved_at": null,
+      "resolved_by": null,
+      "resolved_with_edit": null,
+      "target": "VA-UC-001#UC-S4",
       "target_version": "VA-UC-001@c7801d6e28d08700626f119d14db0955231233a2"
     },
     {
