@@ -2,7 +2,7 @@
 doc_id: VA-RFQ-001
 type: RFQ
 title: 영상 분석 에이전트 — 요구·인터뷰
-status: review
+status: draft
 upstream: []
 ---
 
