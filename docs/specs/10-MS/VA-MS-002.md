@@ -1,0 +1,423 @@
+---
+doc_id: VA-MS-002
+type: MS
+title: MINISPEC — JobService · pipeline
+status: draft
+upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-001]
+---
+
+# MINISPEC — JobService · pipeline
+
+## 0. 이 문서가 다루는 것
+
+`domains/job/service.py`의 함수 16개와 `domains/job/pipeline.py`의 함수 4개. 클래스 명세 [[VA-DOM-002#JobService]]와 그 아래 「파이프라인」의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나** — 4.2 절이 두 파일이라 이 문서도 두 모듈이다. 포트 · 어댑터(`audio_source` · `audio_split` · `stt_openai`)는 4.6 · 4.7의 MS 문서에서.
+
+형식은 명세 작성 규약 2.10. 내부 타입(`ChunkPlan` `SttSegment` `Progress`)은 [[VA-DOM-002]] 2.6, 응답 형태(`Job` `JobSummary` `Chunks` `Chunk` `JobError` `Estimate` `Models`)는 [[VA-API-001]] 4장.
+
+**표기** — `→` 반환 · 결과, `!` 예외(이름은 [[VA-API-001]] 2장의 `urn:va:` 뒤 부분), `DB:` 테이블 접근(`crud`를 거친다), `FS:` 파일 접근, `now` 현재 시각(UTC).
+
+**이 묶음이 아는 것** — `analysis_jobs` · `audio_chunks` 테이블, `data/tmp/{video_id}/`. 영상은 `Video` DTO로 받고 영상 테이블을 읽지 않는다. 결과 저장은 `AnalysisService`에 넘긴다([[VA-DOM-002]] 3.2).
+
+**세션** — 서비스 함수는 호출자의 세션 안에서 돈다. 라우터는 요청마다 하나. **파이프라인은 서비스를 부를 때마다 짧은 세션을 열고 닫는다**([[VA-DOM-002]] 6장) — 십여 분 도는 태스크가 세션 하나를 잡지 않게. 아래 `DB:`가 붙은 서비스 함수 하나가 트랜잭션 하나다.
+
+**설정값(첫 값)** — 인프라 9절의 미결을 여기서 정한다.
+
+| 이름 | 첫 값 | 이유 |
+|---|---|---|
+| `config.CHUNK_SEC` | 600 | 64kbps 모노 10분 ≈ 4.8MB. 25MB 상한([[VA-INFRA-001#C2]])의 1/5라 무음 경계로 조금 늘어나도 안전 |
+| `config.STT_CONCURRENCY` | 3 | 시간당 3분 목표([[VA-PRD-001#N1]])와 OpenAI 요청 제한 사이. 측정 뒤 조정 |
+| `config.CHUNK_MAX_ATTEMPTS` | 3 | 화면 문구 '3번 다시 보냈지만'([[VA-UI-002#UI-3]]) |
+| `config.CHUNK_EST_SEC` | 45 | 조각 하나(10분)의 받아쓰기 예상 시간. 예상치 계산용. 측정 뒤 조정 |
+| `config.TEXT_EST_SEC` | 60 | 요약 · 챕터 · 추천 질문 세 단계 합. 자막 있음의 '약 1분' |
+| `config.TOKENS_PER_MIN` | 200 | 한국어 말하기 분당 토큰 추정. 텍스트 비용 계산용 |
+
+**진행률 가중치** — `stages`에 `transcribe`가 있으면 받아쓰기 70, 나머지 단계가 30을 똑같이 나눈다. 없으면 단계들이 100을 똑같이 나눈다. 받아쓰기 안에서는 완료 조각 비율로 채운다. 단계가 끝나면 그 가중치만큼 더한다.
+
+---
+
+## 1. 함수 목록
+
+| 함수 | 한 줄 |
+|---|---|
+| [[#JobService.estimate]] | 사전 안내 예상치 (작업 있으면 null) |
+| [[#JobService.start]] | 작업 행 생성 + 백그라운드 태스크 |
+| [[#JobService.progress]] | 폴링 응답 `Job` |
+| [[#JobService.retry]] | 실패 작업을 같은 행으로 재개 |
+| [[#JobService.cancel]] | 태스크 취소 (삭제 전) |
+| [[#JobService.latest]] | 영상의 최근 작업 요약 |
+| [[#JobService.latest_by_videos]] | 여러 영상의 최근 작업 요약, 쿼리 하나 |
+| [[#JobService.mark_stage]] | 단계 전환 · 걸린 시간 · 진행률 |
+| [[#JobService.plan_chunks]] | 조각 행 생성 |
+| [[#JobService.mark_chunk]] | 조각 상태 전이 (attempts · result · 진행률) |
+| [[#JobService.finish]] | done |
+| [[#JobService.fail]] | failed + error |
+| [[#JobService.fail_orphans]] | 시작 때 running 정리 |
+| [[#JobService.stages_for]] | 출처 → 단계 목록 |
+| [[#JobService.remaining_sec]] | 남은 시간 계산 |
+| [[#JobService.to_job]] | 행 + 조각 → `Job` |
+| [[#pipeline.run]] | 첫 단계부터 |
+| [[#pipeline.resume]] | 행의 단계부터 |
+| [[#pipeline.transcribe_stage]] | 조각 병렬 받아쓰기 |
+| [[#pipeline.error_kind]] | 예외 → `ErrorKind` |
+
+---
+
+## 2. 함수
+
+#### JobService.estimate 사전 안내 예상치
+
+**시그니처** `async def estimate(video: Video) -> Estimate | None`
+
+근거: [[VA-SEQ-001#SEQ-1]] 27~31번 · [[VA-API-001#POST/api/videos]] 7번 · [[VA-UC-001#UC-S1]] 5번 · [[VA-UI-002#UI-2]]
+
+**입력** `video` — `register`가 돌려준 DTO. `status` · `duration_sec` · `has_captions` · `source_kind`를 본다
+
+**처리**
+1. if `video.status != registered` → `→ None` (작업이 있다. 라우터는 분기 없이 그대로 응답에 싣는다)
+2. `models = SettingsService.current_models()` — 모델 이름과 단가
+3. `needs_stt = not video.has_captions`
+4. if `not needs_stt` → `chunks = None` · `concurrency = None` · `stt_minutes = None` · `stt_price_per_min = None` · `stt_cost = 0` · `seconds = config.TEXT_EST_SEC`
+   else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기 몫으로 `duration_sec / 60`초를 더한다)
+5. `in_tokens = duration_sec / 60 × config.TOKENS_PER_MIN` · `text_cost = (in_tokens × 3 × models.text.price.input_per_mtok_usd + 6000 × models.text.price.output_per_mtok_usd) / 1_000_000` — 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 6천 토큰으로 본다
+6. `→ Estimate(needs_stt, seconds, chunks, concurrency, stt_minutes, stt_price_per_min, stt_cost_usd=round(stt_cost, 4), text_cost_usd=round(text_cost, 4), total_cost_usd=round(stt_cost + text_cost, 2), stt_model=models.stt.id, text_model=models.text.id)`
+
+**출력** `Estimate` 또는 `None`. 화면은 숫자를 그대로 보이고 합계에 '약'을 붙인다
+
+**호출하는 것** `SettingsService.current_models`
+
+**테스트 관점** 자막 있음 50분 → `chunks=None`, `stt_cost=0`, `seconds=60`, `text_cost>0` · 로컬 150분 → `chunks=15`, `concurrency=3`, `stt_minutes=150`, `stt_cost=0.9`(단가 0.006) · 상태가 `in_progress`면 `None` · 단가를 바꾸면 값이 따라 바뀐다(설정에서 읽는다)
+
+---
+
+#### JobService.start 작업 시작
+
+**시그니처** `async def start(video: Video) -> Job`
+
+근거: [[VA-SEQ-001#SEQ-2]] · [[VA-API-001#POST/api/videos/{id}/job]] · [[VA-UC-001#UC-H0]] 3번 · [[VA-DOM-003#analysis_jobs]] 부분 unique
+
+**입력** `video` — 라우터가 `VideoService.get`으로 받아 넘긴 DTO
+
+**처리**
+1. `SettingsService.require_key()` · if 없음 → `! key-missing` · if 확인 실패 → `! key-invalid`
+2. `DB: analysis_jobs where video_id` · if 있음 → `! job-exists {job_id, job_status}` — 실패한 작업은 `retry`로, 끝난 작업은 다시 만들지 않는다
+3. `DB: analysis_jobs where status = running limit 1` · if 있음 → `! another-job-running {video_id: 그 행의 video_id}`
+4. `stages = stages_for(video)` · `est = estimate(video)`(여기서는 `status`를 보지 않는다 — 작업이 없다는 것을 2에서 확인했다) · `models = SettingsService.current_models()`
+5. **트랜잭션**: `DB: analysis_jobs insert(video_id, status=running, stage=pending, stages, progress_pct=0, est_seconds=est.seconds, est_cost_usd=est.total_cost_usd, concurrency=config.STT_CONCURRENCY, stt_model=models.stt.id if needs_stt else None, text_model=models.text.id, stage_durations_sec={}, started_at=now, stage_started_at=now)` · if 부분 unique 위반(`running` 둘) → `! another-job-running` (두 요청이 3을 동시에 통과한 경우)
+6. `task = asyncio.create_task(pipeline.run(row.id, video))` · `self.tasks[video.id] = task` · `task.add_done_callback(→ self.tasks.pop(video.id))`
+7. `→ to_job(row, [])`
+
+**출력** `Job`(`status=running` · `stage=pending` · `chunks=None`)
+
+**예외** `key-missing` · `key-invalid` · `job-exists` · `another-job-running`
+
+**호출하는 것** `SettingsService.require_key` · `SettingsService.current_models` · [[#JobService.stages_for]] · [[#JobService.estimate]] · [[#pipeline.run]] · [[#JobService.to_job]]
+
+**테스트 관점** 응답이 파이프라인을 기다리지 않는다(태스크만 띄운다) · 같은 영상 두 번 → 둘째는 `job-exists` · 다른 영상이 `running`이면 `another-job-running`에 그 영상 id · 자막 있는 YouTube → `stt_model=None`, `stages` 4개 · 행에 그때의 모델 이름 · 동시 수 · 예상치가 남는다 · 키가 없으면 행이 안 생긴다
+
+---
+
+#### JobService.progress 폴링 응답
+
+**시그니처** `async def progress(video_id: int) -> Job`
+
+근거: [[VA-SEQ-001#SEQ-5]] · [[VA-API-001#GET/api/videos/{id}/job]] · [[VA-UC-001#UC-S6]]
+
+**처리**
+1. `row = DB: analysis_jobs where video_id order by started_at desc limit 1` · if 없음 → `! not-found {resource: job, id: video_id}`
+2. `chunks = DB: audio_chunks where job_id order by seq` (`result` 컬럼은 읽지 않는다 — 폴링 응답에 안 나간다)
+3. `→ to_job(row, chunks)`
+
+**출력** `Job`. 1초마다 불리므로 쿼리 둘로 끝난다
+
+**예외** `not-found`(job)
+
+**호출하는 것** [[#JobService.to_job]]
+
+**테스트 관점** 작업 없는 영상 → `not-found`에 `resource=job` · 조각 30개 중 12 완료 · 3 진행 중이면 `chunks.done=12` `in_flight=3` `waiting=15` `next_seq=13` · `result`를 select하지 않는다(쿼리 로그)
+
+---
+
+#### JobService.retry 실패 작업 재개
+
+**시그니처** `async def retry(video: Video) -> Job`
+
+근거: [[VA-SEQ-001#SEQ-6]] · [[VA-API-001#POST/api/videos/{id}/job/retry]] · [[VA-UC-001#UC-S3]] 3a3 · [[VA-UC-001#UC-S6]] 1a
+
+**처리**
+1. `SettingsService.require_key()` · `! key-missing` · `! key-invalid`
+2. `row = DB: analysis_jobs where video_id order by started_at desc limit 1` · if 없음 → `! not-found {resource: job}`
+3. if `row.status != failed` → `! job-not-failed {job_status}`
+4. **트랜잭션**: `DB: analysis_jobs update status=running · error_kind=error_reason=error_chunk_seq=error_attempts=null · stage_started_at=now` (같은 행. `stage` · `stages` · `started_at` · 모델은 그대로) · `DB: audio_chunks where job_id and state = failed → state = waiting` (실패 조각도 다시 보낸다. `attempts`는 그대로 두고 상한을 다시 센다 — 아래 `mark_chunk`)
+5. `task = asyncio.create_task(pipeline.resume(row.id, video))` · 핸들 보관은 `start`와 같다
+6. `→ to_job(row, chunks)`
+
+**출력** `Job`(`status=running`, 실패 알림이 사라질 값)
+
+**예외** `key-missing` · `key-invalid` · `not-found` · `job-not-failed`
+
+**호출하는 것** `SettingsService.require_key` · [[#pipeline.resume]] · [[#JobService.to_job]]
+
+**테스트 관점** `running`인 작업에 부르면 `job-not-failed` · 재개 뒤 `id` · `started_at`이 같다 · `error_*`가 비워진다 · `failed` 조각이 `waiting`으로 돌아가고 `done` 조각은 그대로 · 목록 순서가 바뀌지 않는다
+
+---
+
+#### JobService.cancel 태스크 취소
+
+**시그니처** `async def cancel(video_id: int) -> None`
+
+근거: [[VA-SEQ-001#SEQ-11]] · [[VA-API-001#DELETE/api/videos/{id}]] · [[VA-UI-001]] 7장 13
+
+**처리**
+1. `task = self.tasks.get(video_id)` · if 없음 → `→ None` (돌고 있지 않다)
+2. `task.cancel()` · `await task`를 `CancelledError`를 삼키며 기다린다 — 파이프라인이 열어 둔 세션이 닫힐 때까지
+3. `→ None`. 행은 건드리지 않는다 — 라우터가 이어서 부르는 `VideoService.delete`의 cascade가 지운다
+
+**출력** 없음
+
+**호출하는 것** 없음
+
+**테스트 관점** 돌고 있는 작업을 취소하면 태스크가 끝나 있다(`task.done()`) · 취소 뒤 DB에 반쯤 쓰인 행이 없다 · 없는 영상에 불러도 예외 없음
+
+---
+
+#### JobService.latest 최근 작업 요약
+
+**시그니처** `async def latest(video_id: int) -> JobSummary | None`
+
+**처리** `DB: analysis_jobs where video_id order by started_at desc limit 1` · `DB: audio_chunks where job_id`의 집계(`done` 수 · 전체 수) · `→ JobSummary(id, status, stage, progress_pct, chunks_done, chunks_total, failed_chunk_seq=error_chunk_seq, started_at, finished_at)` · 없으면 `None`
+
+**테스트 관점** 조각 없는 작업 → `chunks_done=chunks_total=None` · 실패 작업 → `failed_chunk_seq`가 채워진다
+
+---
+
+#### JobService.latest_by_videos 여러 영상의 최근 작업
+
+**시그니처** `async def latest_by_videos(video_ids: list[int]) -> dict[int, JobSummary]`
+
+근거: [[VA-SEQ-001#SEQ-7]] · [[VA-API-001#GET/api/videos]]
+
+**처리** `DB: analysis_jobs distinct on (video_id) where video_id in … order by video_id, started_at desc` 한 쿼리 · 조각 집계도 `job_id in …`으로 한 쿼리 · `→ {video_id: JobSummary}`. 작업 없는 영상은 키가 없다
+
+**테스트 관점** 영상 50개에 쿼리 둘 · 영상마다 최근 것 하나만 · 빈 목록 → `{}`
+
+---
+
+#### JobService.mark_stage 단계 전환
+
+**시그니처** `async def mark_stage(job_id: int, stage: JobStage) -> None`
+
+근거: [[VA-SEQ-001#SEQ-3]] · [[VA-UC-001#UC-S6]] 1 · 3번 · 0장 진행률 가중치
+
+**처리** — **트랜잭션**
+1. `row = DB: analysis_jobs where id`
+2. if `row.stage != pending` → `row.stage_durations_sec[row.stage] = round(now − row.stage_started_at)` — 끝난 단계의 걸린 시간
+3. `row.stage = stage` · `row.stage_started_at = now`
+4. `row.progress_pct = 완료한 단계들의 가중치 합`(0장 표. `stages`에서 `stage` 앞에 있는 것들)
+5. `DB: update`
+
+**출력** 없음
+
+**테스트 관점** 자막 있는 YouTube에서 `summarize`로 바꾸면 `stage_durations_sec[download]`가 생기고 `progress_pct=25` · 받아쓰기 있는 작업에서 `summarize`로 바꾸면 `progress_pct=70+7`(download 7.5 → 반올림 규칙 한 가지로) · `pending`에서 첫 단계로 갈 때는 duration이 안 생긴다
+
+---
+
+#### JobService.plan_chunks 조각 행 생성
+
+**시그니처** `async def plan_chunks(job_id: int, plans: list[ChunkPlan]) -> None`
+
+근거: [[VA-SEQ-001#SEQ-4]] 12~13번 · [[VA-UC-001#UC-S3]] 1~2번
+
+**처리** **트랜잭션**: `DB: audio_chunks where job_id` · if 이미 있음 → `→ None`(재개 때는 만들지 않는다) · else → `DB: insert ×N (job_id, seq, offset_sec, duration_sec, path, state=waiting, attempts=0)` · `→ None`
+
+**테스트 관점** 30개 계획 → 30행, `seq` 1~30, 전부 `waiting` · 두 번 불러도 행이 늘지 않는다
+
+---
+
+#### JobService.mark_chunk 조각 상태 전이
+
+**시그니처** `async def mark_chunk(job_id: int, seq: int, state: ChunkState, result: list[SttSegment] | None = None) -> None`
+
+근거: [[VA-SEQ-001#SEQ-4]] 17~28번 · [[VA-DOM-002#AudioChunk]] · [[VA-DOM-003#audio_chunks]] · 시퀀스 되먹임 #1 · #2
+
+**처리** — **트랜잭션**
+1. `chunk = DB: audio_chunks where job_id and seq`
+2. if `state == in_flight` → `chunk.attempts += 1`
+   elif `state == done` → `chunk.done_at = now` · `chunk.result = result` · `chunk.path`의 파일은 파이프라인이 지운다(여기서는 `path = None`으로) · `row.progress_pct = 완료 단계 가중치 합 + 70 × (done 수 / 전체 수)`
+   else (`waiting` · `failed`) → 상태만
+3. `chunk.state = state` · `DB: update`
+
+**출력** 없음
+
+**테스트 관점** `in_flight` 두 번 → `attempts=2` · `done`이면 `done_at` · `result` · `path=None`이고 `progress_pct`가 오른다 · `failed`는 `attempts`를 안 올린다 · 30개 중 15 완료 → `progress_pct`가 받아쓰기 몫의 절반
+
+---
+
+#### JobService.finish 완료
+
+**시그니처** `async def finish(job_id: int) -> None`
+
+**처리** **트랜잭션**: `mark_stage`와 같은 방식으로 마지막 단계의 duration 기록 · `status=done` · `progress_pct=100` · `finished_at=now` · `DB: update`. `finished_at`이 곧 영상의 분석 완료 시각([[VA-DOM-002#Video]])
+
+**테스트 관점** `finish` 뒤 `VideoService.get`의 `status=analyzed`, `analyzed_at`이 같다
+
+---
+
+#### JobService.fail 실패
+
+**시그니처** `async def fail(job_id: int, error: JobError) -> None`
+
+근거: [[VA-SEQ-001#SEQ-4]] · [[VA-UC-001#UC-S6]] 1a · [[VA-API-001]] 2장 마지막 문단
+
+**처리** **트랜잭션**: `status=failed` · `error_kind=error.kind` · `error_reason=error.reason` · `error_chunk_seq=error.chunk_seq` · `error_attempts=error.attempts` · `stage`는 실패한 단계 그대로 · `progress_pct` 그대로 · `DB: update`
+
+**테스트 관점** 실패 뒤 `progress`의 `error`가 채워지고 `stage`가 실패 단계 · `progress_pct`가 멈춘 값
+
+---
+
+#### JobService.fail_orphans 시작 때 running 정리
+
+**시그니처** `async def fail_orphans() -> int`
+
+근거: [[VA-SEQ-001#SEQ-13]] · [[VA-DOM-002]] 5장 8 · 시퀀스 되먹임 #3
+
+**처리** **트랜잭션**: `rows = DB: analysis_jobs where status = running` · 행마다 `status=failed` · `error_kind=unknown` · `error_reason='서버가 다시 시작됨'` · `error_chunk_seq=None` · `error_attempts=None` · `DB: audio_chunks where job_id and state = in_flight → waiting` · `→ len(rows)`. `main.py` lifespan이 라우터 등록 전에 부른다
+
+**테스트 관점** `running` 둘(있을 수 없지만 데이터로) → 둘 다 `failed`, 반환 2 · `in_flight` 조각이 `waiting` · `done` 조각은 그대로 · 없으면 0
+
+---
+
+#### JobService.stages_for 출처 → 단계 목록
+
+**시그니처** `def stages_for(video: Video) -> list[JobStage]`
+
+근거: [[VA-UC-001#UC-S2]] · [[VA-UC-001#UC-H2]] 2b · [[VA-UI-002#UI-3]] 규칙(출처마다 필요한 단계만)
+
+**처리** if `youtube and has_captions` → `[download, summarize, chapter, suggest]` · elif `youtube` → `[download, transcribe, summarize, chapter, suggest]` · elif `local and 확장자 ∈ {mp3, m4a, wav}` → `[transcribe, summarize, chapter, suggest]` · else → `[extract, transcribe, summarize, chapter, suggest]`
+
+**테스트 관점** 네 출처 각각 · 로컬 음성 판정은 `origin`의 확장자
+
+---
+
+#### JobService.remaining_sec 남은 시간
+
+**시그니처** `def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None`
+
+근거: [[VA-UC-001#UC-S6]] 2번 · [[VA-UI-002#UI-3]] 3.2 · [[VA-UI-001]] 8장(조각이 없는 단계)
+
+**처리**
+- if `row.status != running` → `→ None`
+- elif `row.stage == transcribe` → `done = [c for c in chunks if c.state == done]` · if `done` 비어 있음 → `→ ceil(len(chunks) / row.concurrency) × config.CHUNK_EST_SEC` · else → `rate = len(done) / (now − row.stage_started_at)`(초당 조각) · `→ ceil((len(chunks) − len(done)) / rate)`
+- else → `→ max(row.est_seconds − Σ row.stage_durations_sec.values() − (now − row.stage_started_at), 0)` — 예상 전체에서 지난 시간을 뺀다. 0이 되면 화면이 '약 0초'가 아니라 값을 비우게 API의 null 대신 0을 준다(6장 미결)
+
+**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 · 첫 조각 완료 전에는 예상치 기반 · 요약 단계에서 예상보다 오래 걸리면 0
+
+---
+
+#### JobService.to_job 행 → Job
+
+**시그니처** `def to_job(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> Job`
+
+근거: [[VA-API-001#GET/api/videos/{id}/job]]의 요소 ↔ 필드 표
+
+**처리**
+1. `stage_index = row.stages.index(row.stage) + 1` (`pending`이면 1)
+2. `chunks_dto` = if `chunks` 비어 있음 → `None` · else → `Chunks(total, done, in_flight, failed, waiting 수, next_seq=state != done인 첫 seq 또는 None, items=[Chunk(seq, state) …])`
+3. `error` = if `row.status == failed` → `JobError(row.error_kind, row.error_reason, row.error_chunk_seq, row.error_attempts)` · else → `None`
+4. `→ Job(id, video_id, status, stage, stages, stage_index, progress_pct, remaining_sec=remaining_sec(row, chunks), chunks=chunks_dto, concurrency=row.concurrency if transcribe in stages else None, models=Models(stt=row.stt_model, text=row.text_model), error, est_seconds, est_cost_usd, stage_durations_sec, started_at, finished_at)`
+
+**호출하는 것** [[#JobService.remaining_sec]]
+
+**테스트 관점** `stages` 4개 · `stage=chapter`면 `stage_index=3` · 실패 작업의 `error.chunk_seq`가 화면 k · `next_seq`가 r(k와 다를 수 있다 — 16번 실패, 17번 완료면 `next_seq=16`)
+
+---
+
+#### pipeline.run 첫 단계부터
+
+**시그니처** `async def run(job_id: int, video: Video) -> None`
+
+근거: [[VA-SEQ-001#SEQ-3]] · [[VA-SEQ-001#SEQ-4]] · [[VA-UC-001#UC-H0]] 4~7번 · [[VA-UC-001#UC-S2]] · [[VA-UC-001#UC-S4]]
+
+**처리** — 백그라운드 태스크 안. 서비스 호출마다 세션 하나
+1. `stages = DB: analysis_jobs where id`의 `stages`(짧은 세션) · `tmp = config.DATA_DIR / "tmp" / str(video.id)` · `FS: mkdir`
+2. `for stage in stages:` `JobService.mark_stage(job_id, stage)` 뒤 단계 실행 —
+   - `download` · if `video.has_captions` → `(lines, lang, kind) = AudioSourcePort.captions(video.source_id)` · `AnalysisService.save_transcript(video.id, caption_manual if kind == manual else caption_auto, lang, None, lines)` · else → `audio = AudioSourcePort.download_audio(video.source_id, tmp)`
+   - `extract` → `audio = AudioSourcePort.extract_audio(config.INBOX_DIR / video.origin, tmp)`
+   - `transcribe` → if `audio` 없음(로컬 음성) → `audio = config.INBOX_DIR / video.origin` · `transcribe_stage(job_id, video, audio, tmp)`
+   - `summarize` → `AnalysisService.generate_summary(video)`
+   - `chapter` → `AnalysisService.generate_chapters(video)`
+   - `suggest` → `AnalysisService.generate_questions(video)`
+3. `JobService.finish(job_id)` · `FS: rmtree(tmp, ignore_errors=True)`
+4. 예외 처리 — `except CancelledError → raise`(아무것도 쓰지 않는다. 조각 파일도 둔다) · `except Exception as e → JobService.fail(job_id, JobError(error_kind(e), reason=str(e)의 첫 줄(한국어 문구는 어댑터가 만든다), chunk_seq=None, attempts=1))` · 내려받기 · 추출 실패면 `FS: rmtree(tmp)`([[VA-UC-001#UC-S2]] 1d). 받아쓰기 실패는 `transcribe_stage`가 `chunk_seq` · `attempts`를 채운 `JobError`로 던진다
+
+**출력** 없음. 결과는 행에
+
+**호출하는 것** [[#JobService.mark_stage]] · [[#JobService.finish]] · [[#JobService.fail]] · [[#pipeline.transcribe_stage]] · [[#pipeline.error_kind]] · `AudioSourcePort.captions` · `download_audio` · `extract_audio` · `AnalysisService.save_transcript` · `generate_summary` · `generate_chapters` · `generate_questions`
+
+**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다
+
+---
+
+#### pipeline.resume 행의 단계부터
+
+**시그니처** `async def resume(job_id: int, video: Video) -> None`
+
+근거: [[VA-SEQ-001#SEQ-6]] 21~26번 · [[VA-UC-001#UC-S3]] 3a3 · [[VA-UC-001#UC-S4]] 1b
+
+**처리**
+1. `row = DB: analysis_jobs where id` · `start_at = row.stages.index(row.stage)` — 실패한 단계
+2. `run`과 같은 반복을 `stages[start_at:]`부터. 단 —
+   - `download` · `extract`에서 실패했으면 처음부터와 같다(임시 파일이 지워졌다)
+   - `transcribe`에서 실패했으면 `audio`는 `tmp` 안 음성 파일(있어야 한다. 없으면 `extract`/`download`부터 다시 — `stages`에서 앞 단계를 찾아 그 단계부터) · `transcribe_stage`는 `done`이 아닌 조각만 보낸다
+   - `summarize` 이후 실패는 스크립트가 있으므로 그 단계부터
+3. 마무리 · 예외 처리는 `run`과 같다
+
+**호출하는 것** [[#pipeline.run]]의 것 전부 · [[#pipeline.transcribe_stage]]
+
+**테스트 관점** 16번 조각 실패 상태에서 재개 → 1~15번은 OpenAI에 안 보낸다(가짜 포트 호출 기록) · 요약 실패에서 재개 → 받아쓰기를 안 한다 · 음성 파일이 지워진 채 받아쓰기 재개 → 추출부터 다시
+
+---
+
+#### pipeline.transcribe_stage 조각 병렬 받아쓰기
+
+**시그니처** `async def transcribe_stage(job_id: int, video: Video, audio: str, tmp: str) -> None`
+
+근거: [[VA-SEQ-001#SEQ-4]] 12~30번 · [[VA-UC-001#UC-S3]] 전부 · [[VA-UI-002#UI-3]] 숫자 규칙 · 시퀀스 되먹임 #1 · #4
+
+**처리**
+1. `chunks = DB: audio_chunks where job_id` · if 비어 있음 → `plans = AudioSplitPort.split(audio, tmp)` · `JobService.plan_chunks(job_id, plans)` · 다시 읽는다
+2. `todo = [c for c in chunks if c.state != done]` · `sem = Semaphore(row.concurrency)` · `models = row.stt_model`
+3. 조각마다 태스크 — `async def one(c):` `async with sem:` `loop:` `JobService.mark_chunk(job_id, c.seq, in_flight)` · `try: segs = SttPort.transcribe(c.path, model)` · `JobService.mark_chunk(job_id, c.seq, done, segs)` · `FS: remove(c.path)` · `return` · `except Exception as e:` if `attempts(방금 올린 값) < config.CHUNK_MAX_ATTEMPTS` → `mark_chunk(waiting)` · 계속(같은 조각을 다시) · else → `mark_chunk(failed)` · `raise ChunkFailed(seq=c.seq, attempts, cause=e)`
+4. `results = gather(one(c) for c in todo, return_exceptions=True)` — **하나가 실패해도 나머지를 끝까지 기다린다.** 그래야 완료 수(j)와 다음 조각(r)이 맞다
+5. if `ChunkFailed`가 하나라도 있음 → 가장 작은 `seq`의 것으로 `raise JobFailure(JobError(kind=error_kind(cause), reason, chunk_seq=seq, attempts))` — `run`이 받아 `fail`
+6. `all = DB: audio_chunks where job_id order by seq`(이번엔 `result` 포함) · `lines = []` · 조각마다 `result`의 `SttSegment`에 `offset_sec`을 더해 `CaptionLine(start_sec, end_sec, text)`으로 · `language`는 첫 조각의 `language`
+7. `AnalysisService.save_transcript(video.id, stt, language, row.stt_model, lines)`
+
+**출력** 없음
+
+**예외** `JobFailure`(조각 상한 초과) · 그 밖의 예외는 `run`이 `unknown`으로 접는다
+
+**호출하는 것** [[#JobService.plan_chunks]] · [[#JobService.mark_chunk]] · [[#pipeline.error_kind]] · `AudioSplitPort.split` · `SttPort.transcribe` · `AnalysisService.save_transcript`
+
+**테스트 관점** 가짜 STT가 16번을 세 번 실패시키면 → `failed` 조각 하나, `attempts=3`, 나머지는 끝까지 돌아 `done` · `JobError.chunk_seq=16` · 재개 시 `done` 조각은 호출 안 됨 · 동시에 도는 태스크가 `concurrency`를 넘지 않는다(가짜 STT가 동시 수를 센다) · 이어 붙인 구간의 시각이 오프셋만큼 밀린다(2번째 조각 0초 → 600초) · `done` 조각의 파일은 지워지고 `waiting` 조각의 파일은 남는다
+
+---
+
+#### pipeline.error_kind 예외 → ErrorKind
+
+**시그니처** `def error_kind(e: BaseException) -> ErrorKind`
+
+근거: [[VA-DOM-002]] 4.2 파이프라인 문단 · [[VA-UI-002#UI-3]] 5.1 제목 재료
+
+**처리** if `isinstance(e, (TimeoutError, OSError의 네트워크 계열, httpx.TransportError))` → `network` · elif OpenAI SDK 예외 → `openai` · elif 어댑터의 `YtdlpError` → `youtube` · elif 어댑터의 `FfmpegError` → `ffmpeg` · elif `OSError(ENOSPC)` → `disk` · else → `unknown`
+
+**테스트 관점** 여섯 종류 각각 · OpenAI SDK의 연결 오류는 `openai`가 아니라 `network`(SDK가 `APIConnectionError`로 감싼다 — 먼저 검사)
+
+---
+
+## 3. 미결사항
+
+- [ ] **되먹임** — `AnalysisJob`에 `stage_started_at` 속성(`analysis_jobs.stage_started_at timestamptz`)이 필요하다. 걸린 시간과 남은 시간 계산의 기준이고, 재시도 뒤에는 `started_at`으로 계산할 수 없다. [[VA-DOM-002#AnalysisJob]] · [[VA-DOM-003#analysis_jobs]]에 더한다
+- [ ] 조각이 없는 단계의 남은 시간을 0까지 내려 주는 것 — API는 null을 허용하는데 여기서는 0을 준다. 화면이 '약 0초'를 보이지 않게 [[VA-API-001]] 4장 `remaining_sec` 설명을 「0이면 비운다」로 고칠지, null로 돌릴지
+- [ ] 진행률 반올림 — 30을 네 단계로 나누면 7.5. 단계마다 내림하고 마지막 단계에서 100을 맞춘다로 갈지
+- [ ] 첫 값 여섯(`CHUNK_SEC` · `STT_CONCURRENCY` · `CHUNK_MAX_ATTEMPTS` · `CHUNK_EST_SEC` · `TEXT_EST_SEC` · `TOKENS_PER_MIN`)은 측정 뒤 조정. [[VA-INFRA-001]] 9절의 조각 길이 · 병렬 수 미결을 이 값으로 닫는다
+- [ ] 동시 분석 대기열 — `another-job-running`으로 막는 결정이 바뀌면 `start` 3~5번과 부분 unique 인덱스가 바뀐다([[VA-API-001]] 6장)
