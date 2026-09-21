@@ -224,6 +224,7 @@ classDiagram
         +int error_chunk_seq
         +int error_attempts
         +dict stage_durations_sec
+        +datetime stage_started_at
         +datetime started_at
         +datetime finished_at
     }
@@ -233,7 +234,7 @@ classDiagram
 - `AnalysisJob` * — 1 `Video` (video_id)
 - `AnalysisJob` 1 — 0..* `AudioChunk`
 
-`status`와 `stage`는 따로다 — 실패한 단계를 알려면 둘 다 있어야 한다([[VA-API-001]] 5장 2). `stages`는 시작할 때 출처로 정한 단계 목록이고 순서가 곧 파이프라인 순서다. `error_*` 넷은 `status = failed`일 때만 값이 있고, 재시도가 `running`으로 돌리면 비운다. `stage_durations_sec`는 완료한 단계마다 걸린 시간(초)이고 키는 `JobStage` 값이다. `stt_model` · `text_model`은 시작 때 설정에서 복사한다 — 돌고 있는 작업은 설정을 바꿔도 끝까지 같은 모델을 쓴다([[VA-API-001#PUT/api/settings/models]]).
+`status`와 `stage`는 따로다 — 실패한 단계를 알려면 둘 다 있어야 한다([[VA-API-001]] 5장 2). `stages`는 시작할 때 출처로 정한 단계 목록이고 순서가 곧 파이프라인 순서다. `error_*` 넷은 `status = failed`일 때만 값이 있고, 재시도가 `running`으로 돌리면 비운다. `stage_durations_sec`는 완료한 단계마다 걸린 시간(초)이고 키는 `JobStage` 값이다. `stage_started_at`은 지금 단계가 시작된 때다 — 단계가 바뀔 때마다 갱신하고, 걸린 시간(단계 전환 때)과 남은 시간(폴링 때)을 여기서 잰다. `started_at`으로는 재시도 뒤에 잴 수 없다(MINISPEC 되먹임). `stt_model` · `text_model`은 시작 때 설정에서 복사한다 — 돌고 있는 작업은 설정을 바꿔도 끝까지 같은 모델을 쓴다([[VA-API-001#PUT/api/settings/models]]).
 
 재시도는 **같은 작업**을 이어간다 — 새 작업을 만들지 않는다([[VA-UC-001#UC-S3]] 3a3). 영상 하나에 `running`인 작업은 하나이고, 프로세스 전체에서도 하나다([[VA-INFRA-001]] 3절).
 
@@ -671,6 +672,7 @@ classDiagram
         +int error_chunk_seq
         +int error_attempts
         +dict stage_durations_sec
+        +datetime stage_started_at
         +datetime started_at
         +datetime finished_at
     }
