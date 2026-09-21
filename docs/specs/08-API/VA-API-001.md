@@ -30,6 +30,8 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 - **화면은 계산하지 않는다.** 예상 시간·비용·조각 수·동시 수·남은 시간·진행률은 서버가 준 숫자를 그대로 보인다([[VA-UI-002#UI-2]]·[[VA-UI-002#UI-3]] 규칙). 문장을 조립하는 것은 화면이고, 서버는 코드값과 숫자, 그리고 실패 이유 한 줄(`reason`, 한국어)을 준다.
 - **키 없이도 읽기는 전부 된다.** OpenAI API 키가 없거나 확인에 실패해도 GET은 모두 동작한다. 막히는 것은 분석 시작·다시 시도·질문 셋뿐이고, 그때 `key-missing` 또는 `key-invalid`(503)가 난다([[VA-UI-002]] 1.4 키 없음 배너, [[VA-PRD-001#N3]]).
 - 키를 확인하는 때는 셋이다 — 서버가 시작할 때, [[#POST/api/videos]](분석 버튼)를 받을 때, [[#POST/api/settings/key]]를 받을 때. [[#GET/api/settings]]는 마지막 확인 결과를 돌려줄 뿐 다시 확인하지 않는다([[VA-UI-002#UI-5]] 규칙).
+- **마지막 확인이 연결 실패(`reason_kind = network`)였으면 막지 않고 그때 한 번 다시 확인한다.** 분석 시작·다시 시도·질문이 그렇다. 키가 틀린 것이 아니라 인터넷이 없었던 것이라, 화면은 버튼을 막지 않고 배너 문구만 가른다([[VA-UI-002]] 1.4). 다시 확인해 통과하면 요청이 그대로 이어지고, 또 닿지 못하면 503 `key-invalid`(`reason_kind = network`)다.
+- **동시에 도는 분석은 하나이고 나머지는 대기열에서 차례를 기다린다**([[VA-PRD-001#R8]], [[VA-INFRA-001]] 3절). 시작 요청은 거절되지 않는다 — 도는 작업이 있으면 `status = queued`로 들어가고, 앞 작업이 끝나면(완료든 실패든) 서버가 가장 오래 기다린 것을 저절로 시작한다.
 - 진행 상태는 폴링이다. 화면이 1초마다 [[#GET/api/videos/{id}/job]]을 부른다([[VA-INFRA-001]] 3절). SSE·WebSocket은 없다.
 - 밖으로 나가는 것은 YouTube에 영상 ID, OpenAI에 음성 조각·스크립트 텍스트·질문과 앞선 대화·키 확인 요청뿐이다. 영상 파일·결과·키는 나가지 않는다([[VA-INFRA-001#C9]]).
 - 서버가 하지 않는 것 — 브라우저 다운로드(내보내기는 서버가 `data/export/`에 쓰거나 마크다운 텍스트를 돌려주고, 클립보드 복사는 브라우저가 한다), 원본 영상 스트리밍, 모델 목록의 동적 조회(설정값이다).
@@ -39,7 +41,8 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 | 값 | 화면이 가는 곳 |
 |---|---|
 | `Video.status = registered` | UI-2 사전 안내 (작업이 아직 없다) |
-| `Video.status = in_progress` 또는 `failed` | UI-3 분석 진행 |
+| `Video.status = in_progress` 또는 `failed` | UI-3 분석 진행 (`in_progress`는 대기 중과 진행 중을 함께 말한다) |
+| `Job.status = queued` | UI-3 대기 상태 · UI-1 '대기 중 · {`queue_position`}번째' |
 | `Video.status = analyzed` | UI-4 결과 (다시 넣은 경우 '이미 분석한 영상입니다' 짧은 알림) |
 | `Job.status = done` (폴링 중) | UI-4 결과로 넘김 |
 | `Job.status = failed` | UI-3 실패 상태 |
@@ -57,7 +60,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 | `urn:va:not-found` | 404 | 영상·작업·inbox 파일 없음 | `resource`(`video` · `job` · `inbox_file`) · `id` | [[VA-UI-002#UI-3]] 규칙(영상이 없으면 UI-1로) |
 | `urn:va:validation` | 422 | 요청 본문 형식 오류(빈 질문, 모르는 모델 값, 필수 필드 없음) | `errors: [{field, message}]` | — |
 | `urn:va:key-missing` | 503 | 저장된 키가 없다 | — | [[VA-UC-001#UC-H8]], [[VA-PRD-001#N3]] |
-| `urn:va:key-invalid` | 503 | 저장된 키가 마지막 확인에 실패했다(분석 시작·다시 시도·질문에서) | `reason_kind`(`format` · `auth` · `quota` · `network`) · `reason` · `checked_at` | [[VA-UC-001#UC-H8]] 3a |
+| `urn:va:key-invalid` | 503 | 저장된 키가 마지막 확인에 실패했다(분석 시작·다시 시도·질문에서). 마지막 실패가 `network`였으면 그 자리에서 다시 확인한 결과다 | `reason_kind`(`format` · `auth` · `quota` · `network`) · `reason` · `checked_at` | [[VA-UC-001#UC-H8]] 3a |
 | `urn:va:key-rejected` | 422 | 새로 넣은 키가 확인에 실패했다. 저장하지 않는다 | `reason_kind` · `reason` | [[VA-UC-001#UC-H8]] 3a |
 | `urn:va:url-invalid` | 422 | YouTube 주소 형식이 아니다(watch · youtu.be · shorts 아님) | `accepted: ["watch", "youtu.be", "shorts"]` | [[VA-UC-001#UC-H1]] 1a |
 | `urn:va:source-unavailable` | 502 | YouTube 정보를 못 가져옴(비공개 · 삭제 · 지역 제한 · 네트워크 · yt-dlp 깨짐) | `reason` · `hint`(예: yt-dlp 업데이트) | [[VA-UC-001#UC-H1]] 2a, [[VA-INFRA-001#C7]] |
@@ -66,7 +69,6 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 | `urn:va:unsupported-file` | 422 | 영상·음성 파일이 아니거나 열 수 없다 | `reason` · `accepted: [mp4, mkv, mov, webm, mp3, m4a, wav]` | [[VA-UC-001#UC-H2]] 1a |
 | `urn:va:path-outside-inbox` | 422 | inbox 폴더 밖을 가리키는 경로(`..`, 절대 경로, 하위 폴더) | — | [[VA-INFRA-001#C4]] |
 | `urn:va:job-exists` | 409 | 이 영상에 이미 작업이 있는데 새로 시작하려 함 | `job_id` · `job_status` | [[VA-UC-001#UC-S5]], [[VA-UI-002#UI-1]] |
-| `urn:va:another-job-running` | 409 | 다른 영상이 분석 중이라 시작할 수 없다(동시 분석 하나) | `video_id` | [[VA-INFRA-001]] 3절. 사용자 결정 미결(6장) |
 | `urn:va:job-not-failed` | 409 | 실패 상태가 아닌 작업을 다시 시도 | `job_status` | [[VA-UC-001#UC-S3]] 3a3 |
 | `urn:va:result-not-ready` | 409 | 결과가 아직 없다(작업 없음 · 진행 중 · 실패) | `video_status` | [[VA-UI-002#UI-4]] 규칙(UI-3으로 넘김) |
 | `urn:va:llm-unavailable` | 502 | OpenAI 호출 실패(질문 답변, 키 확인 중 네트워크). 사용량 초과도 여기 | `reason` | [[VA-UC-001#UC-H4]] 2a |
@@ -92,7 +94,8 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 - 다시 확인하지 않는다. `key.state`와 `key.checked_at`은 서버 시작·분석 버튼·키 저장 때 한 마지막 결과다([[VA-UI-002#UI-5]] 규칙). 이 요청으로 OpenAI에 아무것도 나가지 않는다.
 - `key.masked`는 앞 3자와 끝 4자만 남긴 값이다. 전체 키는 어떤 응답에도 없다([[VA-UC-001#UC-H8]]).
-- 환경 변수에 키가 있으면 그 키의 상태다([[VA-UC-001#UC-H8]] 1a). `key.stored_in`은 저장된 곳의 표시 문구이고 웹에서 받은 키를 어디에 둘지는 6장 미결이다.
+- 키가 사는 곳은 `.env` 파일 하나다. 처음 설치 때 사용자가 직접 적은 키도, 화면에서 넣은 키도 같은 줄이다([[VA-INFRA-001#C6]], [[VA-UC-001#UC-H8]] 1a). `key.stored_in`은 키가 있으면 늘 '.env에 저장됨'이고 없으면 null이다.
+- `key.reason_kind = network`면 화면은 배너 문구를 '연결을 확인하지 못했어요 — …'로 가르고 [키 넣으러 가기]를 빼며 버튼을 막지 않는다([[VA-UI-002]] 1.4).
 - `model_options`의 단가는 UI-5 도움말과 UI-2 예상 비용이 같이 쓴다. 받아쓰기 목록에는 구간 시각을 주는 모델만 있다([[VA-INFRA-001#C3]]).
 
 화면 [[VA-UI-002#UI-5]] · [[VA-UI-002#UI-1]] · [[VA-UI-002#UI-3]] · [[VA-UI-002#UI-4]](키 없음 배너) · 유스케이스 [[VA-UC-001#UC-H8]] 1번 · 서비스 `SettingsService.get`
@@ -114,7 +117,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 새 키로 가벼운 요청(모델 목록 조회)을 보내 확인하고, 통과하면 저장한다. UI-5 [확인하고 저장]이 부른다.
 
-- 통과 → 저장하고 `key.state = ok`, `checked_at`은 지금. 200에 갱신된 `Settings`.
+- 통과 → `.env` 파일의 `OPENAI_API_KEY` 줄에 쓰고(다른 줄은 그대로) `key.state = ok`, `checked_at`은 지금. 200에 갱신된 `Settings`. 서버를 다시 띄우지 않아도 다음 요청부터 새 키를 쓴다.
 - 형식 오류 · 인증 실패 · 잔액 없음 → 422 `urn:va:key-rejected`(`reason_kind` · `reason`). **저장하지 않는다.** 전에 쓰던 키와 그 확인 결과는 그대로다([[VA-UI-002#UI-5]] 규칙, [[VA-UC-001#UC-H8]] 3a).
 - OpenAI에 닿지 못함 → 502 `urn:va:llm-unavailable`. 역시 저장하지 않는다.
 - 빈 문자열 → 422 `urn:va:validation`.
@@ -151,9 +154,9 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 - 값은 `Settings.model_options`에 있는 id만 받는다. 아니면 422 `urn:va:validation`.
 - 저장한 모델은 다음 작업과 질문부터 쓴다. 돌고 있는 작업은 시작할 때의 모델을 끝까지 쓴다.
-- 화면에서 모델을 바꾸는 유스케이스는 아직 없다. [[VA-UI-001]] 8장의 갱신 요청을 따른다.
+- 저장하는 곳은 키와 같은 `.env` 파일이다(`STT_MODEL` · `TEXT_MODEL` 줄, [[VA-INFRA-001#C6]]).
 
-화면 [[VA-UI-002#UI-5]] · 유스케이스 [[VA-UC-001#UC-H8]] 트리거(설정 화면을 열었다) · 서비스 `SettingsService.set_models`
+화면 [[VA-UI-002#UI-5]] · 유스케이스 [[VA-UC-001#UC-H8]] 5번 · 서비스 `SettingsService.set_models`
 
 ```yaml
 /api/settings/models:
@@ -211,6 +214,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 - **작업이 없는 영상은 빠진다.** 사전 안내에서 취소한 영상은 등록만 된 채 남는데 목록에 보이지 않는다([[VA-UI-002#UI-1]] 규칙, 5장 1).
 - 순서는 작업을 시작한 때(`job.started_at`)의 내림차순이다. 완료 행의 시각은 `video.analyzed_at`이다.
+- 대기 중 행은 `job.status = queued`이고 `job.queue_position`으로 '대기 중 · {n}번째'를 그린다. 작은 막대는 없다.
 - 행마다 `job`이 붙는다. 화면은 `job.status`와 `job.stage`, `chunks_done` · `chunks_total` · `failed_chunk_seq`로 상태 글자를, `progress_pct`로 작은 막대를 그린다([[VA-UC-001#UC-S6]]). 받아쓰기가 아닌 단계는 `stage` 이름을 쓴다.
 - `video.chat_turn_count`는 UI-6 「지워지는 것」의 질문 기록 수다.
 
@@ -305,7 +309,7 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 
 영상과 스크립트 · 요약 · 챕터 · 추천 질문 · 대화 · 조각 행 · `data/tmp/{id}`를 지운다. UI-6 [삭제]가 부른다.
 
-- 진행 중이면 백그라운드 작업을 먼저 멈추고 지운다. 실패한 영상은 보존된 조각 파일까지 지운다([[VA-UI-002#UI-6]] 규칙, [[VA-UI-001]] 7장 13).
+- 진행 중이면 백그라운드 작업을 먼저 멈추고 지운다. 대기 중이면 대기열에서 빠진다 — 뒤에 기다리던 작업의 `queue_position`이 하나씩 당겨진다. 도는 작업을 지우면 다음 대기 작업이 시작된다([[VA-UC-001#UC-H6]] 4a). 실패한 영상은 보존된 조각 파일까지 지운다([[VA-UI-002#UI-6]] 규칙, [[VA-UI-001]] 7장 13).
 - inbox의 원본 파일은 건드리지 않는다([[VA-INFRA-001#C4]], [[VA-UC-001#UC-H6]] 성공 보장).
 - 다른 영상은 영향받지 않는다([[VA-UC-001#UC-H6]] 최소 보장). 204.
 - 없으면 404 `urn:va:not-found`. 디스크·DB 오류면 500 `urn:va:internal`이고 화면은 `detail`을 실패 한 줄에 보인다.
@@ -332,15 +336,15 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 
 #### POST/api/videos/{id}/job 분석을 시작한다
 
-이 영상에 작업 하나를 만들고 백그라운드 파이프라인을 띄운다. UI-2 [분석 시작]이 부른다. 본문은 없다.
+이 영상에 작업 하나를 만든다. 도는 작업이 없으면 바로 시작되고, 있으면 대기열에 들어간다. UI-2 [분석 시작]이 부른다. 본문은 없다.
 
 1. 저장된 키 확인 — 503 `urn:va:key-missing` 또는 `urn:va:key-invalid`.
 2. 이 영상에 이미 작업이 있으면 409 `urn:va:job-exists`(`job_id` · `job_status`). 실패한 작업은 새로 만들지 않고 [[#POST/api/videos/{id}/job/retry]]로 잇는다.
-3. 다른 영상의 작업이 `running`이면 409 `urn:va:another-job-running`(`video_id`). 동시 분석은 하나다([[VA-INFRA-001]] 3절). 대기열로 바꿀지는 6장 미결이다.
-4. 없으면 AnalysisJob을 만들고(`status = running`, `stage = pending`) 백그라운드 태스크를 시작한다. `Video.status`는 `in_progress`가 된다. 201에 `Job`.
+3. AnalysisJob을 만든다. 다른 영상의 작업이 `running`이거나 `queued`면 `status = queued`(`stage = pending`, `queue_position` = 대기열에서의 차례)이고, 없으면 `status = running`(`stage = pending`)으로 곧바로 돈다. 어느 쪽이든 `Video.status`는 `in_progress`가 된다. 201에 `Job`([[VA-UC-001#UC-H0]] 3b).
+4. 대기 중인 작업은 서버의 워커가 시작한다 — 도는 작업이 끝나면(완료 · 실패 · 삭제) 가장 오래 기다린 작업을 `running`으로 바꿔 돌린다. 화면은 폴링으로 `status`가 바뀐 것을 안다.
 - 파이프라인은 `stages` 순서대로 돈다 — 자막 있는 YouTube: download(자막) → summarize → chapter → suggest · 자막 없는 YouTube: download(음성) → transcribe → summarize → chapter → suggest · 로컬 영상: extract → transcribe → summarize → chapter → suggest · 로컬 음성: transcribe → summarize → chapter → suggest([[VA-UC-001#UC-S2]], [[VA-UC-001#UC-H2]] 2b, [[VA-UI-002#UI-3]] 규칙).
-- 음성 조각과 스크립트 텍스트는 이때부터 OpenAI로 간다([[VA-UC-001#UC-H0]] 3번, 3a).
-- 화면은 응답을 기다리는 동안 [분석 시작]을 잠그고, 201이 오면 UI-3으로 간다. 에러면 다이얼로그를 그대로 두고 잠금을 푼다([[VA-UI-002#UI-2]] 규칙).
+- 음성 조각과 스크립트 텍스트는 작업이 `running`이 된 때부터 OpenAI로 간다([[VA-UC-001#UC-H0]] 3번, 3a). 대기 중에는 아무것도 나가지 않는다.
+- 화면은 응답을 기다리는 동안 [분석 시작]을 잠그고, 201이 오면 UI-3으로 간다(`queued`면 대기 상태로 열린다). 에러면 다이얼로그를 그대로 두고 잠금을 푼다([[VA-UI-002#UI-2]] 규칙).
 
 화면 [[VA-UI-002#UI-2]] · 유스케이스 [[VA-UC-001#UC-H0]] 3번 · [[VA-UC-001#UC-S2]] · [[VA-UC-001#UC-S3]] · [[VA-UC-001#UC-S4]](백그라운드) · 서비스 `JobService.start`
 
@@ -352,7 +356,7 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
     - $ref: '#/components/parameters/id'
     responses:
       '201':
-        description: 만들어진 작업
+        description: 만들어진 작업. status는 running 또는 queued
         content:
           application/json:
             schema:
@@ -370,13 +374,13 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 가장 최근 작업의 단계 · 진행률 · 조각 · 남은 시간 · 실패 내용을 준다. UI-3이 1초마다 부르고([[VA-INFRA-001]] 3절), UI-1도 진행 중 행을 갱신할 때 같은 값을 쓴다.
 
 - 작업이 없으면 404 `urn:va:not-found`(`resource: job`). 화면은 UI-1로 간다([[VA-UI-002#UI-3]] 규칙). 영상이 없어도 404(`resource: video`).
-- `status = done`이면 화면은 UI-4로 넘긴다. `failed`면 실패 상태를 그린다.
+- `status = done`이면 화면은 UI-4로 넘긴다. `failed`면 실패 상태를, `queued`면 대기 상태를 그린다 — 헤드라인 '차례를 기다리는 중', 부제 '앞 영상 {`queue_position`}개가 끝나면 시작해요'([[VA-UI-002#UI-3]] 규칙). 이때 `progress_pct = 0`, `remaining_sec`와 `chunks`는 null, `stages`는 돌 단계 전부다.
 - 화면은 계산하지 않는다. 아래 표의 값을 그대로 쓴다.
 
 | UI-3 요소 | `Job` 필드 |
 |---|---|
-| 헤드라인(3.1) | `status` · `stage` (실패면 '{단계} … 멈췄어요') |
-| 부제(3.2) | `stages.length` · `stage_index` · `remaining_sec` · `chunks.done` · `chunks.total` · `error.chunk_seq`(k) |
+| 헤드라인(3.1) | `status` · `stage` (실패면 '{단계} … 멈췄어요', 대기면 '차례를 기다리는 중') |
+| 부제(3.2) | `stages.length` · `stage_index` · `remaining_sec` · `chunks.done` · `chunks.total` · `error.chunk_seq`(k) · 대기면 `queue_position` |
 | 퍼센트 · 막대(3.3 · 3.4) | `progress_pct`. 실패하면 멈춘 값 그대로 |
 | 단계 목록(4) | `stages`(이 출처에 필요한 단계만, 순서대로) + `stage` + `status` |
 | 단계 메모(4.4) | 완료 단계는 `stage_durations_sec`, 받아쓰기는 `chunks.done` / `chunks.total` |
@@ -385,7 +389,7 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 | 전송 표시(6.1) | `stage` · `models.stt` · `models.text` · `concurrency` |
 | 떠나기 안내(6.2) | `stage` · `chunks.next_seq` |
 
-- `remaining_sec`는 받아쓰기 단계에서 미완료 조각 수 × 지금까지 조각당 평균이다([[VA-UC-001#UC-S6]] 2번). 조각이 없는 단계의 계산은 아직 없어 null일 수 있다(6장).
+- `remaining_sec`는 받아쓰기 단계에서 미완료 조각 수 × 지금까지 조각당 평균이다([[VA-UC-001#UC-S6]] 2번). 조각이 없는 단계는 예상 전체 시간에서 지난 시간을 뺀 값이고 0보다 작아지지 않는다(MINISPEC 작업 서비스 `JobService.remaining_sec`). **0이면 화면은 남은 시간을 비운다** — '약 0초'를 보이지 않는다. 돌고 있지 않으면(`queued` · `failed` · `done`) null이다.
 - `chunks`는 받아쓰기가 있는 작업에만 있고, 받아쓰기가 끝난 뒤에도 남는다(모두 `done`). `next_seq`는 완료하지 않은 첫 조각 번호이고 모두 끝나면 null이다.
 - `error`는 `status = failed`일 때만 있다. `attempts`는 자동 재시도를 포함해 그 조각(또는 단계)을 보낸 횟수다.
 
@@ -412,9 +416,9 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 
 실패한 작업을 같은 작업인 채로 이어간다. UI-3 실패 알림의 다시 시도가 부른다. 본문은 없다.
 
-1. 저장된 키 확인 — 503 `urn:va:key-missing` 또는 `urn:va:key-invalid`. 키가 없는 동안 화면의 다시 시도는 막힌 버튼이다([[VA-UI-002]] 1.8).
+1. 저장된 키 확인 — 503 `urn:va:key-missing` 또는 `urn:va:key-invalid`. 키가 없는 동안 화면의 다시 시도는 막힌 버튼이다([[VA-UI-002]] 1.8). 마지막 확인이 연결 실패였으면 막지 않고 여기서 다시 확인한다(1장).
 2. 작업이 `failed`가 아니면 409 `urn:va:job-not-failed`(`job_status`). 작업이 없으면 404.
-3. `status = running`으로 돌리고 `error`를 비운 뒤 실패한 단계부터 다시 돈다. 받아쓰기면 `done`이 아닌 조각만 보낸다 — 완료한 조각은 다시 보내지 않는다([[VA-UC-001#UC-S3]] 3a3). 핵심 요약 · 챕터 · 추천 질문 단계면 스크립트는 그대로 두고 그 단계부터([[VA-UC-001#UC-S4]] 1b).
+3. `error`를 비우고 실패한 단계부터 다시 돈다. 도는 작업이 없으면 `status = running`으로 곧바로, 있으면 `status = queued`로 대기열 끝에 들어가 차례가 오면 멈춘 곳부터 잇는다([[VA-UI-002#UI-3]] 규칙). `stage`는 실패한 단계 그대로다. 받아쓰기면 `done`이 아닌 조각만 보낸다 — 완료한 조각은 다시 보내지 않는다([[VA-UC-001#UC-S3]] 3a3). 핵심 요약 · 챕터 · 추천 질문 단계면 스크립트는 그대로 두고 그 단계부터([[VA-UC-001#UC-S4]] 1b).
 - 새 작업을 만들지 않는다. `id`와 `started_at`이 같다. 200에 `Job`.
 - 화면은 응답이 올 때까지 다시 시도를 잠그고, 오면 실패 알림을 지우고 폴링을 계속한다([[VA-UI-002#UI-3]] 규칙).
 
@@ -428,7 +432,7 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
     - $ref: '#/components/parameters/id'
     responses:
       '200':
-        description: 다시 도는 작업
+        description: 다시 도는 작업. status는 running 또는 queued
         content:
           application/json:
             schema:
@@ -687,10 +691,11 @@ components:
     VideoStatus:
       type: string
       enum: [registered, in_progress, failed, analyzed]
-      description: registered = 작업 없음(사전 안내 전·취소). 나머지는 최근 작업의 상태를 따른다
+      description: registered = 작업 없음(사전 안내 전·취소). 나머지는 최근 작업의 상태를 따른다 — queued · running = in_progress, failed = failed, done = analyzed
     JobStatus:
       type: string
-      enum: [running, failed, done]
+      enum: [queued, running, failed, done]
+      description: queued = 다른 작업이 끝나기를 기다린다. 동시에 running인 작업은 하나다
     JobStage:
       type: string
       enum: [pending, download, extract, transcribe, summarize, chapter, suggest]
@@ -710,7 +715,7 @@ components:
     ReasonKind:
       type: string
       enum: [format, auth, quota, network]
-      description: 키 확인 실패 이유
+      description: 키 확인 실패 이유. network는 키가 틀린 것이 아니라 OpenAI에 닿지 못한 것 — 화면이 배너 문구를 가르고 버튼을 막지 않는다(VA-UI-002 1.4)
     ErrorKind:
       type: string
       enum: [network, openai, youtube, ffmpeg, disk, unknown]
@@ -760,7 +765,7 @@ components:
           description: 저장된 대화 턴 수. UI-4 질문 수 배지, UI-6 '질문 기록 {n}개'
     JobSummary:
       type: object
-      required: [id, status, stage, progress_pct, chunks_done, chunks_total, failed_chunk_seq, started_at, finished_at]
+      required: [id, status, stage, queue_position, progress_pct, chunks_done, chunks_total, failed_chunk_seq, started_at, finished_at]
       properties:
         id:
           type: integer
@@ -769,6 +774,10 @@ components:
         stage:
           $ref: '#/components/schemas/JobStage'
           description: 지금 도는 단계, 실패했으면 실패한 단계
+        queue_position:
+          type: [integer, 'null']
+          minimum: 1
+          description: 대기열에서의 차례. 1이 바로 다음. queued가 아니면 null. UI-1 '대기 중 · {n}번째'
         progress_pct:
           type: integer
           minimum: 0
@@ -970,7 +979,7 @@ components:
           description: 요약 · 챕터 · 질문 모델
     Job:
       type: object
-      required: [id, video_id, status, stage, stages, stage_index, progress_pct, remaining_sec, chunks, concurrency, models, error, est_seconds, est_cost_usd, stage_durations_sec, started_at, finished_at]
+      required: [id, video_id, status, stage, queue_position, stages, stage_index, progress_pct, remaining_sec, chunks, concurrency, models, error, est_seconds, est_cost_usd, stage_durations_sec, started_at, finished_at]
       properties:
         id:
           type: integer
@@ -981,6 +990,10 @@ components:
         stage:
           $ref: '#/components/schemas/JobStage'
           description: 지금 도는 단계, 실패했으면 실패한 단계
+        queue_position:
+          type: [integer, 'null']
+          minimum: 1
+          description: 대기열에서의 차례. 1이 바로 다음. queued가 아니면 null. UI-3 '앞 영상 {n}개가 끝나면 시작해요'
         stages:
           type: array
           items:
@@ -995,7 +1008,7 @@ components:
           maximum: 100
         remaining_sec:
           type: [integer, 'null']
-          description: 남은 예상 시간. 계산하지 못하면 null
+          description: 남은 예상 시간. 0이면 화면은 비운다. 돌고 있지 않으면(queued · failed · done) null
         chunks:
           oneOf:
           - $ref: '#/components/schemas/Chunks'
@@ -1215,7 +1228,7 @@ components:
           description: 앞 3자 · 끝 4자만. 없으면 null
         stored_in:
           type: [string, 'null']
-          description: 저장된 곳 표시 문구(예 '.env에 저장됨'). 6장 미결
+          description: 저장된 곳 표시 문구. 키가 있으면 늘 '.env에 저장됨', 없으면 null
         checked_at:
           type: [string, 'null']
           format: date-time
@@ -1302,7 +1315,7 @@ components:
 **1. 영상은 사전 안내 전에 만들고, 작업은 [분석 시작] 때 만든다 — 결정: [[#POST/api/videos]]가 Video(`registered`)를 만들어 id를 주고, 목록은 작업 있는 영상만 보인다.**
 이유: UI-2가 열리기 전에 정보 조회와 중복 판정이 끝나야 하고, [분석 시작]이 같은 정보를 두 번 조회하지 않아야 한다. 취소해도 행은 남지만 보이지 않고, 다시 넣으면 정보를 다시 조회해 덮어쓴다. [[VA-DOM-001#Video]]는 '분석완료시각이 비어 있으면 결과가 없는 영상'이라고만 하고 작업 없는 영상을 말하지 않는다 — 6장 갱신 요청.
 
-**2. 작업의 `status`와 `stage`를 나눈다 — 결정: `status`(running · failed · done)와 `stage`(파이프라인 단계)를 따로 둔다.**
+**2. 작업의 `status`와 `stage`를 나눈다 — 결정: `status`(queued · running · failed · done)와 `stage`(파이프라인 단계)를 따로 둔다.**
 이유: 실패한 단계를 알려면 상태와 단계가 같이 있어야 한다. UI-3의 '{단계} 단계가 멈췄어요'와 '{단계}부터 다시 시도'가 그것이다. [[VA-DOM-001#AnalysisJob]]의 '단계'는 둘을 합쳐 말한다 — 클래스 명세를 다시 쓸 때 반영.
 
 **3. 결과는 한 번에 준다 — 결정: [[#GET/api/videos/{id}/result]]가 구간 수천 개까지 한 응답.**
@@ -1320,8 +1333,11 @@ components:
 **7. 키 상태 조회는 재확인하지 않는다 — 결정: [[#GET/api/settings]]는 마지막 결과만 준다.**
 이유: 페이지마다 배너를 그리려고 부르는데 그때마다 OpenAI로 요청이 나가면 안 된다. 확인은 시작 · 분석 버튼 · 키 저장 때만 한다([[VA-UI-002#UI-5]] 규칙).
 
-**8. 동시 분석은 하나 — 결정: 두 번째 시작은 409 `another-job-running`.**
-이유: [[VA-INFRA-001]] 3절(프로세스 안 asyncio 태스크, 동시 분석 하나). 막을지 대기열에 넣을지는 사용자 결정이 남아 있어 6장에 둔다.
+**8. 동시 분석은 하나 — 결정: 두 번째 시작은 거절하지 않고 대기열에 넣는다(`status = queued`).**
+이유: 사용자 결정(2026-09-21, [[VA-UI-001]] 7장 16). 긴 받아쓰기가 도는 동안 다음 영상을 걸어 두고 자리를 뜰 수 있다. 함께 돌리지 않는 것은 [[VA-INFRA-001]] 3절(프로세스 안 asyncio 태스크, 워커 하나)과 OpenAI 요청 한도 · 비용 예측 때문이다. 그래서 409 `another-job-running`은 없앴고 에러는 17종이다. 차례는 `queue_position` 하나로 주고, UI-1의 '{n}번째'와 UI-3의 '앞 영상 {n}개'가 같은 값을 쓴다 — 도는 작업 하나 + 앞에서 기다리는 작업 수가 곧 대기열에서의 차례다.
+
+**11. 연결 실패는 막지 않고 다시 확인한다 — 결정: 마지막 확인이 `network`면 분석 시작 · 다시 시도 · 질문이 그 자리에서 한 번 다시 확인한다.**
+이유: 배너 문구가 '인터넷이 되면 분석 버튼을 누를 때 다시 확인합니다'다([[VA-UI-002]] 1.4). 마지막 결과만 보고 막으면 인터넷이 돌아와도 분석 버튼을 누르기 전에는 다시 시도와 질문이 풀리지 않는다. 다른 실패(형식 · 인증 · 잔액)는 다시 확인해도 같으므로 마지막 결과로 막는다.
 
 **9. 단계 목록을 서버가 준다 — 결정: `Job.stages`.**
 이유: 출처마다 필요한 단계만 보이는 규칙([[VA-UI-002#UI-3]])을 화면이 조합하면 서버의 파이프라인과 두 벌이 된다. 서버가 실제로 돌릴 순서를 그대로 준다.
@@ -1333,13 +1349,15 @@ components:
 
 ## 6. 미결사항
 
-- [ ] 분석이 도는 동안 새 분석 — 지금은 409 `another-job-running`으로 막는다. 대기열 · 동시 실행으로 바꿀지 사용자 결정([[VA-UI-001]] 8장)
-- [ ] 웹에서 받은 키의 저장 위치 — `.env` 쓰기 마운트 · DB · 별도 파일. `KeyStatus.stored_in` 문구가 따라간다([[VA-INFRA-001#C6]] 갱신 요청, [[VA-UI-001]] 8장)
+- [x] 분석이 도는 동안 새 분석 — 결정: 대기열(`status = queued`, `queue_position`). 409 `another-job-running`은 없앴다(5장 8, 사용자 결정 2026-09-21)
+- [x] 웹에서 받은 키의 저장 위치 — 결정: `.env` 파일 하나, 앱이 그 줄을 고친다. `KeyStatus.stored_in`은 '.env에 저장됨' 고정([[VA-INFRA-001#C6]], 사용자 결정 2026-09-21)
 - [ ] 예상 비용의 텍스트 모델 몫(`Estimate.text_cost_usd`) 추정식 — MINISPEC
-- [ ] 조각이 없는 단계의 `Job.remaining_sec` 계산 — 지금은 null 허용. MINISPEC에서 정하면 채운다([[VA-UC-001#UC-S6]] 성공 보장)
+- [x] 조각이 없는 단계의 `Job.remaining_sec` 계산 — 결정: 예상 전체 시간 − 지난 시간, 0이면 화면이 비운다(MINISPEC 작업 서비스 `JobService.remaining_sec`)
 - [ ] inbox 파일 길이 재기 비용 — 파일마다 ffprobe. 수십 개면 첫 응답이 느릴 수 있어 수정 시각 기준 캐시를 둘지 MINISPEC
 - [ ] 내보내기 파일 이름 규칙(제목 → 파일 이름, 금지 문자, 같은 이름) — MINISPEC
 - [ ] 서버 재시작으로 죽은 작업 — 시작 때 `running`인 작업을 `failed`(kind `unknown`)로 돌려 다시 시도할 수 있게. 클래스 명세 · MINISPEC
-- [ ] 작업 없는 영상(`registered`)과 `status` · `stage` 분리를 [[VA-DOM-001#Video]] · [[VA-DOM-001#AnalysisJob]]과 다시 쓸 클래스 명세에 반영(5장 1 · 2)
-- [ ] `Video.status`가 `failed`인 영상을 목록에서 구분하는 것 — [[VA-DOM-001#Video]]는 완료와 진행 중만 말한다([[VA-UI-001]] 8장의 같은 요청)
+- [x] 작업 없는 영상(`registered`)과 `status` · `stage` 분리를 [[VA-DOM-001#Video]] · [[VA-DOM-001#AnalysisJob]]과 다시 쓸 클래스 명세에 반영(5장 1 · 2) — 반영: 도메인 모델 v3 · 클래스 명세 v10
+- [x] `Video.status`가 `failed`인 영상을 목록에서 구분하는 것 — 반영: 도메인 모델 v3 Video(완료 · 진행 중 · 대기 중 · 실패)
 - [ ] 설정 서비스가 사는 곳 — 키 · 모델은 도메인이 아니다([[VA-DOM-001]] 1장). `SettingsService`를 `core/`에 둘지 클래스 명세에서
+- [ ] **되먹임** 대기열의 순서 기준 — 다시 시도한 작업은 대기열 끝으로 간다(3.4 다시 시도 3번). `started_at`은 다시 시도해도 그대로라 순서 기준으로 쓸 수 없다. `analysis_jobs`에 대기열에 들어간 때(`queued_at`)가 필요하다 — ERD · MINISPEC(작업 서비스)
+- [ ] **되먹임** 연결 실패 뒤 다시 확인(5장 11) — MINISPEC(설정 서비스)의 「마지막 결과로 막기」가 마지막 결과가 `network`면 한 번 다시 확인하게 고친다. [[VA-UI-001#UI-1]] 규칙에도 「연결 실패는 막지 않는다」 한 문장([[VA-UI-002]] 2장의 같은 되먹임)
