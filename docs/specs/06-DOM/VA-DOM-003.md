@@ -21,7 +21,8 @@ ORM 모델 = 도메인 객체로 정했으므로([[VA-DOM-002]] 0장) 이 문서
 - 기본키는 대리키(int 자동 증가). 사람이 부르는 값(출처 식별자)은 unique 제약
 - 열거형은 DB enum이 아니라 `varchar` + 앱 검증. 값을 더할 때 마이그레이션을 피한다([[VA-DOM-002]] 2.5)
 - 사용자 · 계정 테이블이 없다. 사용자 한 명, 인증 없음([[VA-INFRA-001#C5]])
-- 설정(키 · 모델)은 테이블이 없다. `.env`에 산다([[VA-INFRA-001#C6]]). 저장 위치가 DB로 바뀌면 그때 테이블을 더한다([[VA-DOM-002]] 7장)
+- 설정(키 · 모델)은 테이블이 없다. `.env` 파일 하나에 살고 앱이 그 파일을 고친다([[VA-INFRA-001#C6]], [[VA-DOM-002#SettingsService]])
+- 대기열도 테이블이 없다. `analysis_jobs`의 `status = 'queued'` 행이 대기열이고 순서는 `queued_at`이다([[VA-DOM-002]] 5장 8)
 - 삭제는 하드 삭제다. `videos` 행을 지우면 딸린 것이 전부 cascade로 지워진다([[VA-UC-001#UC-H6]]). 소프트 삭제 컬럼은 없다 — 되살리기가 요구에 없다
 
 ---
@@ -73,6 +74,7 @@ erDiagram
         int error_attempts
         jsonb stage_durations_sec
         timestamptz stage_started_at
+        timestamptz queued_at
         timestamptz started_at
         timestamptz finished_at
     }
@@ -159,7 +161,7 @@ erDiagram
 - 1:1 관계(`transcripts` · `summaries`)는 `video_id`에 UK를 걸어 강제한다. 재분석은 행을 교체한다([[VA-DOM-001]] 6장, [[VA-DOM-002#AnalysisService]] `save_transcript`)
 - 목록 속성(`stages` · `stage_durations_sec` · `result` · `source_secs` · `bullets` · `cited_secs`)은 `jsonb`다. 단독으로 조회 · 조인하는 일이 없어 자식 테이블을 만들지 않는다(3장 정규화)
 - **`videos`에 `status` · `analyzed_at`이 없다.** 가장 최근 `analysis_jobs` 행에서 계산한다([[VA-DOM-002#Video]]). 상태가 두 곳에 있으면 어긋난다
-- **`running`인 작업은 프로세스 전체에 하나다.** 앱이 검사하고([[VA-DOM-002#JobService]] `start`), DB도 부분 unique 인덱스로 막는다(3장)
+- **`running`인 작업은 프로세스 전체에 하나다.** 나머지는 `queued`로 기다린다. 앱은 `running`이 없을 때만 다음 작업을 꺼내고([[VA-DOM-002#JobService]] `claim_next`), DB도 부분 unique 인덱스로 막는다(3장)
 
 ---
 
@@ -190,8 +192,8 @@ erDiagram
 | 컬럼 | 타입 | 제약 | 의미 | 예시 |
 |---|---|---|---|---|
 | video_id | int | FK videos cascade, not null | 어느 영상의 시도인가 | |
-| status | varchar(10) | not null, JobStatus | running · failed · done. 실패한 단계는 `stage`가 말한다 | `failed` |
-| stage | varchar(12) | not null, JobStage | 지금 도는 단계, 실패했으면 실패한 단계. 시작 직후는 `pending` | `transcribe` |
+| status | varchar(10) | not null, JobStatus | queued · running · failed · done. `queued`는 앞 작업이 끝나기를 기다리는 것. 실패한 단계는 `stage`가 말한다 | `failed` |
+| stage | varchar(12) | not null, JobStage | 지금 도는 단계, 실패했으면 실패한 단계. 시작 직후와 처음 대기하는 동안은 `pending`. 다시 시도해 대기하는 동안은 실패한 단계 그대로 | `transcribe` |
 | stages | jsonb | not null | 이 출처에 필요한 단계 목록, 순서대로. 시작할 때 정해 바뀌지 않는다 | `["extract","transcribe","summarize","chapter","suggest"]` |
 | progress_pct | smallint | not null, 0~100 | 진행률. 파이프라인이 갱신 | `38` |
 | est_seconds | int | not null | 시작 전 예상 소요(초). 사전 안내 값의 사본 | `480` |
@@ -204,11 +206,12 @@ erDiagram
 | error_chunk_seq | int | null 허용 | 실패한 조각 번호(k). 받아쓰기 밖 단계면 null | `16` |
 | error_attempts | int | null 허용 | 그 조각 · 단계를 보낸 횟수(자동 재시도 포함) | `3` |
 | stage_durations_sec | jsonb | not null, default `{}` | 완료한 단계마다 걸린 시간(초). 키는 JobStage | `{"extract": 41, "transcribe": 512}` |
-| stage_started_at | timestamptz | not null | 지금 단계가 시작된 때. 단계가 바뀔 때마다 갱신. 걸린 시간·남은 시간의 기준 — 재시도 뒤에는 `started_at`으로 잴 수 없다(MINISPEC 되먹임) | |
-| started_at | timestamptz | not null | 시작한 때. 목록의 최근 순 기준 | |
+| stage_started_at | timestamptz | not null | 지금 단계가 시작된 때. 단계가 바뀔 때마다 갱신. 걸린 시간·남은 시간의 기준 — 재시도 뒤에는 `started_at`으로 잴 수 없다(MINISPEC 되먹임). 대기 중에는 뜻이 없고, 워커가 `running`으로 바꿀 때 지금으로 적는다 | |
+| queued_at | timestamptz | not null | 대기열에 들어간 때. [분석 시작]과 다시 시도 때 지금으로 적는다. 대기열 순서의 기준 — 다시 시도한 작업이 대기열 끝으로 가야 하는데 `started_at`은 다시 시도해도 그대로다 | |
+| started_at | timestamptz | not null | [분석 시작]을 누른 때(대기열에 처음 들어간 때). 다시 시도해도 바뀌지 않는다. 목록의 최근 순 기준 | |
 | finished_at | timestamptz | null 허용 | `done`이 된 때 = 영상의 분석 완료 시각 | |
 
-CHECK: `status = 'failed'`이면 `error_kind` · `error_reason`이 not null, 아니면 둘 다 null. 재시도가 `running`으로 돌릴 때 넷을 비운다.
+CHECK: `status = 'failed'`이면 `error_kind` · `error_reason`이 not null, 아니면 둘 다 null. 재시도가 `queued`로 돌릴 때 넷을 비운다.
 
 ### audio_chunks
 
@@ -334,7 +337,8 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 | 테이블 | 인덱스 | 이유 (어느 쿼리) |
 |---|---|---|
 | analysis_jobs | `(video_id, started_at desc)` | 영상의 최근 작업 · `JobService.latest` · `latest_by_videos`. 목록의 최근 순 정렬도 이 컬럼 |
-| analysis_jobs | `(status) where status = 'running'` **부분 unique** | 프로세스 전체에 `running` 하나. 앱 검사(`another-job-running`)의 뒷받침. 서버가 두 번 떠도 둘이 동시에 돌 수 없다 |
+| analysis_jobs | `(status) where status = 'running'` **부분 unique** | 프로세스 전체에 `running` 하나. `claim_next`의 뒷받침 — 두 워커가 동시에 꺼내려 해도 하나만 성공한다. 서버가 두 번 떠도 둘이 동시에 돌 수 없다 |
+| analysis_jobs | `(queued_at) where status = 'queued'` 부분 | 대기열. `claim_next`(가장 이른 것 하나) · `queue_position`(자기보다 이른 것의 수). 대기 행은 많아야 몇 개라 부분 인덱스로 작게 둔다 |
 | audio_chunks | `(job_id, state)` | 조각 집계(done · in_flight · failed · waiting) · `next_seq` · 재개 때 `done`이 아닌 조각 |
 | segments | `(transcript_id, start_sec)` | 시각으로 구간 찾기(답변 맥락의 시각 범위, 시각 보정 `clamp_secs`). 순번 UK `(transcript_id, seq)`가 목록 조회를 맡는다 |
 | chat_turns | `(video_id, asked_at)` | 시간순 기록 · 최근 10턴 · 영상별 개수 |
@@ -354,7 +358,7 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 
 **1. 시각 컬럼의 타입 — 결정: `numeric(9,3)`.** `float`는 `760.12`가 `760.1199…`로 저장되어 인사이트의 출처 시각과 구간의 시작 시각을 같은 값으로 비교할 수 없다. `int`(초)는 자막 한 줄이 1초 안에 여럿일 때 순서를 잃는다. 밀리초 셋째 자리면 whisper-1의 segment 시각(소수 둘째 자리)을 그대로 담는다.
 
-**2. `running` 하나를 DB가 막는다 — 결정: `status = 'running'` 부분 unique 인덱스.** 값이 하나뿐인 컬럼에 unique를 걸면 그 값의 행이 하나만 존재할 수 있다. 앱이 먼저 검사하지만, 서버 재시작 직후나 두 요청이 겹칠 때 DB가 마지막 방어선이다. 대기열로 바꾸기로 결정되면 이 인덱스를 지우는 리비전이 그 변경의 일부다.
+**2. `running` 하나를 DB가 막는다 — 결정: `status = 'running'` 부분 unique 인덱스.** 값이 하나뿐인 컬럼에 unique를 걸면 그 값의 행이 하나만 존재할 수 있다. 앱이 먼저 검사하지만, 서버 재시작 직후나 두 요청이 겹칠 때 DB가 마지막 방어선이다. 대기열이 생겨도 이 인덱스는 그대로다 — 기다리는 행은 `queued`이고 도는 것은 여전히 하나다(사용자 결정 2026-09-21).
 
 **3. 조각 상태를 `boolean done`이 아니라 넷으로 — 결정: `varchar state` + `attempts`.** 화면이 조각 격자에 네 상태를 그리고 실패 알림이 「몇 번 다시 보냈는지」를 말한다([[VA-DOM-002]] 5장 6). 두 컬럼을 앱 메모리에 두면 서버가 죽었을 때 재개 지점을 잃는다.
 
@@ -366,7 +370,8 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 
 ## 5. 미결사항
 
-- [ ] 설정(키 · 모델) 저장 위치가 DB로 정해지면 `settings` 테이블(키 하나 · 값 하나)을 더한다. [[VA-INFRA-001#C6]] 갱신 요청, [[VA-DOM-002]] 7장과 같은 항목
+- [x] 설정(키 · 모델) 저장 위치 — 결정: `.env` 파일 하나. `settings` 테이블은 만들지 않는다(사용자 결정 2026-09-21)
+- [x] 대기열 — 결정: `status`에 `queued` 값, `queued_at` 컬럼, 부분 인덱스 `(queued_at) where status = 'queued'`([[VA-DOM-002]] 7장 되먹임 반영)
 - [ ] `segments.text` 검색 — 첫 버전은 스크립트 검색이 요구에 없어 인덱스가 없다. 질문 맥락 선별을 임베딩으로 바꾸면(`ChatService.context_for`) 그때 `pgvector` 컬럼과 인덱스를 여기 더한다([[VA-INFRA-001]] 9절)
 - [ ] `audio_chunks` 행의 보존 기간 — 지금은 영상과 함께 영구. 조각 이력이 쓸모없다고 판단되면 작업 완료 때 지우는 것으로 바꿀 수 있다([[VA-DOM-001]] 5장 2의 결정을 뒤집는 것이라 도메인 모델부터)
-- [ ] 클래스 명세 2장 각 항목에 `테이블: [[VA-DOM-003#…]]` 참조를 더한다 — [[VA-DOM-002]] 7장에 적힌 일. 이 문서가 생겼으므로 다음 클래스 명세 수정 때
+- [x] (반영: 클래스 명세 v7) 클래스 명세 2장 각 항목에 `테이블: [[VA-DOM-003#…]]` 참조를 더한다 — [[VA-DOM-002]] 7장에 적힌 일. 이 문서가 생겼으므로 다음 클래스 명세 수정 때
