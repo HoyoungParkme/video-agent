@@ -56,6 +56,7 @@ video-agent/                    저장소 = 프로젝트
 ├── Dockerfile.web              frontend 이미지. 같은 종류가 둘이라 뒤에 용도를 붙였다
 ├── docker-compose.yml          web · api · db 셋 (INFRA 8절)
 ├── .env.example                필요한 환경 변수의 이름만. 값은 비운다. `.env`는 커밋하지 않는다 (INFRA C6)
+│                               compose가 `.env`를 api 컨테이너에 읽기·쓰기로 마운트한다 — 앱이 키·모델 줄을 고친다 (4.5)
 ├── .gitignore · .dockerignore
 └── README.md · AGENTS.md       사람용 · 에이전트용. CLAUDE.md는 AGENTS.md를 가리키는 한 줄
 ```
@@ -66,13 +67,15 @@ video-agent/                    저장소 = 프로젝트
 
 ```
 app/
-├── main.py                 앱 조립. 라우터 등록, 시작 때 저장된 키 확인(SettingsService.check_stored_key),
-│                           서버가 죽어 running인 채 남은 작업을 failed로 되돌림(JobService.fail_orphans)
+├── main.py                 앱 조립. 라우터 등록, 시작 때(lifespan) 저장된 키 확인(SettingsService.check_stored_key),
+│                           서버가 죽어 running인 채 남은 작업을 failed로 되돌림(JobService.fail_orphans),
+│                           대기열 워커 하나를 띄움(pipeline.worker) — 끌 때 취소한다
 ├── core/                   도메인에 속하지 않는 것
-│   ├── config.py           .env → Config (DB URL · OPENAI_API_KEY · 모델명 · inbox/data 경로 · 조각 길이 · 동시 수 · 단가)
+│   ├── config.py           환경 변수 → Config (DB URL · inbox/data 경로 · .env 경로 · 조각 길이 · 동시 수 · 재시도 상한 · 모델 목록과 단가)
+│   │                       키와 고른 모델은 여기 없다 — 돌면서 바뀌므로 SettingsService가 .env 파일에서 읽는다
 │   ├── db.py               async 엔진 · 세션
-│   ├── errors.py           problem+json 종류마다 예외 클래스 하나 ([[VA-API-001]] 2장의 18종)
-│   ├── settings.py         SettingsService — 키 상태 · 모델 선택 (4.5). 키 확인은 infra/openai를 부른다
+│   ├── errors.py           problem+json 종류마다 예외 클래스 하나 ([[VA-API-001]] 2장의 17종)
+│   ├── settings.py         SettingsService — 키 상태 · 모델 선택 (4.5). .env 파일을 읽고 쓴다. 키 확인은 infra/openai를 부른다
 │   └── settings_router.py  /api/settings 셋. core에 라우터가 있는 유일한 곳 (아래 「기본형과 다른 점」)
 │
 ├── domains/
@@ -88,7 +91,7 @@ app/
 │   │   ├── router.py       /api/videos/{id}/job · …/job/retry
 │   │   ├── schemas.py      Job · JobSummary · Chunks · Chunk · JobError · Estimate
 │   │   ├── service.py      JobService
-│   │   ├── pipeline.py     단계 순서와 재개. 함수 모듈 (4.2)
+│   │   ├── pipeline.py     단계 순서와 재개, 대기열 워커. 함수 모듈 (4.2)
 │   │   ├── crud.py
 │   │   ├── models.py       AnalysisJob · AudioChunk
 │   │   ├── ports.py        AudioSourcePort · AudioSplitPort · SttPort
@@ -100,7 +103,7 @@ app/
 │   │   ├── crud.py
 │   │   ├── models.py       Transcript · Segment · Summary · Insight · Part · Chapter · SuggestedQuestion
 │   │   ├── ports.py        SummarizerPort
-│   │   ├── adapters/       summarizer_openai.py (infra/openai. 프롬프트도 여기)
+│   │   ├── adapters/       summarizer_openai.py (infra/openai. 프롬프트는 prompts/에서 읽는다)
 │   │   └── export.py       마크다운 생성. 순수 함수 — 시각 표기 · 링크 · 절 순서
 │   └── chat/               대화 — 질문 · 답변
 │       ├── router.py       /api/videos/{id}/chat (GET · POST)
@@ -109,7 +112,13 @@ app/
 │       ├── crud.py
 │       ├── models.py       ChatTurn
 │       ├── ports.py        AnswererPort
-│       └── adapters/       answerer_openai.py (infra/openai)
+│       └── adapters/       answerer_openai.py (infra/openai. 프롬프트는 prompts/에서 읽는다)
+│
+├── prompts/                모델에 보내는 지시문. 마크다운 파일, `{자리 표시}`를 어댑터가 채운다 (아래 「기본형과 다른 점」)
+│   ├── summary.md          핵심 요약 — 한 줄 요약 · 인사이트와 근거 시각
+│   ├── chapters.md         파트 · 챕터 · 챕터별 요점
+│   ├── questions.md        추천 질문 3개
+│   └── answer.md           질문 답변 — 스크립트 근거만, 근거 시각
 │
 └── infra/                  외부 시스템 공용 클라이언트. 도메인별 해석은 각 묶음의 adapters/에
     ├── ytdlp.py            영상 정보 · 자막 목록 · 자막 내려받기 · 음성 내려받기
@@ -123,7 +132,8 @@ app/
 
 **기본형과 다른 점, 그리고 왜.**
 
-- **`core/`에 설정 라우터가 있다.** API 키와 모델 선택은 도메인 개념이 아니라 인프라 값이다([[VA-DOM-001]] 1장 — 설정 · API 키는 `.env`에 살고 DB에 없다, [[VA-INFRA-001#C6]]). 그런데 화면 UI-5가 읽고 쓰므로([[VA-API-001#GET/api/settings]] · [[VA-API-001#POST/api/settings/key]] · [[VA-API-001#PUT/api/settings/models]]) 입구가 필요하다. 도메인 폴더 `domains/settings/`를 만들면 도메인 모델에 없는 묶음이 생긴다(규약 1.9 — 도메인 경계는 도메인 모델이 정한다). 그래서 `core/settings.py`(서비스)와 `core/settings_router.py`(입구) 둘로 둔다. `models.py` · `crud.py`가 없는 것은 DB가 없기 때문이다. 키 저장 위치가 DB로 정해지면(7장) 그때 도메인 모델부터 고친다.
+- **`core/`에 설정 라우터가 있다.** API 키와 모델 선택은 도메인 개념이 아니라 인프라 값이다([[VA-DOM-001]] 1장 — 설정 · API 키는 `.env`에 살고 DB에 없다, [[VA-INFRA-001#C6]]). 그런데 화면 UI-5가 읽고 쓰므로([[VA-API-001#GET/api/settings]] · [[VA-API-001#POST/api/settings/key]] · [[VA-API-001#PUT/api/settings/models]]) 입구가 필요하다. 도메인 폴더 `domains/settings/`를 만들면 도메인 모델에 없는 묶음이 생긴다(규약 1.9 — 도메인 경계는 도메인 모델이 정한다). 그래서 `core/settings.py`(서비스)와 `core/settings_router.py`(입구) 둘로 둔다. `models.py` · `crud.py`가 없는 것은 DB가 없기 때문이다 — 키와 모델 선택은 `.env` 파일 하나에 산다(사용자 결정 2026-09-21).
+- **`prompts/` 폴더가 있다.** 규약 1.9 기본형에 없는 폴더다. 프롬프트는 코드가 아니라 글이고, 결과 품질을 고칠 때 가장 자주 손대는 곳이다. 어댑터 안 문자열로 두면 고칠 때마다 파이썬 파일을 열어야 하고 diff가 코드 변경과 섞인다. 그래서 `.md` 파일 넷으로 빼고(사용자 결정 2026-09-21), 어댑터는 읽어서 `{자리 표시}`만 채운다. 두 묶음(analysis · chat)의 어댑터가 읽으므로 묶음 안이 아니라 `app/` 바로 아래에 둔다. 읽는 것은 어댑터뿐이다 — 서비스는 프롬프트를 모른다.
 - **파이프라인이 `job/` 안에 있다.** 단계를 순서대로 돌리는 조율자는 video · job · analysis 세 묶음을 부르지만, "지금 어느 단계인가"를 갱신하는 주체가 작업이다([[VA-DOM-001#AnalysisJob]]). 묶음 밖에 두면 작업 상태를 바꾸는 코드가 작업 묶음 밖에 생긴다. 클래스가 아니라 함수 모듈이고 `JobService`만 부른다.
 - **외부 클라이언트는 `infra/`, 해석은 `adapters/`.** yt-dlp는 video(정보)와 job(자막 · 음성)이, ffmpeg는 video(길이)와 job(추출 · 자르기)이, OpenAI는 job · analysis · chat · core/settings 넷이 쓴다. 두 묶음 이상이 쓰는 클라이언트는 `infra/`에 한 번 두고(규약 1.9), 묶음마다 다른 해석(음성 → 구간 / 스크립트 → 요약 / 질문 → 근거 답)만 `adapters/`에 남긴다. OpenAI 어댑터가 셋인 것은 하는 일이 셋이기 때문이지 클라이언트가 셋인 것이 아니다.
 - 나머지는 기본형 그대로다. 라우터는 도메인 안에 있다 — 입구가 웹 REST 하나뿐이다([[VA-INFRA-001#C10]]).
@@ -197,7 +207,7 @@ classDiagram
 
 `source_id`는 YouTube면 영상 ID(11자), 로컬이면 파일 내용 SHA-256. unique. `origin`은 URL 또는 inbox 파일 이름. `channel` · `caption_language` · `caption_kind`는 로컬이면 null.
 
-**`status`와 `analyzed_at`은 컬럼이 아니다.** [[VA-API-001]]의 `Video.status`(registered · in_progress · failed · analyzed)와 `analyzed_at`은 가장 최근 `AnalysisJob`에서 계산한다 — 작업이 없으면 `registered`, `running`이면 `in_progress`, `failed`면 `failed`, `done`이면 `analyzed`이고 `analyzed_at = finished_at`. [[VA-DOM-001#Video]]의 「분석완료시각」이 이 계산값이다(5장 5). `chat_turn_count`도 대화 묶음에서 센 값이다.
+**`status`와 `analyzed_at`은 컬럼이 아니다.** [[VA-API-001]]의 `Video.status`(registered · in_progress · failed · analyzed)와 `analyzed_at`은 가장 최근 `AnalysisJob`에서 계산한다 — 작업이 없으면 `registered`, `queued` · `running`이면 `in_progress`, `failed`면 `failed`, `done`이면 `analyzed`이고 `analyzed_at = finished_at`. [[VA-DOM-001#Video]]의 「분석완료시각」이 이 계산값이다(5장 5). `chat_turn_count`도 대화 묶음에서 센 값이다.
 
 ### 2.2 job
 
@@ -225,6 +235,7 @@ classDiagram
         +int error_attempts
         +dict stage_durations_sec
         +datetime stage_started_at
+        +datetime queued_at
         +datetime started_at
         +datetime finished_at
     }
@@ -234,9 +245,9 @@ classDiagram
 - `AnalysisJob` * — 1 `Video` (video_id)
 - `AnalysisJob` 1 — 0..* `AudioChunk`
 
-`status`와 `stage`는 따로다 — 실패한 단계를 알려면 둘 다 있어야 한다([[VA-API-001]] 5장 2). `stages`는 시작할 때 출처로 정한 단계 목록이고 순서가 곧 파이프라인 순서다. `error_*` 넷은 `status = failed`일 때만 값이 있고, 재시도가 `running`으로 돌리면 비운다. `stage_durations_sec`는 완료한 단계마다 걸린 시간(초)이고 키는 `JobStage` 값이다. `stage_started_at`은 지금 단계가 시작된 때다 — 단계가 바뀔 때마다 갱신하고, 걸린 시간(단계 전환 때)과 남은 시간(폴링 때)을 여기서 잰다. `started_at`으로는 재시도 뒤에 잴 수 없다(MINISPEC 되먹임). `stt_model` · `text_model`은 시작 때 설정에서 복사한다 — 돌고 있는 작업은 설정을 바꿔도 끝까지 같은 모델을 쓴다([[VA-API-001#PUT/api/settings/models]]).
+`status`와 `stage`는 따로다 — 실패한 단계를 알려면 둘 다 있어야 한다([[VA-API-001]] 5장 2). `stages`는 시작할 때 출처로 정한 단계 목록이고 순서가 곧 파이프라인 순서다. `error_*` 넷은 `status = failed`일 때만 값이 있고, 재시도하면 비운다. `queued_at`은 대기열에 들어간 때다 — 시작할 때와 다시 시도할 때 지금으로 적고, 대기열 순서는 이것의 오름차순이다. `started_at`은 다시 시도해도 그대로라 순서 기준이 못 된다([[VA-API-001]] 6장 되먹임). 대기열에서의 차례(`Job.queue_position`)는 컬럼이 아니라 `queued`인 행을 `queued_at`으로 세어 계산한다. `stage_durations_sec`는 완료한 단계마다 걸린 시간(초)이고 키는 `JobStage` 값이다. `stage_started_at`은 지금 단계가 시작된 때다 — 단계가 바뀔 때마다 갱신하고, 걸린 시간(단계 전환 때)과 남은 시간(폴링 때)을 여기서 잰다. `started_at`으로는 재시도 뒤에 잴 수 없다(MINISPEC 되먹임). `stt_model` · `text_model`은 시작 때 설정에서 복사한다 — 돌고 있는 작업은 설정을 바꿔도 끝까지 같은 모델을 쓴다([[VA-API-001#PUT/api/settings/models]]).
 
-재시도는 **같은 작업**을 이어간다 — 새 작업을 만들지 않는다([[VA-UC-001#UC-S3]] 3a3). 영상 하나에 `running`인 작업은 하나이고, 프로세스 전체에서도 하나다([[VA-INFRA-001]] 3절).
+재시도는 **같은 작업**을 이어간다 — 새 작업을 만들지 않는다([[VA-UC-001#UC-S3]] 3a3). `running`인 작업은 프로세스 전체에서 하나이고, 나머지는 `queued`로 차례를 기다린다([[VA-INFRA-001]] 3절, [[VA-API-001]] 5장 8). 앞 작업이 끝나면(완료 · 실패 · 삭제) 워커가 가장 오래 기다린 것을 `running`으로 바꿔 돌린다.
 
 #### AudioChunk 조각
 
@@ -438,7 +449,7 @@ classDiagram
 |---|---|---|
 | `SourceKind` | `youtube` · `local` | Video |
 | `CaptionKind` | `manual` · `auto` | Video |
-| `JobStatus` | `running` · `failed` · `done` | AnalysisJob |
+| `JobStatus` | `queued` · `running` · `failed` · `done` | AnalysisJob |
 | `JobStage` | `pending` · `download` · `extract` · `transcribe` · `summarize` · `chapter` · `suggest` | AnalysisJob. `download`는 자막이 있으면 자막 가져오기, 없으면 음성 내려받기([[VA-UI-002#UI-3]] 규칙) |
 | `ChunkState` | `waiting` · `in_flight` · `done` · `failed` | AudioChunk |
 | `ErrorKind` | `network` · `openai` · `youtube` · `ffmpeg` · `disk` · `unknown` | AnalysisJob.error_kind |
@@ -551,7 +562,11 @@ flowchart TB
     JS -.->|require_key · current_models| SS
     CS -.->|require_key · current_models| SS
     AS -.->|current_models| SS
-    JS -->|run · resume| PL
+    MAIN[main.py<br/>lifespan]
+    MAIN -->|worker| PL
+    MAIN -.->|check_stored_key| SS
+    MAIN -.->|fail_orphans| JS
+    PL -.->|claim_next| JS
     PL -.->|mark_stage · plan_chunks · mark_chunk · finish · fail| JS
     PL -.->|save_transcript · generate_summary · generate_chapters · generate_questions| AS
     CS -.->|segments_of · chapters_of| AS
@@ -574,7 +589,7 @@ flowchart TB
 - 순환이 없다. video → job · chat, chat → analysis, job → analysis. 반대 방향은 없다
 - `SettingsService`는 `core/`라 어느 묶음이든 부를 수 있다. 하는 일은 키 확인 · 모델 이름 넷뿐이다
 - 어댑터는 `infra/` 클라이언트만 부른다. 서비스는 `infra/`를 직접 부르지 않는다 — `SettingsService`만 예외로 `infra/openai.verify_key`를 부른다(포트를 둘 도메인이 없다)
-- `pipeline`은 `JobService`가 백그라운드 태스크로 띄운다. `JobService`가 태스크 핸들을 들고 있어 삭제 때 취소한다(4.2)
+- `pipeline.worker`는 `main.py`가 시작 때 하나 띄운다. 워커가 `JobService.claim_next`로 다음 작업을 받아 `run` 또는 `resume`을 태스크로 돌리고 끝나기를 기다린다. 도는 태스크의 핸들은 `JobService`가 들고 있어 삭제 때 취소한다(4.2). `JobService`는 파이프라인을 직접 띄우지 않는다 — 대기열에 넣고 워커를 깨울 뿐이다
 
 ---
 ## 4. 설계 클래스
@@ -651,8 +666,11 @@ classDiagram
         +finish(job_id: int) None
         +fail(job_id: int, error: JobError) None
         +fail_orphans() int
+        +claim_next() AnalysisJobRow
+        +wait_for_work() None
         -stages_for(video: Video) list~JobStage~
         -remaining_sec(job: AnalysisJobRow) int
+        -queue_position(job: AnalysisJobRow) int
         -to_job(row: AnalysisJobRow, chunks: list~AudioChunkRow~) Job
     }
     class AnalysisJob {
@@ -673,6 +691,7 @@ classDiagram
         +int error_attempts
         +dict stage_durations_sec
         +datetime stage_started_at
+        +datetime queued_at
         +datetime started_at
         +datetime finished_at
     }
@@ -695,30 +714,38 @@ classDiagram
 | 메서드 | 부르는 곳 | 유스케이스 | 던지는 에러 |
 |---|---|---|---|
 | `estimate` | video/router ([[VA-API-001#POST/api/videos]] 7번) | [[VA-UC-001#UC-S1]] 5 | |
-| `start` | [[VA-API-001#POST/api/videos/{id}/job]] | [[VA-UC-001#UC-H0]] 3 | key-missing · key-invalid · job-exists · another-job-running |
+| `start` | [[VA-API-001#POST/api/videos/{id}/job]] | [[VA-UC-001#UC-H0]] 3 | key-missing · key-invalid · job-exists |
 | `progress` | [[VA-API-001#GET/api/videos/{id}/job]] | [[VA-UC-001#UC-S6]] | not-found(job) |
 | `retry` | [[VA-API-001#POST/api/videos/{id}/job/retry]] | [[VA-UC-001#UC-S3]] 3a3 · [[VA-UC-001#UC-S6]] 1a | key-missing · key-invalid · not-found(job) · job-not-failed |
 | `cancel` | video/router ([[VA-API-001#DELETE/api/videos/{id}]]) | [[VA-UC-001#UC-H6]] 4 | |
 | `latest` · `latest_by_videos` | VideoService | [[VA-UC-001#UC-H5]] 1 | |
 | `mark_stage` · `plan_chunks` · `mark_chunk` · `finish` · `fail` | pipeline | [[VA-UC-001#UC-S6]] 1~3 · [[VA-UC-001#UC-S3]] 2~3 | |
 | `fail_orphans` | `main.py` 시작 절차 | — (5장 8) | |
+| `claim_next` · `wait_for_work` | pipeline.worker | [[VA-UC-001#UC-H0]] 3b | |
 
 **규칙이 사는 곳**
 - `estimate`: 작업이 있으면 null. 자막 있음이면 `needs_stt = false` · 약 60초 · 받아쓰기 비용 0. 받아쓰기 필요면 조각 수 = 길이 ÷ 조각 길이(설정값), 동시 수 = 설정값, 받아쓰기 비용 = 분 × 단가(설정값 — `SettingsService.current_models`의 모델 단가), 예상 시간 = 조각 수 ÷ 동시 수 × 조각당 예상 시간. 텍스트 모델 비용 추정식은 7장. 화면은 이 숫자를 그대로 보인다([[VA-UI-002#UI-2]] 규칙)
-- `start`: `SettingsService.require_key` → 이 영상에 작업이 있으면 `job-exists` → 프로세스 안에 `running`이 있으면 `another-job-running` → `stages_for(video)`로 단계 목록, 설정에서 모델 · 동시 수를 복사해 행 생성(`running` · `pending`) → `pipeline.run`을 백그라운드 태스크로 띄우고 핸들을 `video_id`로 보관
+- `start`: `SettingsService.require_key` → 이 영상에 작업이 있으면 `job-exists` → `stages_for(video)`로 단계 목록, 설정에서 모델 · 동시 수를 복사해 행 생성(`queued` · `pending` · `queued_at = 지금`) → 워커를 깨운다. **늘 `queued`로 넣는다** — 도는 작업이 없으면 워커가 곧바로 `running`으로 바꾸므로 시작하는 길이 하나다. 응답의 `status`는 그 순간의 값이라 `queued`일 수도 `running`일 수도 있다([[VA-API-001#POST/api/videos/{id}/job]] 3번)
 - `stages_for`: 자막 있는 YouTube [download, summarize, chapter, suggest] · 자막 없는 YouTube [download, transcribe, summarize, chapter, suggest] · 로컬 영상 [extract, transcribe, summarize, chapter, suggest] · 로컬 음성 [transcribe, summarize, chapter, suggest]([[VA-UC-001#UC-S2]], [[VA-UC-001#UC-H2]] 2b)
-- `retry`: `status`가 `failed`가 아니면 `job-not-failed`. `error_*`를 비우고 `running`으로 되돌린 뒤 `pipeline.resume`을 띄운다 — 같은 행, 같은 `id`
-- `cancel`: 태스크 핸들이 있으면 취소하고 기다린다. 행은 지우지 않는다(cascade가 지운다). 없으면 아무것도 안 한다
-- `progress` · `to_job`: `remaining_sec` = 받아쓰기 단계면 미완료 조각 수 × 지금까지 조각당 평균(`done_at` 차이), 다른 단계는 null(7장). `chunks.next_seq`는 `done`이 아닌 첫 조각. `Chunks`의 집계(done · in_flight · failed · waiting)는 조각 행에서 센다. `progress_pct`는 파이프라인이 단계 가중치로 갱신한 값을 그대로
+- `retry`: `status`가 `failed`가 아니면 `job-not-failed`. `error_*`를 비우고 `queued`로 되돌리고 `queued_at`을 지금으로 적은 뒤 워커를 깨운다 — 같은 행, 같은 `id`, `stage`는 실패한 단계 그대로. 도는 작업이 있으면 대기열 끝에서 기다린다
+- `claim_next`: `running`인 행이 없을 때만, `queued` 중 `queued_at`이 가장 이른 행을 `running`으로 바꿔 돌려준다. 없으면 None. 한 트랜잭션으로 하고 DB의 부분 unique(`running` 하나, [[VA-DOM-003#analysis_jobs]])가 마지막 방어선이다
+- `wait_for_work`: 워커가 할 일이 없을 때 기다리는 곳이다. `start` · `retry` · 작업이 끝났을 때(`finish` · `fail` · `cancel`) 깨운다. 프로세스 안 `asyncio.Event` 하나다
+- `queue_position`: `queued`인 행 중 `queued_at`이 자기보다 이른 것의 수 + 1. `queued`가 아니면 None. 도는 작업이 하나 있고 자기가 대기열 맨 앞이면 1이고, 그때 화면의 '앞 영상 1개'와 '1번째'가 같은 수다([[VA-API-001]] 5장 8)
+- `cancel`: 태스크 핸들이 있으면 취소하고 기다린다. 행은 지우지 않는다(cascade가 지운다). 없으면(대기 중 · 실패 · 완료) 아무것도 안 한다 — 대기 중인 작업은 행이 지워지면 대기열에서 빠진 것이다. 끝에 워커를 깨워 다음 작업이 시작되게 한다
+- `progress` · `to_job`: `remaining_sec` = 받아쓰기 단계면 미완료 조각 수 × 지금까지 조각당 평균(`done_at` 차이), 다른 단계는 예상 전체 시간 − 지난 시간(0 아래로 내려가지 않는다), `running`이 아니면 null. `queue_position`은 위 규칙대로. `chunks.next_seq`는 `done`이 아닌 첫 조각. `Chunks`의 집계(done · in_flight · failed · waiting)는 조각 행에서 센다. `progress_pct`는 파이프라인이 단계 가중치로 갱신한 값을 그대로
 - `mark_chunk`: `in_flight`로 바꿀 때 `attempts`를 1 올린다. `done`으로 바꿀 때 `done_at` · `result`를 저장하고 `progress_pct`를 완료 조각 비율로 갱신한다. `waiting`(재시도 대기) · `failed`는 상태만 바꾼다
-- `fail_orphans`: 시작 때 `running`인 작업을 `failed`(kind `unknown`, reason '서버가 다시 시작됨')로, 그 작업의 `in_flight` 조각을 `waiting`으로 돌린다. 핸들이 없는 작업은 돌지 않는데 화면에는 도는 것처럼 보이기 때문이다(5장 8)
-- 영상 하나에 `running` 하나, 프로세스 전체에도 하나 — 동시 분석 하나([[VA-INFRA-001]] 3절). 대기열은 7장
+- `fail_orphans`: 시작 때 `running`인 작업을 `failed`(kind `unknown`, reason '서버가 다시 시작됨')로, `queued`는 그대로 둔다(워커가 뜨면 이어서 돈다). 되돌린 작업의 `in_flight` 조각을 `waiting`으로 돌린다. 핸들이 없는 작업은 돌지 않는데 화면에는 도는 것처럼 보이기 때문이다(5장 8)
+- `running`은 프로세스 전체에 하나 — 동시 분석 하나([[VA-INFRA-001]] 3절). 나머지는 `queued`이고 순서는 `queued_at`이다
 
 **파이프라인 (`job/pipeline.py`)** — 클래스가 아니라 함수 모듈이다. 항목으로 두지 않고 여기 적는다.
 
 ```
-run(job_id: int, video: Video) -> None          start가 띄운다. stages 첫 단계부터
-resume(job_id: int, video: Video) -> None       retry가 띄운다. 행의 stage부터. transcribe면 done이 아닌 조각만 보내고 done 조각은 result를 쓴다
+worker() -> None                                main.py가 시작 때 하나 띄운다. 끝없이 돈다:
+                                                  row = JobService.claim_next() · 없으면 JobService.wait_for_work() 뒤 다시
+                                                  row.stage가 pending이면 run, 아니면 resume을 태스크로 띄우고(핸들은 JobService가 보관) 끝나기를 기다린다
+                                                  태스크가 어떻게 끝나든(완료 · 실패 · 취소) 다음 작업으로. 워커 자신은 죽지 않는다
+run(job_id: int, video: Video) -> None          worker가 띄운다. stages 첫 단계부터
+resume(job_id: int, video: Video) -> None       worker가 띄운다(다시 시도한 작업). 행의 stage부터. transcribe면 done이 아닌 조각만 보내고 done 조각은 result를 쓴다
 
 단계마다:
   mark_stage(job_id, stage)                     시작 시각 기록 → 끝나면 stage_durations_sec에 걸린 시간
@@ -835,7 +862,7 @@ classDiagram
 - `generate_summary`가 먼저, `generate_chapters`가 다음이다 — 단계 순서(핵심 요약 → 챕터 → 추천 질문)는 [[VA-PRD-001#R8]] · [[VA-DOM-001#AnalysisJob]] · [[VA-UI-002#UI-3]]이 같고 실행 순서도 그대로다. [[VA-UC-001#UC-S4]] 2~3번의 「챕터를 먼저」와 다르다(5장 10)
 - `generate_chapters`: 챕터 수 목표 = 길이(분) ÷ 6. 스크립트가 토큰 상한(설정값)을 넘으면 시간 구간으로 나눠 구간별로 만든 뒤 합친다([[VA-UC-001#UC-S4]] 1a). 60분을 넘으면 `ChapterDraft.parts`로 파트를 만들고 챕터에 `part_id`를 붙인다(2a)
 - `generate_summary`: 인사이트 수 = 60분 이하 5~8, 초과 10까지([[VA-PRD-001#R4]]). 스크립트가 토큰 상한을 넘으면 시간 구간별 중간 요약을 먼저 만들고 그것을 재료로 한 줄 요약과 인사이트를 만든다 — 챕터에 기대지 않는다. `clamp_secs`로 시각이 `[0, duration]` 밖이면 가장 가까운 구간 시각으로 보정([[VA-UC-001#UC-S4]] 5a) — 그래서 구간 목록을 인자로 받는다(MINISPEC 되먹임). 언어는 한국어
-- `generate_questions`: 3개. 스크립트로 답할 수 있는 것만 — 프롬프트가 정한다([[VA-PRD-001#R9]])
+- `generate_questions`: 3개. 스크립트로 답할 수 있는 것만 — 프롬프트(`prompts/questions.md`)가 정한다([[VA-PRD-001#R9]])
 - `result_of`: Transcript가 없으면 `result-not-ready`(`video_status` = `video.status`). `Part.end_sec` = 다음 파트 시작 또는 `duration_sec`, `chapter_count`는 세서 넣는다. `models`는 Transcript.model과 Summary.model
 - `export_markdown` · `export_to_file`: `export.py`의 순수 함수가 [[VA-API-001#GET/api/videos/{id}/export]]의 순서로 만든다. 시각은 영상 길이로 표기가 정해진다(60분 미만 `mm:ss`, 이상 `h:mm:ss`, [[VA-UI-001#UI-4]]). YouTube면 `https://youtu.be/{source_id}?t={초}` 링크, 로컬은 시각만. 파일은 `data/export/{filename}.md`에 덮어쓴다. 파일 이름 규칙은 7장
 - 이 서비스는 작업 묶음을 모른다. 파이프라인이 부르는 순서는 파이프라인의 것이다
@@ -881,7 +908,7 @@ classDiagram
 
 #### SettingsService 설정 서비스
 
-DB가 없는 서비스다. 키는 `.env`(또는 7장에서 정할 곳), 모델 선택은 같은 곳에서 읽고 쓴다.
+DB가 없는 서비스다. 키와 모델 선택은 `.env` 파일 하나에 살고, 이 서비스가 그 파일을 읽고 쓴다([[VA-INFRA-001#C6]], 사용자 결정 2026-09-21). 처음 설치 때 사용자가 직접 적은 키도, 화면에서 넣은 키도 같은 줄이다.
 
 ```mermaid
 classDiagram
@@ -901,16 +928,18 @@ classDiagram
 |---|---|---|---|
 | `get` | [[VA-API-001#GET/api/settings]] | [[VA-UC-001#UC-H8]] 1 | |
 | `set_key` | [[VA-API-001#POST/api/settings/key]] | [[VA-UC-001#UC-H8]] 2~4, 3a | validation · key-rejected · llm-unavailable |
-| `set_models` | [[VA-API-001#PUT/api/settings/models]] | [[VA-UC-001#UC-H8]] 트리거 | validation |
-| `check_stored_key` | main(시작) · VideoService.register(분석 버튼) | [[VA-UC-001#UC-H8]] 1a | |
+| `set_models` | [[VA-API-001#PUT/api/settings/models]] | [[VA-UC-001#UC-H8]] 5 | validation |
+| `check_stored_key` | main(시작) · VideoService.register(분석 버튼) · require_key(마지막이 연결 실패일 때) | [[VA-UC-001#UC-H8]] 1a | |
 | `require_key` | VideoService.register · JobService.start · retry · ChatService.ask | [[VA-UC-001#UC-H0]] 사전조건 | key-missing · key-invalid |
 | `current_models` | JobService · AnalysisService · ChatService | — | |
 
 **규칙이 사는 곳**
-- `check_stored_key`: `infra/openai.verify_key`로 가벼운 요청(모델 목록)을 보내고 `last_check`에 결과와 시각을 둔다. 부르는 때는 셋뿐 — 서버 시작, 분석 버튼, 키 저장([[VA-UI-002#UI-5]] 규칙). `get`은 `last_check`를 돌려줄 뿐 다시 확인하지 않는다
-- `require_key`: `last_check.state`가 `missing`이면 `key-missing`, `invalid`면 `key-invalid`(reason_kind · reason · checked_at). 읽기 요청은 부르지 않는다 — 키 없이도 읽기는 전부 된다([[VA-API-001]] 1장)
-- `set_key`: 확인이 통과해야 저장한다. 실패(`format` · `auth` · `quota`)는 `key-rejected`, 네트워크는 `llm-unavailable`. 둘 다 저장하지 않고 `last_check`도 바꾸지 않는다. 통과하면 저장하고 `last_check`를 `ok`로
-- `set_models`: 값은 `model_options`(설정값)에 있는 id만. 받아쓰기 목록은 구간 시각을 주는 모델만([[VA-INFRA-001#C3]])
+- `check_stored_key`: `infra/openai.verify_key`로 가벼운 요청(모델 목록)을 보내고 `last_check`에 결과와 시각을 둔다. 부르는 때는 서버 시작, 분석 버튼, 키 저장, 그리고 마지막 확인이 연결 실패였을 때의 `require_key`다([[VA-UI-002#UI-5]] 규칙, [[VA-API-001]] 5장 11). `get`은 `last_check`를 돌려줄 뿐 다시 확인하지 않는다
+- `require_key`: `last_check.state`가 `missing`이면 `key-missing`, `invalid`면 `key-invalid`(reason_kind · reason · checked_at). **다만 `invalid`의 이유가 `network`면 그 자리에서 `check_stored_key`를 한 번 부르고 새 결과로 판정한다** — 키가 틀린 것이 아니라 인터넷이 없었던 것이라 화면이 버튼을 막지 않는다([[VA-UI-002]] 1.4, [[VA-API-001]] 5장 11). 다른 이유는 다시 확인해도 같으므로 OpenAI에 보내지 않는다. 읽기 요청은 부르지 않는다 — 키 없이도 읽기는 전부 된다([[VA-API-001]] 1장)
+- `set_key`: 확인이 통과해야 저장한다. 실패(`format` · `auth` · `quota`)는 `key-rejected`, 네트워크는 `llm-unavailable`. 둘 다 저장하지 않고 `last_check`도 바꾸지 않는다. 통과하면 `.env`의 `OPENAI_API_KEY` 줄을 고치고 `last_check`를 `ok`로
+- `.env` 쓰기: `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL` 세 줄만 바꾸고 다른 줄 · 주석 · 순서는 그대로 둔다. 줄이 없으면 끝에 더한다. 같은 폴더에 임시 파일로 쓴 뒤 rename으로 바꿔치기해 반쯤 쓰인 파일이 남지 않게 한다. 서버를 다시 띄우지 않아도 다음 요청부터 새 값을 쓴다 — 읽을 때마다 파일에서 읽기 때문이다(`config.py`에 두지 않는 이유)
+- `get`: `key.stored_in`은 키가 있으면 늘 '.env에 저장됨', 없으면 None
+- `set_models`: 값은 `model_options`(설정값)에 있는 id만. `.env`의 `STT_MODEL` · `TEXT_MODEL` 줄에 쓴다. 받아쓰기 목록은 구간 시각을 주는 모델만([[VA-INFRA-001#C3]])
 - 키 전체는 어떤 응답에도 없다. `masked`는 앞 3자 · 끝 4자
 
 ### 4.6 포트 — 외부 연동 인터페이스
@@ -936,11 +965,11 @@ analysis/ports.py
   SummarizerPort.chapters(segments: list[Segment], duration_sec: int, model: str) -> ChapterDraft
   SummarizerPort.summary(segments: list[Segment], duration_sec: int, model: str) -> SummaryDraft
   SummarizerPort.questions(segments: list[Segment], model: str) -> list[str]
-                                                               summarizer_openai.py → infra/openai. 프롬프트는 어댑터 안
+                                                               summarizer_openai.py → infra/openai. 프롬프트는 prompts/summary.md · chapters.md · questions.md
 
 chat/ports.py
   AnswererPort.answer(question: str, context: list[Segment], history: list[ChatTurn], model: str) -> AnswerDraft
-                                                               answerer_openai.py → infra/openai
+                                                               answerer_openai.py → infra/openai. 프롬프트는 prompts/answer.md
 ```
 
 ### 4.7 infra — 공용 클라이언트
@@ -986,8 +1015,8 @@ openai.chat(client, model, messages) -> str
 
 **7. 화면 폴더 이름 — 결정: `screens/`.** Next.js가 `pages/`를 예약한다(1장). 역할은 기본형의 `pages/`와 같다.
 
-**8. 백그라운드 태스크는 프로세스 안 asyncio — 결정: `JobService`가 핸들을 들고, 삭제 때 취소한다.**
-[[VA-INFRA-001]] 3절(큐 없음). 서버가 죽으면 핸들이 사라지므로 시작 때 `running`인 행을 `failed`(kind `unknown`, reason '서버가 다시 시작됨')로 되돌려 다시 시도할 수 있게 한다 — `main.py`가 한다.
+**8. 백그라운드 태스크는 프로세스 안 asyncio, 대기열은 DB — 결정: 워커 하나가 `queued` 행을 차례로 돌리고, `JobService`가 도는 태스크의 핸들을 들고 삭제 때 취소한다.**
+[[VA-INFRA-001]] 3절(프로세스 안 대기열, 워커 하나). 대기열을 메모리 큐가 아니라 `analysis_jobs.status = queued` 행으로 둔 것은 서버가 다시 떠도 기다리던 작업이 남아 있어야 하기 때문이다 — 메모리에는 「깨우는 신호」(`asyncio.Event`)만 있다. 시작하는 길을 하나로 하려고 `start`도 늘 `queued`로 넣는다. 서버가 죽으면 핸들이 사라지므로 시작 때 `running`인 행을 `failed`(kind `unknown`, reason '서버가 다시 시작됨')로 되돌려 다시 시도할 수 있게 한다 — `main.py`가 한다.
 
 **9. Part의 끝 시각은 저장하지 않는다 — 결정: 읽을 때 다음 파트 시작으로 계산.** 챕터의 끝을 두지 않는 것과 같은 이유다([[VA-DOM-001#Chapter]]).
 
@@ -1027,15 +1056,17 @@ class VideoRow(Base):
 
 ## 7. 미결사항
 
-- [ ] 웹에서 받은 키의 저장 위치 — `.env` 쓰기 마운트 · DB · `data/settings.json`. DB면 도메인 모델부터 고치고 설정이 묶음이 된다(5장 1). [[VA-INFRA-001#C6]] 갱신 요청, [[VA-UI-001]] 8장 · [[VA-API-001]] 6장과 같은 항목
-- [ ] 유스케이스 갱신 요청 — [[VA-UC-001#UC-S4]] 2~3번과 1a2의 「챕터 먼저」를 「핵심 요약 → 챕터」로, 긴 영상의 요약 재료를 「구간별 중간 요약」으로(5장 10)
-- [ ] 도메인 모델 갱신 요청 — [[VA-DOM-001#Video]]에 작업 없는 영상(`registered`)과 실패 구분, 「분석완료시각」이 계산값이라는 것 · [[VA-DOM-001#AnalysisJob]]에 상태와 단계 분리(5장 4 · 5)
+- [x] 웹에서 받은 키의 저장 위치 — 결정: `.env` 파일 하나, `SettingsService`가 그 줄을 고친다(4.5). `data/settings.json`은 쓰지 않는다(사용자 결정 2026-09-21)
+- [x] (반영: 유스케이스 v2) 유스케이스 갱신 요청 — [[VA-UC-001#UC-S4]] 2~3번과 1a2의 「챕터 먼저」를 「핵심 요약 → 챕터」로, 긴 영상의 요약 재료를 「구간별 중간 요약」으로(5장 10)
+- [x] (반영: 도메인 모델 v3) 도메인 모델 갱신 요청 — [[VA-DOM-001#Video]]에 작업 없는 영상(`registered`)과 실패 구분, 「분석완료시각」이 계산값이라는 것 · [[VA-DOM-001#AnalysisJob]]에 상태와 단계 분리(5장 4 · 5)
 - [x] ERD·DD가 생기면 2장 각 항목에 테이블 참조를 더한다 — 반영. JSONB 속성 다섯은 [[VA-DOM-003]] 3장에서 확정
 - [ ] 텍스트 모델 비용 추정식(`JobService.estimate`) — MINISPEC. [[VA-API-001]] 6장과 같은 항목
-- [ ] 조각이 없는 단계의 남은 시간 — 지금 null. 사전 안내 예상 시간 − 지난 시간으로 할지 MINISPEC
+- [x] 조각이 없는 단계의 남은 시간 — 결정: 예상 전체 시간 − 지난 시간, 0 아래로 내려가지 않는다(4.2 `progress`)
 - [ ] `progress_pct`의 단계 가중치 — 받아쓰기가 대부분이라 조각 비율을 그대로 쓸지, 단계마다 고정 몫을 둘지 MINISPEC
 - [ ] inbox 길이 캐시 — 파일마다 ffprobe. 수정 시각 기준으로 메모리에 둘지 MINISPEC
 - [ ] 내보내기 파일 이름 규칙(`AnalysisService.filename_for`) — MINISPEC
-- [ ] 동시 분석 대기열 — 지금은 `another-job-running`으로 막는다. 사용자 결정([[VA-UI-001]] 8장)
+- [x] 동시 분석 대기열 — 결정: 대기열(`queued` · `queued_at` · `pipeline.worker` · `claim_next`). `another-job-running`은 없앴다(사용자 결정 2026-09-21, 5장 8)
+- [ ] **되먹임** `analysis_jobs.queued_at timestamptz`와 대기열용 인덱스 — [[VA-DOM-003#analysis_jobs]]에 아직 없다. ERD 다음 판에서 넣는다
+- [ ] 프롬프트 파일의 자리 표시 이름과 출력 형식(JSON 스키마) — MINISPEC(어댑터)
 - [ ] 관련 챕터 고르기(`ChatService.context_for`) — 챕터 제목 매칭 vs 간단 임베딩. 첫 버전은 제목 매칭([[VA-INFRA-001]] 9절)
 - [ ] `shared/`가 없다 — 시각 표기 함수를 화면 쪽 채팅 · 목록도 쓰게 되면 그때 옮긴다(프런트는 `components/TimeChip`이 따로 가진다)
