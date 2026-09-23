@@ -236,5 +236,26 @@ class SettingsService:
         self.last_check = check
         return self.get().key
 
+    async def require_key(self) -> None:
+        """VA-MS-005#SettingsService.require_key
+
+        마지막 확인 결과로 분석 시작 · 다시 시도 · 질문을 막는다. 마지막이 연결 실패였으면
+        그 자리에서 한 번만 다시 확인한다. 다른 실패는 다시 확인해도 같아 OpenAI에 보내지 않는다.
+
+        Raises:
+            KeyMissing: 저장된 키가 없다
+            KeyInvalid: 마지막 확인이 실패했다(reason_kind · reason · checked_at)
+        """
+        c = self.last_check
+        if c.state == KeyState.invalid and c.reason_kind == ReasonKind.network:
+            await self.check_stored_key()
+            c = self.last_check
+        if c.state == KeyState.missing:
+            raise KeyMissing()
+        if c.state == KeyState.invalid:
+            raise KeyInvalid(
+                reason_kind=c.reason_kind, reason=c.reason, checked_at=c.checked_at.isoformat()
+            )
+
 
 settings = SettingsService()

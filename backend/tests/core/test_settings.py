@@ -194,3 +194,50 @@ async def test_check_reads_hand_edited_file(svc, env_file, verify) -> None:
     _write(env_file, NEW)
     await svc.check_stored_key()
     assert verify.calls == [KEY, NEW]
+
+
+# require_key
+
+
+async def test_require_missing(svc, env_file, verify) -> None:
+    await svc.check_stored_key()
+    with pytest.raises(KeyMissing):
+        await svc.require_key()
+    assert verify.calls == []
+
+
+async def test_require_quota_does_not_recheck(svc, env_file, verify) -> None:
+    _write(env_file)
+    verify.fail = ReasonKind.quota
+    await svc.check_stored_key()
+    with pytest.raises(KeyInvalid) as e:
+        await svc.require_key()
+    assert e.value.extra["reason_kind"] == ReasonKind.quota
+    assert len(verify.calls) == 1  # 시작 때 한 번뿐
+
+
+async def test_require_ok(svc, env_file, verify) -> None:
+    _write(env_file)
+    await svc.check_stored_key()
+    await svc.require_key()
+    assert len(verify.calls) == 1
+
+
+async def test_require_rechecks_after_network(svc, env_file, verify) -> None:
+    _write(env_file)
+    verify.fail = ReasonKind.network
+    await svc.check_stored_key()
+    verify.fail = None
+    await svc.require_key()
+    assert svc.last_check.state == KeyState.ok
+    assert len(verify.calls) == 2
+
+
+async def test_require_network_twice(svc, env_file, verify) -> None:
+    _write(env_file)
+    verify.fail = ReasonKind.network
+    await svc.check_stored_key()
+    with pytest.raises(KeyInvalid) as e:
+        await svc.require_key()
+    assert e.value.extra["reason_kind"] == ReasonKind.network
+    assert len(verify.calls) == 2  # 되풀이하지 않는다
