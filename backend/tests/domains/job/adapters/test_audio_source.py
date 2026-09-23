@@ -1,4 +1,4 @@
-"""job/adapters/audio_source — 자막 → 줄 목록(VA-MS-006 audio_source.captions). infra는 가짜로."""
+"""job/adapters/audio_source — 자막 · 음성 확보(VA-MS-006 audio_source). infra는 가짜로."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from app.domains.job.adapters.audio_source import AudioSourceAdapter
-from app.infra import ytdlp
-from app.infra.errors import YtdlpError
+from app.infra import ffmpeg, ytdlp
+from app.infra.errors import FfmpegError, YtdlpError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -127,3 +127,49 @@ async def test_ytdlp_error_goes_up(monkeypatch) -> None:
     monkeypatch.setattr(ytdlp, "info", info)
     with pytest.raises(YtdlpError):
         await AudioSourceAdapter().captions("abcdefghijk")
+
+
+@pytest.fixture
+def fake_media(monkeypatch):
+    """ytdlp.download_audio · ffmpeg.extract_audio 자리 — 작은 파일을 실제로 쓴다. error를 넣으면 던진다."""
+    state: dict = {"calls": [], "download_error": None, "extract_error": None}
+
+    async def download_audio(video_id: str, dest: str) -> str:
+        state["calls"].append(("download", video_id, dest))
+        if state["download_error"]:
+            raise state["download_error"]
+        path = Path(dest) / "source.m4a"
+        path.write_bytes(b"m4a")
+        return str(path)
+
+    async def extract_audio(src: str, dest: str) -> str:
+        state["calls"].append(("extract", src, dest))
+        if state["extract_error"]:
+            raise state["extract_error"]
+        out = Path(dest) / "audio.mp3"
+        out.write_bytes(b"mp3")
+        return str(out)
+
+    monkeypatch.setattr(ytdlp, "download_audio", download_audio)
+    monkeypatch.setattr(ffmpeg, "extract_audio", extract_audio)
+    return state
+
+
+async def test_download_audio_leaves_only_mp3(fake_media, tmp_path: Path) -> None:
+    path = await AudioSourceAdapter().download_audio("abcdefghijk", str(tmp_path))
+    assert path == str(tmp_path / "audio.mp3")
+    assert [p.name for p in tmp_path.iterdir()] == ["audio.mp3"]  # 내려받은 원본이 남지 않는다
+    assert [c[0] for c in fake_media["calls"]] == ["download", "extract"]
+
+
+async def test_download_failure_goes_up(fake_media, tmp_path: Path) -> None:
+    fake_media["download_error"] = YtdlpError("Video unavailable", "unavailable")
+    with pytest.raises(YtdlpError):
+        await AudioSourceAdapter().download_audio("abcdefghijk", str(tmp_path))
+
+
+async def test_convert_failure_removes_download(fake_media, tmp_path: Path) -> None:
+    fake_media["extract_error"] = FfmpegError("Invalid data", 1)
+    with pytest.raises(FfmpegError):
+        await AudioSourceAdapter().download_audio("abcdefghijk", str(tmp_path))
+    assert list(tmp_path.iterdir()) == []
