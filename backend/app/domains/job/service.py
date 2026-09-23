@@ -35,8 +35,6 @@ from app.domains.job.schemas import Chunk, Chunks, Estimate, Job, JobError, JobS
 if TYPE_CHECKING:
     from app.domains.video.schemas import Video
 
-# 로컬 음성 파일 — 음성 추출 단계가 없다(UC-H2 2b)
-AUDIO_EXTS = {"mp3", "m4a", "wav"}
 # 받아쓰기가 있는 작업에서 받아쓰기 몫. 나머지 단계가 100에서 이것을 뺀 몫을 똑같이 나눈다(0장)
 TRANSCRIBE_WEIGHT = 70
 # 서버가 죽어 running인 채 남은 작업의 실패 이유
@@ -62,9 +60,9 @@ def _elapsed(since: datetime) -> float:
 
 
 def _is_audio(video: Video) -> bool:
-    # 로컬 음성 판정은 파일 이름(origin)의 확장자
+    # 로컬 음성 판정은 파일 이름(origin)의 확장자 — 음성 파일은 추출 단계가 없다(UC-H2 2b)
     suffix = PurePath(video.origin).suffix.lower().lstrip(".")
-    return video.source_kind == "local" and suffix in AUDIO_EXTS
+    return video.source_kind == "local" and suffix in config.AUDIO_EXTS
 
 
 class JobService:

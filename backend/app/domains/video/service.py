@@ -41,9 +41,6 @@ from app.domains.video.schemas import (
 )
 
 ACCEPTED_URLS = ["watch", "youtu.be", "shorts"]
-VIDEO_EXTS = {"mp4", "mkv", "mov", "webm"}
-AUDIO_EXTS = {"mp3", "m4a", "wav"}
-ACCEPTED = sorted(VIDEO_EXTS) + sorted(AUDIO_EXTS)
 _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 
 
@@ -65,12 +62,17 @@ def _youtube_id(url: str) -> str | None:
     return candidate if _VIDEO_ID.fullmatch(candidate) else None
 
 
+def accepted() -> list[str]:
+    """받는 확장자 — 영상 넷 · 음성 셋(MS-001 설정값 ACCEPTED)."""
+    return config.VIDEO_EXTS + config.AUDIO_EXTS
+
+
 def _check_inbox_name(name: str) -> None:
     # inbox 바로 아래 파일 이름만 — 하위 폴더 · 절대 경로 · 숨김 · ..는 막는다
     if "/" in name or "\\" in name or name.startswith(".") or ".." in name:
         raise PathOutsideInbox()
-    if Path(name).suffix.lower().lstrip(".") not in VIDEO_EXTS | AUDIO_EXTS:
-        raise UnsupportedFile(reason="받지 않는 형식이에요", accepted=ACCEPTED)
+    if Path(name).suffix.lower().lstrip(".") not in config.VIDEO_EXTS + config.AUDIO_EXTS:
+        raise UnsupportedFile(reason="받지 않는 형식이에요", accepted=accepted())
     if not (Path(config.INBOX_DIR) / name).is_file():
         raise NotFound(resource="inbox_file", id=name)
 
