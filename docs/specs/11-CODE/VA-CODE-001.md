@@ -20,7 +20,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 
 **커밋 규격** — `code(슬라이스): 함수명 — 요약`. 함수 하나 = 커밋 하나, docstring 첫 줄 = MINISPEC 항목 ID. PR = 슬라이스 하나. **커밋 메시지와 PR 본문에 에이전트 표시(`Co-Authored-By` · 세션 링크 · 「Generated with」)를 넣지 않는다** — 제목과 본문만 쓴다(싱크독 규약 STD-001 1.10, 사용자 결정 2026-09-22).
 
-**진행 상황**: 카드 7장 중 **A 완료**(2026-09-23, PR #1). **B1 진행 중**(2026-09-23 시작, `feat/card-b1`).
+**진행 상황**: 카드 7장 중 **A · B1 완료**(2026-09-23, PR #1 · #2). 다음은 B2 — 시작할 때 `main`을 `dev`에 머지해 명세를 맞추고 `feat/card-b2`를 만든다.
 
 ---
 
@@ -54,7 +54,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 | 테스트 | 구현 함수의 테스트 관점 전부 · 가짜 yt-dlp(고정 JSON · VTT) · 가짜 OpenAI(고정 JSON 응답) · **E2E S1**: 주소 넣기 → 사전 안내(약 1분 · 요약 비용) → 시작 → 폴링이 `done` → 결과(한 줄 요약 · 인사이트 · 챕터 · 스크립트 · 시각 이동) · 같은 주소 다시 → 이미 분석한 영상 · **E2E 대기열**([[VA-UC-001#UC-H0]] 3b): 첫 영상이 도는 동안 둘째를 시작 → 사전 안내에 대기 안내 → UI-3 대기 상태 · 목록 '대기 중 · 1번째' → 첫 영상이 끝나면 둘째가 저절로 진행 · 서버 재시작 → `running`이 `failed`로, `queued`는 이어서 돈다(Playwright가 띄운 api는 죽였다 살리기 어려워 이 갈래는 pytest가 실제 lifespan을 두 번 돌려 본다) |
 | 스텁 | [[VA-MS-002#pipeline.transcribe_stage]] · `pipeline.run`의 download(음성) · extract · transcribe 갈래 → `! not-implemented`(자막 없는 YouTube는 화면이 시작 불가 판 '아직 지원하지 않음'으로 막는다. B2 해제) · `JobService.remaining_sec`의 조각 갈래 → `! not-implemented`(받아쓰기 작업이 없어 닿지 않는다. B2) · `AnalysisService.generate_summary`의 구간 갈래 · `generate_chapters`의 파트 갈래 → `! not-implemented`(60분 넘는 자막 영상은 챕터 단계에서 실패로 멈춘다. B2 해제) · `VideoService.info_of`의 로컬 갈래 → `! not-implemented`(B2) · `POST /job/retry` → 501(B2) · `DELETE /videos/{id}` → 501(B4) · `GET /inbox` → `files: []`(B2) · `GET/POST /chat` → `[]` · 501(B3) · `GET/POST /export` → 501(B4) · `JobService.cancel` → 아무것도 안 함(B4) · `JobService.retry` → 501(B2) · [[VA-MS-002#pipeline.resume]] → `! not-implemented`(B2) — 워커가 부르지만, 다시 시도가 501이라 B1에서는 `stage`가 `pending`이 아닌 작업이 대기열에 들어오지 않는다 |
 | 선행 | A |
-| 완료 | — |
+| 완료 | 2026-09-23(KST) · 브랜치 `feat/card-b1` → `dev` squash `1de5520`(PR #2, 커밋 66개 — 함수 하나 = 커밋 하나, 단계마다 그 함수의 테스트가 통과한 채로, 코드 리뷰 반영 9개 포함) · 테스트: pytest 293(api 이미지 안 294 — 진짜 ffmpeg 포함) · E2E 11(카드 A 7 + S1 · 자막 없는 영상의 시작 불가 판 · 대기열 · 첫 요청이 끊겨도 다시 받기) · 서버 재시작은 pytest가 실제 lifespan을 두 번 돌려 본다 · `check_code` B1 39/39 · 스텁 넷(`transcribe_stage` · `resume` · `retry` · `cancel`)도 일치 · `check_ui` UI-2 26/26 · UI-1 22/35 · UI-3 14/27 · UI-4 20/48 — 모자란 것은 뒤 카드 몫과 도구 한계(목록 첫 항목에만 붙인 `data-el={i === 0 ? … : undefined}`를 못 읽음 · 레이아웃이 그리는 배너 번호), 싱크독 이슈로 넘김. 도구를 고친 시제품으로 UI-1 29/35 · UI-3 19/27 · UI-4 25/48 · 화면 확인: 사용자 지시로 에이전트가 docker + Playwright MCP로 S1 · 대기열 · 시작 불가 · 다시 넣기 · 주소로 바로 열기 · 서버 재시작 · 리뷰 뒤 UI-1 실패 행을, 진짜 yt-dlp로 공개 영상 하나를(PR #2 댓글) · 스텁 해제: 카드 A의 `fail_orphans` · 대기열 워커 · 도메인 라우터 넷. 새 스텁은 위 스텁 행 그대로 · 되먹임(모두 반영): [[VA-DOM-002]] v17~v19 · [[VA-DOM-003]] v5(영상 하나에 기다리는 · 도는 작업 하나, 마이그레이션 `0002`) · [[VA-UI-002]] v6~v8 · [[VA-SEQ-001]] v4 · [[VA-MS-001]] v2 · v3 · [[VA-MS-002]] v5~v7 · [[VA-MS-003]] v3 · [[VA-MS-006]] v4~v7 · [[VA-MS-007]] v5 · 이 문서 v5 · v6 · 코드 리뷰(`/code-review`) 10건 — 고친 것 다섯(같은 영상 동시 시작 · 자막 겹침을 글자로 떼던 것 · UI-1 '시작하기 전에 멈춤' · UI-3 · UI-4가 빈 화면으로 멈추던 것 · 짧은 알림의 요소 번호), 남긴 것: 파이프라인 안 yt-dlp 실패의 이유 한 줄([[VA-MS-006]] 3장 미결, B2) · `start`의 양보 뒤 다시 읽기(명세의 「보장은 아니다」) · `GET …/job`이 영상을 먼저 읽는 것(영상 없음과 작업 없음을 가른다) · 상수 두 벌(명세가 두 곳에 정한 규칙) |
 
 #### B2 로컬 파일 — 2시간 30분 워크숍 받아쓰기
 
@@ -63,7 +63,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 | 근거 | [[VA-SCN-001#S2]] · [[VA-SCN-001#S6]] 4번과 변형(인터넷 끊김) · [[VA-UC-001#UC-H2]] · [[VA-UC-001#UC-S2]] 확장 1a · 1b · 1c · [[VA-UC-001#UC-S3]] · [[VA-UC-001#UC-S4]] 1a · 2a · [[VA-UC-001#UC-S6]] 2번, 1a · [[VA-SEQ-001#SEQ-4]] · [[VA-SEQ-001#SEQ-6]] · [[VA-SEQ-001#SEQ-13]] · [[VA-INFRA-001#C2]] · [[VA-INFRA-001#C4]] |
 | 구현 함수 | **video** [[VA-MS-001#VideoService.list_inbox]] · `VideoService.info_of` 로컬 갈래(스텁 해제) · **job** [[VA-MS-002#JobService.retry]] · [[VA-MS-002#JobService.plan_chunks]] · [[VA-MS-002#JobService.mark_chunk]] · `JobService.remaining_sec` 조각 갈래 · [[VA-MS-002#pipeline.resume]] · [[VA-MS-002#pipeline.transcribe_stage]] · `pipeline.run`의 download(음성) · extract · transcribe 갈래 · **analysis** `AnalysisService.generate_chapters`의 파트 갈래 · `generate_summary`의 구간 처리 갈래 · **adapters** [[VA-MS-006#media_probe.probe]] · [[VA-MS-006#audio_source.download_audio]] · [[VA-MS-006#audio_source.extract_audio]] · [[VA-MS-006#audio_split.split]] · [[VA-MS-006#stt_openai.transcribe]] — 새 함수 11개 + 갈래 해제 5곳 |
 | API | [[VA-API-001#GET/api/inbox]] · [[VA-API-001#POST/api/videos/{id}/job/retry]] · `POST /api/videos`의 `local` 갈래 · `GET …/job`의 `chunks` |
-| 화면 | [[VA-UI-002#UI-1]] 「내 파일」 카드(inbox 목록 · 선택 · 빈 안내) · 실패 행 · [[VA-UI-002#UI-2]] 받아쓰기 필요 판(조각 수 · 동시 수 · 줄별 비용, YouTube 자막 없음 · 로컬 음성 변형 — B1의 '아직 지원하지 않음' 판을 바꾼다) · [[VA-UI-002#UI-3]] 받아쓰기 중(조각 격자 · 범례 · 남은 시간) · 실패 상태(실패 알림 · 다시 시도 · 목록으로) · 받아쓰기 아닌 단계 실패 · [[VA-UI-002#UI-4]] 파트 카드(펴고 접기) · `h:mm:ss` 표기 · 받아쓰기 메타 |
+| 화면 | [[VA-UI-002#UI-1]] 「내 파일」 카드(inbox 목록 · 선택 · 빈 안내) · 실패 행 · [[VA-UI-002#UI-2]] 받아쓰기 필요 판(조각 수 · 동시 수 · 줄별 비용, YouTube 자막 없음 · 로컬 음성 변형 — B1의 '아직 지원하지 않음' 판을 바꾼다) · [[VA-UI-002#UI-3]] 받아쓰기 중(조각 격자 · 범례 · 남은 시간) · 실패 상태(실패 알림 · 다시 시도 · 목록으로 — 알림의 이유 한 줄은 어댑터가 만든 한국어여야 한다. [[VA-MS-006]] 3장 미결 「파이프라인 안에서 난 yt-dlp 실패의 이유 한 줄」, B1 코드 리뷰) · 받아쓰기 아닌 단계 실패 · [[VA-UI-002#UI-4]] 파트 카드(펴고 접기) · `h:mm:ss` 표기 · 받아쓰기 메타 |
 | 테스트 | 구현 함수의 테스트 관점 전부 · 가짜 ffmpeg(고정 무음 목록 · 잘린 파일) · 가짜 STT(조각 하나를 세 번 실패시키는 갈래) · **E2E S2**: inbox 파일 고르기 → 받아쓰기 필요 판(15조각 · 3동시 · $0.9) → 받아쓰기 격자가 늘어남 → 파트로 묶인 챕터 · **E2E S6 4번**: 16번 조각 실패 → 실패 알림 → 다시 시도 → 1~15번은 다시 보내지 않고 이어감 · 다른 영상이 도는 동안 다시 시도 → 대기열 끝에서 기다렸다 이어감 · 받아쓰기 도중 서버 재시작 → `failed`, 다시 시도로 이어감 |
 | 스텁 | B1의 스텁 중 `transcribe_stage` · `run`의 세 갈래 · `remaining_sec` 조각 갈래 · `generate_summary` 구간 갈래 · `generate_chapters` 파트 갈래 · `info_of` 로컬 · `retry` · `resume` · `GET /inbox`를 해제. 나머지(`DELETE` · `chat` · `export` · `cancel`)는 그대로 |
 | 선행 | B1 |
@@ -160,12 +160,13 @@ E2E는 가짜 yt-dlp · ffmpeg · OpenAI로 돈다(C에서만 진짜). 테스트
 | 카드 | 날짜(KST) | PR | dev squash | 커밋 |
 |---|---|---|---|---|
 | A | 2026-09-23 | #1 (`feat/card-a` → `dev`) | `80941d3` | 63 |
+| B1 | 2026-09-23 | #2 (`feat/card-b1` → `dev`) | `1de5520` | 66 |
 
 ---
 
 ## 5. 미결사항
 
-- [x] `check_code.py` · `check_ui.py`는 싱크독 저장소의 도구다 — 결정(카드 A): 사본을 두지 않고 싱크독 것을 경로로 부른다(`AGENTS.md` 「검사」). 카드 A에서 찾은 도구 문제 둘(`check_code`가 `**values`를 못 읽음 · `check_tokens`가 VA의 3.3 형식에서 멈춤)은 싱크독 이슈로 넘겼다
+- [x] `check_code.py` · `check_ui.py`는 싱크독 저장소의 도구다 — 결정(카드 A): 사본을 두지 않고 싱크독 것을 경로로 부른다(`AGENTS.md` 「검사」). 카드 A에서 찾은 도구 문제 둘(`check_code`가 `**values`를 못 읽음 · `check_tokens`가 VA의 3.3 형식에서 멈춤)과 B1에서 찾은 하나(`check_ui`가 목록 첫 항목에만 붙인 식 `data-el`을 못 읽음 · 레이아웃이 그리는 배너 번호)는 싱크독 이슈로 넘겼다
 - [x] 개발 중 프롬프트 고치기 — 결정(카드 A): 개발은 호스트에서 돈다(`uv run uvicorn --reload` · `npm run dev`), DB만 compose(`docker-compose.dev.yml`, 5433). [[VA-MS-006#prompts.render]]가 부를 때마다 파일을 읽으므로 고치면 바로 쓰인다. 이미지에 구운 프롬프트는 다시 빌드한다
 - [x] 프런트 E2E 도구 — 결정(카드 A): Playwright(`frontend/e2e/`). 가짜 OpenAI · api · web을 스스로 띄우고 와이어프레임 요소 번호(`data-el`)로 누른다. 화면 확인(DEV-14 일곱째)은 사람 몫이지만 카드 A는 사용자 지시로 에이전트가 Playwright MCP로 했다
 - [ ] 진짜 영상으로 하는 C 카드의 품질 판단 기준 — 인사이트 시각 오차 허용(±10초?), 챕터 수 범위. 사용자가 세 영상을 보고 정한다
