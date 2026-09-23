@@ -211,3 +211,13 @@ class JobService:
         워커를 깨운다. start · retry(커밋 뒤)와 삭제 라우터(삭제 뒤)가 부른다.
         """
         cls.work_event.set()
+
+    @classmethod
+    async def wait_for_work(cls) -> None:
+        """VA-MS-002#JobService.wait_for_work
+
+        깨울 때까지, 길어야 `config.WORKER_IDLE_SEC`만큼 기다린다 — 신호를 놓쳐도 다시 본다.
+        신호를 지우는 것은 워커가 claim_next 전에 한다.
+        """
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(cls.work_event.wait(), timeout=config.WORKER_IDLE_SEC)

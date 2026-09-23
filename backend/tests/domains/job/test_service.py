@@ -179,3 +179,22 @@ async def test_queue_position(db, make) -> None:
     for status in (JobStatus.failed, JobStatus.done):
         v = await make.video()
         assert await svc.queue_position(await make.job(v.id, status)) is None
+
+
+# --- wake · wait_for_work
+
+
+async def test_wait_for_work_returns_on_wake(db) -> None:
+    JobService.work_event.clear()
+    waiting = asyncio.create_task(JobService.wait_for_work())
+    await asyncio.sleep(0)
+    JobService.wake()
+    await asyncio.wait_for(waiting, timeout=1)  # 곧바로 돌아온다
+
+
+async def test_wait_for_work_times_out_quietly(db, monkeypatch) -> None:
+    monkeypatch.setattr(config, "WORKER_IDLE_SEC", 0.05)
+    JobService.work_event.clear()
+    started = time.monotonic()
+    await JobService.wait_for_work()  # 신호가 없어도 돌아오고, 예외가 나가지 않는다
+    assert 0.04 <= time.monotonic() - started < 1
