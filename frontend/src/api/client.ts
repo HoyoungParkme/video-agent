@@ -84,26 +84,28 @@ export const api = {
 
 // 설정 한 벌을 화면들이 같이 본다 — layout의 배너와 화면이 같은 값을 쓰고, 키를 저장하면 배너가 바로 바뀐다
 let current: Settings | null = null;
+let version = 0; // 알릴 때마다 는다 — 늦게 온 옛 응답이 새 값을 덮지 않게
 let inflight: Promise<Settings> | null = null;
 const listeners = new Set<() => void>();
+const RETRY_MS = 2000;
 
 /** 새 설정을 알린다 — 저장 응답을 받은 화면이 부른다. */
 export function publishSettings(next: Settings): void {
+  version += 1;
   current = next;
   listeners.forEach((listener) => listener());
 }
 
 /** 설정을 다시 받는다. 동시에 여러 번 불러도 요청은 하나. */
 export function loadSettings(): Promise<Settings> {
-  inflight ??= api
-    .settings()
-    .then((s) => {
-      publishSettings(s);
-      return s;
-    })
-    .finally(() => {
-      inflight = null;
-    });
+  inflight ??= (async () => {
+    const started = version;
+    const fetched = await api.settings();
+    if (version === started) publishSettings(fetched);
+    return current ?? fetched;
+  })().finally(() => {
+    inflight = null;
+  });
   return inflight;
 }
 
@@ -112,7 +114,10 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** 지금 설정. 부르는 컴포넌트가 붙을 때 한 번 새로 받는다 — 받기 전에는 null. */
+/**
+ * 지금 설정. 부르는 컴포넌트가 붙을 때 새로 받는다 — 받기 전에는 null.
+ * 서버가 아직 뜨는 중이면(compose를 막 올렸을 때) 받을 때까지 2초마다 다시 부른다.
+ */
 export function useSettings(): Settings | null {
   const settings = useSyncExternalStore(
     subscribe,
@@ -120,9 +125,18 @@ export function useSettings(): Settings | null {
     () => null,
   );
   useEffect(() => {
-    loadSettings().catch(() => {
-      // 서버가 꺼져 있으면 배너 · 막힘을 판단하지 못한다 — 그대로 둔다
-    });
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = () => {
+      loadSettings().catch(() => {
+        if (alive) timer = setTimeout(attempt, RETRY_MS);
+      });
+    };
+    attempt();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
   }, []);
   return settings;
 }
