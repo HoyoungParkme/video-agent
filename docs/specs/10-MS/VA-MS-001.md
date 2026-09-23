@@ -116,7 +116,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **호출하는 것** `JobService.latest_by_videos` · `ChatService.count_by_videos` · [[#VideoService.to_dto]]
 
-**테스트 관점** 작업 없는 영상은 목록에 없다 · 영상 3개면 쿼리는 셋(videos · jobs · counts)이지 3×N이 아니다 · 순서는 작업 시작 최근 순이지 영상 생성 순이 아니다 · 실패한 영상도 목록에 있고 `status=failed`
+**테스트 관점** 작업 없는 영상은 목록에 없다 · 영상 3개든 6개든 쿼리 수가 같다 — 넷(영상 · 작업 · 조각 집계 · 대화 수. 작업 쪽 둘은 [[VA-MS-002#JobService.latest_by_videos]])이지 3×N이 아니다 · 순서는 작업 시작 최근 순이지 영상 생성 순이 아니다 · 실패한 영상도 목록에 있고 `status=failed`
 
 ---
 
