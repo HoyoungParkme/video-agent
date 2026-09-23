@@ -482,6 +482,7 @@ classDiagram
 | `ChapterDraft` | `parts: list[(title, start_sec)]` · `chapters: list[(part_seq, start_sec, title, bullets)]` | SummarizerPort.chapters → AnalysisService |
 | `AnswerDraft` | `answer` · `cited_secs` | AnswererPort.answer → ChatService |
 | `KeyCheck` | `state: KeyState` · `reason_kind: ReasonKind \| None` · `reason: str \| None` · `checked_at` | infra/openai.verify_key → SettingsService |
+| `ChosenModels` | `stt: ModelOption` · `text: ModelOption` — 지금 고른 모델의 id와 단가 | SettingsService.current_models → JobService.estimate · start · AnalysisService · ChatService. 응답의 `Models`(id 둘)는 `SettingsService.get`이 여기서 만든다 |
 | `Progress` | `stage: JobStage` · `progress_pct` · `chunks_done` | pipeline → JobService.mark_stage. 화면에 나가는 `Job`은 JobService.progress가 만든다 |
 
 타입은 여기 한 곳에만 정의한다. 엔티티는 2.1~2.4, 열거형은 2.5.
@@ -913,7 +914,7 @@ classDiagram
 **규칙이 사는 곳**
 - `ask`: 순서는 [[VA-API-001#POST/api/videos/{id}/chat]] 1~5번 — `video.status`가 `analyzed`가 아니면 `result-not-ready` → `require_key` → 빈 질문 `validation` → `context_for` → `AnswererPort.answer` → 저장. 실패하면 **저장하지 않는다**
 - `context_for`: `AnalysisService.segments_of` 전부 + 최근 턴 10개. 구간 텍스트가 토큰 상한(설정값)을 넘으면 `chapters_of`로 질문과 관련된 챕터를 고르고 그 시각 범위의 구간만 넣는다([[VA-UC-001#UC-H4]] 3b). 챕터를 고르는 방법은 MINISPEC
-- 근거 없는 답이면 `cited_secs = []`([[VA-UC-001#UC-H4]] 3a). `model`은 `SettingsService.current_models().text`
+- 근거 없는 답이면 `cited_secs = []`([[VA-UC-001#UC-H4]] 3a). `model`은 `SettingsService.current_models().text.id`
 - 결과를 읽기만 한다. 스크립트 · 챕터를 바꾸지 않는다([[VA-DOM-001]] 4장)
 
 ### 4.5 core — 설정
@@ -931,7 +932,7 @@ classDiagram
         +set_models(stt_model: str, text_model: str) Settings
         +check_stored_key() KeyStatus
         +require_key() None
-        +current_models() Models
+        +current_models() ChosenModels
         +api_key() str
         -read_env() dict
         -write_env(values: dict) None
