@@ -510,3 +510,10 @@ class JobService:
             NotImplementedYet: 아직 없다
         """
         raise NotImplementedYet("다시 시도는 아직 지원하지 않아요")
+
+    async def cancel(self, video_id: int) -> None:
+        """VA-MS-002#JobService.cancel
+
+        도는 태스크 취소. 스텁 — 아무것도 하지 않는다. 삭제(B4)가 채운다(VA-CODE-001 B1).
+        """
+        return None

@@ -494,3 +494,7 @@ async def test_claim_next_empty(db) -> None:
 async def test_retry_is_stub(db, make) -> None:
     with pytest.raises(NotImplementedYet):
         await JobService(db).retry(_video(await make.video()))
+
+
+async def test_cancel_is_noop(db) -> None:
+    assert await JobService(db).cancel(1) is None
