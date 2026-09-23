@@ -52,9 +52,10 @@ video-agent/                    저장소 = 프로젝트
 ├── docs/specs/                 명세 원본. 양쪽이 같이 본다
 ├── inbox/                      로컬 영상. 읽기 전용 마운트, 커밋하지 않는다 (INFRA C4)
 ├── data/                       tmp/{video_id}/ · export/. 커밋하지 않는다 (INFRA 6절)
-├── Dockerfile                  backend 이미지 — python + ffmpeg + yt-dlp (INFRA C8)
+├── Dockerfile                  backend 이미지 — python + ffmpeg + yt-dlp + deno(yt-dlp의 YouTube 풀이용) (INFRA C8)
 ├── Dockerfile.web              frontend 이미지. 같은 종류가 둘이라 뒤에 용도를 붙였다
 ├── docker-compose.yml          web · api · db 셋 (INFRA 8절)
+├── docker-compose.dev.yml      개발용 덧씌우기 — db를 127.0.0.1:5433에 연다(5432는 다른 PostgreSQL이 흔히 쓴다). 호스트에서 도는 api와 테스트가 붙는다 (INFRA 8절)
 ├── .env.example                필요한 환경 변수의 이름만. 값은 비운다. `.env`는 커밋하지 않는다 (INFRA C6)
 │                               compose가 `.env`를 api 컨테이너에 읽기·쓰기로 마운트한다 — 앱이 키·모델 줄을 고친다 (4.5)
 ├── .gitignore · .dockerignore
@@ -71,6 +72,7 @@ app/
 │                           서버가 죽어 running인 채 남은 작업을 failed로 되돌림(JobService.fail_orphans),
 │                           대기열 워커 하나를 띄움(pipeline.worker(load_video) — VideoService.get을 감싸 넘긴다) — 끌 때 취소한다.
 │                           어댑터에 넘길 client_for(부를 때마다 SettingsService.api_key로 openai.client)를 조립한다
+│                           Host가 localhost · 127.0.0.1 · api가 아닌 요청은 입구 앞에서 400(TrustedHost — INFRA 5절)
 ├── core/                   도메인에 속하지 않는 것
 │   ├── config.py           환경 변수 → Config (DB URL · inbox/data 경로 · .env 경로 · 조각 길이 · 동시 수 · 재시도 상한 · 모델 목록과 단가)
 │   │                       키와 고른 모델은 여기 없다 — 돌면서 바뀌므로 SettingsService가 .env 파일에서 읽는다
@@ -153,7 +155,8 @@ app/
 
 ```
 frontend/
-├── package.json · tsconfig.json · next.config.ts   화면만 설정하므로 여기
+├── package.json · tsconfig.json · next.config.ts   화면만 설정하므로 여기. next.config.ts가 `/api/*`를 api로 넘긴다 — 브라우저는 web 하나만 본다
+├── playwright.config.ts · e2e/   E2E. 와이어프레임 요소 번호(data-el)로 누르고, 가짜 OpenAI 서버(e2e/fake-openai.mjs)를 함께 띄운다
 ├── public/                    그대로 서빙 — favicon
 └── src/
     ├── app/                   Next.js App Router — 라우팅. 기본형의 main.tsx · App.tsx 몫
@@ -168,6 +171,7 @@ frontend/
     │                          Header · Dialog · TimeChip · KeyBanner · Toast · FailureAlert · EmptyBox · buttons
     ├── api/client.ts          서버 호출 한곳. 화면이 직접 fetch 하지 않는다. 형태는 [[VA-API-001]] 4장 스키마 그대로
     ├── assets/                글꼴 파일 — Hahmlet · IBM Plex Sans KR · IBM Plex Mono (next/font 로컬, 앱 밖으로 요청 없음)
+    ├── proxy.ts               요청이 라우트에 닿기 전에 — `/api/*`의 Host가 localhost · 127.0.0.1이 아니면 400(INFRA 5절, DNS 리바인딩). Next 16에서 middleware의 새 이름
     └── styles.css             [[VA-UI-001]] 3장 토큰의 전사. 값을 컴포넌트에 직접 쓰지 않는다
 ```
 
@@ -480,6 +484,7 @@ classDiagram
 | `ChapterDraft` | `parts: list[(title, start_sec)]` · `chapters: list[(part_seq, start_sec, title, bullets)]` | SummarizerPort.chapters → AnalysisService |
 | `AnswerDraft` | `answer` · `cited_secs` | AnswererPort.answer → ChatService |
 | `KeyCheck` | `state: KeyState` · `reason_kind: ReasonKind \| None` · `reason: str \| None` · `checked_at` | infra/openai.verify_key → SettingsService |
+| `ChosenModels` | `stt: ModelOption` · `text: ModelOption` — 지금 고른 모델의 id와 단가 | SettingsService.current_models → JobService.estimate · start · AnalysisService · ChatService. 응답의 `Models`(id 둘)는 `SettingsService.get`이 여기서 만든다 |
 | `Progress` | `stage: JobStage` · `progress_pct` · `chunks_done` | pipeline → JobService.mark_stage. 화면에 나가는 `Job`은 JobService.progress가 만든다 |
 
 타입은 여기 한 곳에만 정의한다. 엔티티는 2.1~2.4, 열거형은 2.5.
@@ -911,7 +916,7 @@ classDiagram
 **규칙이 사는 곳**
 - `ask`: 순서는 [[VA-API-001#POST/api/videos/{id}/chat]] 1~5번 — `video.status`가 `analyzed`가 아니면 `result-not-ready` → `require_key` → 빈 질문 `validation` → `context_for` → `AnswererPort.answer` → 저장. 실패하면 **저장하지 않는다**
 - `context_for`: `AnalysisService.segments_of` 전부 + 최근 턴 10개. 구간 텍스트가 토큰 상한(설정값)을 넘으면 `chapters_of`로 질문과 관련된 챕터를 고르고 그 시각 범위의 구간만 넣는다([[VA-UC-001#UC-H4]] 3b). 챕터를 고르는 방법은 MINISPEC
-- 근거 없는 답이면 `cited_secs = []`([[VA-UC-001#UC-H4]] 3a). `model`은 `SettingsService.current_models().text`
+- 근거 없는 답이면 `cited_secs = []`([[VA-UC-001#UC-H4]] 3a). `model`은 `SettingsService.current_models().text.id`
 - 결과를 읽기만 한다. 스크립트 · 챕터를 바꾸지 않는다([[VA-DOM-001]] 4장)
 
 ### 4.5 core — 설정
@@ -929,7 +934,7 @@ classDiagram
         +set_models(stt_model: str, text_model: str) Settings
         +check_stored_key() KeyStatus
         +require_key() None
-        +current_models() Models
+        +current_models() ChosenModels
         +api_key() str
         -read_env() dict
         -write_env(values: dict) None

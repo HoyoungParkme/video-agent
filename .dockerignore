@@ -1,0 +1,17 @@
+.git
+.env
+inbox
+data
+docs
+.claude
+.playwright-mcp
+**/__pycache__
+**/.venv
+**/.pytest_cache
+**/.ruff_cache
+**/node_modules
+**/.next
+frontend/test-results
+frontend/playwright-report
+frontend/.next-e2e
+frontend/e2e/.tmp

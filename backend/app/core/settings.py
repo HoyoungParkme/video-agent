@@ -1,0 +1,337 @@
+"""SettingsService — 키 상태와 모델 선택(VA-MS-005). `.env` 파일 하나를 읽고 쓰고, DB가 없다.
+
+라우터(settings_router.py)와 다른 묶음의 서비스가 이 모듈의 `settings` 하나를 쓴다.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import re
+import threading
+from datetime import UTC, datetime
+from pathlib import Path
+
+from pydantic import BaseModel
+
+from app.core.config import ModelOption, ModelOptions, config
+from app.core.errors import (
+    Internal,
+    KeyInvalid,
+    KeyMissing,
+    KeyRejected,
+    LlmUnavailable,
+    Validation,
+)
+from app.infra import openai
+from app.infra.openai import KeyCheck, KeyState, ReasonKind
+
+log = logging.getLogger(__name__)
+
+# 이 서비스가 읽고 쓰는 줄은 셋뿐이다. DB 비밀번호 같은 다른 줄은 건드리지 않는다
+NAMES = ("OPENAI_API_KEY", "STT_MODEL", "TEXT_MODEL")
+STORED_IN = ".env에 저장됨"
+
+
+class KeyStatus(BaseModel):
+    """키 상태 — 마지막 확인 결과와 가린 키(VA-API-001 4장)."""
+
+    state: KeyState
+    masked: str | None
+    stored_in: str | None
+    checked_at: datetime | None
+    reason_kind: ReasonKind | None
+    reason: str | None
+
+
+class Models(BaseModel):
+    """고른 모델의 id 둘(VA-API-001 4장). 받아쓰기는 자막으로 만든 결과면 None."""
+
+    stt: str | None
+    text: str
+
+
+class ChosenModels(BaseModel):
+    """지금 고른 모델의 id와 단가(VA-DOM-002 2.6)."""
+
+    stt: ModelOption
+    text: ModelOption
+
+
+class Settings(BaseModel):
+    """설정 전부(VA-API-001 4장)."""
+
+    key: KeyStatus
+    models: Models
+    model_options: ModelOptions
+    inbox_path: str
+
+
+def _parse(line: str) -> tuple[str, str] | None:
+    """`.env` 한 줄 → (이름, 값). 빈 줄 · 주석이면 None. compose와 셸이 읽는 대로 —
+    앞의 `export `를 떼고, 따옴표로 시작하면 짝 따옴표까지가 값, 아니면 ` #`부터는 주석이다.
+    """
+    s = line.strip()
+    if not s or s.startswith("#") or "=" not in s:
+        return None
+    s = s.removeprefix("export ").lstrip()
+    name, raw = s.split("=", 1)
+    raw = raw.strip()
+    if raw[:1] in ("'", '"'):
+        end = raw.find(raw[0], 1)
+        value = raw[1:end] if end != -1 else raw[1:]
+    else:
+        value = re.split(r"\s#", raw, maxsplit=1)[0].strip()
+    return name.strip(), value
+
+
+def _pick(options: list[ModelOption], wanted: str | None, default: str) -> ModelOption:
+    by_id = {o.id: o for o in options}
+    return by_id.get(wanted or "") or by_id[default]
+
+
+def _mask(key: str) -> str:
+    # 앞 3자 · 끝 4자만. 짧은 값(손으로 잘못 적은 것)은 끝을 보이지 않는다
+    return f"{key[:3]}…{key[-4:]}" if len(key) >= 12 else f"{key[:3]}…"
+
+
+class SettingsService:
+    """키 상태 · 모델 선택. `.env`의 세 줄만 읽고 쓰고, 마지막 키 확인 결과를 메모리에 둔다.
+
+    - read_env() · write_env(): `.env`의 세 줄을 읽고, 그 줄만 제자리에서 고친다
+    - current_models() · api_key(): 지금 모델과 단가 · 지금 키(어댑터의 클라이언트용)
+    - get(): 설정 전부. OpenAI에 아무것도 보내지 않는다
+    - set_key() · set_models(): 새 키를 확인하고 저장 · 모델 선택 저장
+    - check_stored_key() · require_key(): 저장된 키 확인 · 마지막 결과로 막기
+    """
+
+    def __init__(self) -> None:
+        # 서버 시작(main.py)이 곧바로 check_stored_key로 바꾼다
+        self.last_check = KeyCheck(KeyState.missing, None, None, datetime.now(UTC))
+        self._lock = threading.Lock()
+
+    def read_env(self) -> dict[str, str]:
+        """VA-MS-005#SettingsService.read_env
+
+        `.env`에서 세 값(키 · 받아쓰기 모델 · 텍스트 모델)만 읽는다. 같은 이름이 두 번이면 뒤의 것.
+        던지지 않는다 — 파일을 읽을 수 없으면 경고 로그를 남기고 빈 dict다.
+
+        Returns:
+            있는 것만 담긴 dict. 파일이 없거나 읽을 수 없으면 빈 dict
+        """
+        try:
+            data = Path(config.ENV_PATH).read_bytes()
+        except FileNotFoundError:
+            return {}
+        except OSError as e:  # 권한 · 디렉터리 등 — 서버 시작과 GET이 멈추면 안 된다
+            log.warning(".env를 읽지 못했다: %s", type(e).__name__)
+            return {}
+        # 세 줄은 ASCII라 주석이 다른 인코딩이어도 읽힌다
+        out: dict[str, str] = {}
+        for line in data.decode("utf-8", errors="replace").splitlines():
+            parsed = _parse(line)
+            if parsed and parsed[0] in NAMES:
+                out[parsed[0]] = parsed[1]
+        return out
+
+    def write_env(self, values: dict[str, str]) -> None:
+        """VA-MS-005#SettingsService.write_env
+
+        그 이름의 마지막 줄만 `이름=값`으로 바꾸고, 없으면 끝에 더한다.
+        다른 줄 · 주석 · 순서는 그대로다. 파일을 제자리에서 쓴다 —
+        바인드 마운트한 파일은 rename으로 바꿀 수 없다(EBUSY).
+
+        Args:
+            values: OPENAI_API_KEY · STT_MODEL · TEXT_MODEL 중에서만. 다른 이름이면 ValueError
+
+        Raises:
+            OSError: 파일을 쓰지 못했다(읽기 전용 마운트 등). 부르는 쪽이 internal로 접는다
+            UnicodeDecodeError: UTF-8이 아닌 파일 — 사용자의 주석을 깨뜨리지 않게 쓰지 않는다
+        """
+        unknown = set(values) - set(NAMES)
+        if unknown:
+            raise ValueError(f".env에 쓸 수 없는 이름: {sorted(unknown)}")
+        with self._lock:
+            path = Path(config.ENV_PATH)
+            exists = path.exists()
+            lines = path.read_text(encoding="utf-8").splitlines() if exists else []
+            for name, value in values.items():
+                found = [i for i, line in enumerate(lines) if (_parse(line) or ("",))[0] == name]
+                if found:
+                    lines[found[-1]] = f"{name}={value}"
+                else:
+                    lines.append(f"{name}={value}")
+            with open(path, "r+" if exists else "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+                f.truncate()
+                f.flush()
+                os.fsync(f.fileno())
+
+    def current_models(self) -> ChosenModels:
+        """VA-MS-005#SettingsService.current_models
+
+        지금 고른 두 모델과 단가. 파일에 없거나 목록에 없는 값이면 기본값.
+
+        Returns:
+            받아쓰기 · 텍스트 모델의 ModelOption 둘
+        """
+        return self._models(self.read_env())
+
+    def _models(self, env: dict[str, str]) -> ChosenModels:
+        return ChosenModels(
+            stt=_pick(config.MODEL_OPTIONS.stt, env.get("STT_MODEL"), config.DEFAULT_MODELS["stt"]),
+            text=_pick(
+                config.MODEL_OPTIONS.text, env.get("TEXT_MODEL"), config.DEFAULT_MODELS["text"]
+            ),
+        )
+
+    def api_key(self) -> str | None:
+        """VA-MS-005#SettingsService.api_key
+
+        지금 키. 부를 때마다 파일에서 읽는다 — 응답 · 로그에 쓰지 않는다.
+
+        Returns:
+            키 문자열. 없거나 비었으면 None
+        """
+        return self.read_env().get("OPENAI_API_KEY") or None
+
+    def get(self) -> Settings:
+        """VA-MS-005#SettingsService.get
+
+        설정 전부. 마지막 확인 결과를 돌려줄 뿐 다시 확인하지 않는다.
+        OpenAI에 아무것도 보내지 않는다.
+
+        Returns:
+            키 상태(가린 키) · 고른 모델 id 둘 · 고를 수 있는 모델과 단가 · inbox 경로
+        """
+        env = self.read_env()
+        key = env.get("OPENAI_API_KEY") or None
+        c = self.last_check
+        # 키가 사는 곳은 파일이다 — 앱이 도는 동안 손으로 지웠으면 옛 결과와 상관없이 키 없음
+        status = KeyStatus(
+            state=c.state if key else KeyState.missing,
+            masked=_mask(key) if key else None,
+            stored_in=STORED_IN if key else None,
+            checked_at=c.checked_at,
+            reason_kind=c.reason_kind if key else None,
+            reason=c.reason if key else None,
+        )
+        m = self._models(env)
+        return Settings(
+            key=status,
+            models=Models(stt=m.stt.id, text=m.text.id),
+            model_options=config.MODEL_OPTIONS,
+            inbox_path=config.INBOX_DISPLAY_PATH,
+        )
+
+    async def check_stored_key(self) -> KeyStatus:
+        """VA-MS-005#SettingsService.check_stored_key
+
+        저장된 키를 확인해 마지막 결과로 둔다. 던지지 않는다 — 서버 시작이 멈추면 안 된다.
+
+        Returns:
+            새 키 상태. 키가 없으면 missing이고 OpenAI를 부르지 않는다
+        """
+        key = self.read_env().get("OPENAI_API_KEY")
+        if not key:
+            self.last_check = KeyCheck(KeyState.missing, None, None, datetime.now(UTC))
+            return self.get().key
+        try:
+            check = await openai.verify_key(key)
+        except Exception as e:  # verify_key는 던지지 않지만, 무엇이 와도 연결 실패로 접는다
+            log.warning("키 확인이 예외로 끝났다: %s", type(e).__name__)
+            check = KeyCheck(
+                KeyState.invalid, ReasonKind.network, "연결하지 못했습니다", datetime.now(UTC)
+            )
+        self.last_check = check
+        return self.get().key
+
+    async def require_key(self) -> None:
+        """VA-MS-005#SettingsService.require_key
+
+        마지막 확인 결과로 분석 시작 · 다시 시도 · 질문을 막는다. 마지막이 연결 실패였으면
+        그 자리에서 한 번만 다시 확인한다. 다른 실패는 다시 확인해도 같아 OpenAI에 보내지 않는다.
+
+        Raises:
+            KeyMissing: 저장된 키가 없다
+            KeyInvalid: 마지막 확인이 실패했다(reason_kind · reason · checked_at)
+        """
+        if not self.api_key():  # 손으로 지운 키를 옛 확인 결과로 통과시키지 않는다
+            raise KeyMissing()
+        c = self.last_check
+        if c.state == KeyState.invalid and c.reason_kind == ReasonKind.network:
+            await self.check_stored_key()
+            c = self.last_check
+        if c.state == KeyState.missing:
+            raise KeyMissing()
+        if c.state == KeyState.invalid:
+            raise KeyInvalid(
+                reason_kind=c.reason_kind, reason=c.reason, checked_at=c.checked_at.isoformat()
+            )
+
+    async def set_key(self, key: str) -> Settings:
+        """VA-MS-005#SettingsService.set_key
+
+        새 키를 확인하고, 통과하면 `.env`에 저장한다. 실패하면 저장하지 않고 마지막 결과도 그대로.
+
+        Args:
+            key: 붙여 넣은 키
+
+        Returns:
+            갱신된 설정(key.state = ok)
+
+        Raises:
+            Validation: 빈 값 · 줄바꿈
+            KeyRejected: 형식 오류 · 인증 실패 · 잔액 없음
+            LlmUnavailable: OpenAI에 닿지 못함
+            Internal: 파일 쓰기 실패
+        """
+        k = key.strip()
+        if not k or "\n" in k or "\r" in k:
+            raise Validation(errors=[{"field": "key", "message": "키가 비었거나 줄바꿈이 있어요"}])
+        check = await openai.verify_key(k)
+        if check.state == KeyState.invalid:
+            if check.reason_kind == ReasonKind.network:
+                raise LlmUnavailable(reason=check.reason)
+            raise KeyRejected(reason_kind=check.reason_kind, reason=check.reason)
+        try:
+            self.write_env({"OPENAI_API_KEY": k})
+        except (OSError, UnicodeError) as e:
+            raise Internal("키를 .env에 쓰지 못했어요") from e
+        self.last_check = check
+        return self.get()
+
+    def set_models(self, stt_model: str, text_model: str) -> Settings:
+        """VA-MS-005#SettingsService.set_models
+
+        모델 선택을 `.env`에 저장한다. 다음 작업 · 질문부터 쓴다. 키 줄은 그대로.
+
+        Args:
+            stt_model: 받아쓰기 모델 id
+            text_model: 요약 · 챕터 · 질문 모델 id
+
+        Returns:
+            갱신된 설정
+
+        Raises:
+            Validation: 목록에 없는 id
+            Internal: 파일 쓰기 실패
+        """
+        errors = [
+            {"field": field, "message": "목록에 없는 모델이에요"}
+            for field, value, options in (
+                ("stt_model", stt_model, config.MODEL_OPTIONS.stt),
+                ("text_model", text_model, config.MODEL_OPTIONS.text),
+            )
+            if value not in {o.id for o in options}
+        ]
+        if errors:
+            raise Validation(errors=errors)
+        try:
+            self.write_env({"STT_MODEL": stt_model, "TEXT_MODEL": text_model})
+        except (OSError, UnicodeError) as e:
+            raise Internal("모델 선택을 .env에 쓰지 못했어요") from e
+        return self.get()
+
+
+settings = SettingsService()

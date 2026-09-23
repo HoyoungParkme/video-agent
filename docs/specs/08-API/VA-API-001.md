@@ -30,7 +30,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 - **화면은 계산하지 않는다.** 예상 시간·비용·조각 수·동시 수·남은 시간·진행률은 서버가 준 숫자를 그대로 보인다([[VA-UI-002#UI-2]]·[[VA-UI-002#UI-3]] 규칙). 문장을 조립하는 것은 화면이고, 서버는 코드값과 숫자, 그리고 실패 이유 한 줄(`reason`, 한국어)을 준다.
 - **키 없이도 읽기는 전부 된다.** OpenAI API 키가 없거나 확인에 실패해도 GET은 모두 동작한다. 막히는 것은 분석 시작·다시 시도·질문 셋뿐이고, 그때 `key-missing` 또는 `key-invalid`(503)가 난다([[VA-UI-002]] 1.4 키 없음 배너, [[VA-PRD-001#N3]]).
 - 키를 확인하는 때는 셋이다 — 서버가 시작할 때, [[#POST/api/videos]](분석 버튼)를 받을 때, [[#POST/api/settings/key]]를 받을 때. [[#GET/api/settings]]는 마지막 확인 결과를 돌려줄 뿐 다시 확인하지 않는다([[VA-UI-002#UI-5]] 규칙).
-- **마지막 확인이 연결 실패(`reason_kind = network`)였으면 막지 않고 그때 한 번 다시 확인한다.** 분석 시작·다시 시도·질문이 그렇다. 키가 틀린 것이 아니라 인터넷이 없었던 것이라, 화면은 버튼을 막지 않고 배너 문구만 가른다([[VA-UI-002]] 1.4). 다시 확인해 통과하면 요청이 그대로 이어지고, 또 닿지 못하면 503 `key-invalid`(`reason_kind = network`)다.
+- **마지막 확인이 연결 실패(`reason_kind = network`)였으면 막지 않고 그때 한 번 다시 확인한다.** 분석 시작·다시 시도·질문이 그렇다. 키가 틀린 것이 아니라 인터넷이 없었거나 OpenAI가 잠시 답하지 못한 것(5xx · 요청 한도)이라, 화면은 버튼을 막지 않고 배너 문구만 가른다([[VA-UI-002]] 1.4). 다시 확인해 통과하면 요청이 그대로 이어지고, 또 닿지 못하면 503 `key-invalid`(`reason_kind = network`)다.
 - **동시에 도는 분석은 하나이고 나머지는 대기열에서 차례를 기다린다**([[VA-PRD-001#R8]], [[VA-INFRA-001]] 3절). 시작 요청은 거절되지 않는다 — 도는 작업이 있으면 `status = queued`로 들어가고, 앞 작업이 끝나면(완료든 실패든) 서버가 가장 오래 기다린 것을 저절로 시작한다.
 - 진행 상태는 폴링이다. 화면이 1초마다 [[#GET/api/videos/{id}/job]]을 부른다([[VA-INFRA-001]] 3절). SSE·WebSocket은 없다.
 - 밖으로 나가는 것은 YouTube에 영상 ID, OpenAI에 음성 조각·스크립트 텍스트·질문과 앞선 대화·키 확인 요청뿐이다. 영상 파일·결과·키는 나가지 않는다([[VA-INFRA-001#C9]]).
@@ -71,7 +71,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 | `urn:va:job-exists` | 409 | 이 영상에 이미 작업이 있는데 새로 시작하려 함 | `job_id` · `job_status` | [[VA-UC-001#UC-S5]], [[VA-UI-002#UI-1]] |
 | `urn:va:job-not-failed` | 409 | 실패 상태가 아닌 작업을 다시 시도 | `job_status` | [[VA-UC-001#UC-S3]] 3a3 |
 | `urn:va:result-not-ready` | 409 | 결과가 아직 없다(작업 없음 · 진행 중 · 실패) | `video_status` | [[VA-UI-002#UI-4]] 규칙(UI-3으로 넘김) |
-| `urn:va:llm-unavailable` | 502 | OpenAI 호출 실패(질문 답변, 키 확인 중 네트워크). 사용량 초과도 여기 | `reason` | [[VA-UC-001#UC-H4]] 2a |
+| `urn:va:llm-unavailable` | 502 | OpenAI 호출 실패(질문 답변, 키 확인 중 네트워크 · OpenAI 일시 오류). 사용량 초과도 여기 | `reason` | [[VA-UC-001#UC-H4]] 2a |
 | `urn:va:export-failed` | 500 | `data/export/`에 파일을 쓰지 못함 | `path` · `reason` | [[VA-UC-001#UC-H7]], [[VA-UI-002#UI-7]] |
 | `urn:va:internal` | 500 | 예상 못 한 오류. `detail`은 고정 문구, 원인은 로그만 | — | — |
 
@@ -715,7 +715,7 @@ components:
     ReasonKind:
       type: string
       enum: [format, auth, quota, network]
-      description: 키 확인 실패 이유. network는 키가 틀린 것이 아니라 OpenAI에 닿지 못한 것 — 화면이 배너 문구를 가르고 버튼을 막지 않는다(VA-UI-002 1.4)
+      description: 키 확인 실패 이유. network는 키가 틀린 것이 아니라 OpenAI에 닿지 못했거나 OpenAI가 잠시 답하지 못한 것(시간 초과 · 5xx · 요청 한도) — 다시 확인하면 풀릴 수 있어 화면이 배너 문구를 가르고 버튼을 막지 않는다(VA-UI-002 1.4)
     ErrorKind:
       type: string
       enum: [network, openai, youtube, ffmpeg, disk, unknown]

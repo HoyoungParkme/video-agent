@@ -1,0 +1,64 @@
+# web · api · db 셋 (INFRA 8절). `docker compose up -d` 한 번으로 뜬다
+# 브라우저는 web(127.0.0.1:3000) 하나만 본다 — web이 /api/*를 api로 넘기므로 api · db는 호스트에 열지 않는다
+name: video-agent
+
+services:
+  db:
+    image: postgres:16.15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-va}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-va}
+      POSTGRES_DB: ${POSTGRES_DB:-va}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-va}:${POSTGRES_PASSWORD:-va}@db:5432/${POSTGRES_DB:-va}
+      # 마운트와 화면에 보일 경로를 한 값에서 — 둘이 어긋나지 않게(INFRA 8절)
+      INBOX_DISPLAY_PATH: ${INBOX_HOST_DIR:-./inbox}
+    volumes:
+      - ${INBOX_HOST_DIR:-./inbox}:/app/inbox:ro
+      - ./data:/app/data
+      # 키 · 모델 선택이 사는 파일 하나. 앱이 그 줄을 제자리에서 고친다(INFRA C6).
+      # 없으면 디렉터리를 만들지 말고 멈춘다 — `.env.example`을 복사해 두라는 뜻
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        bind:
+          create_host_path: false
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      # 뜨는 동안만 2초마다 보고, 그 뒤에는 30초 — 접근 로그가 /health로 덮이지 않게
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
