@@ -26,6 +26,7 @@ from app.domains.analysis.schemas import (
     Segment,
     SuggestedQuestion,
     Summary,
+    SummaryDraft,
     Transcript,
 )
 
@@ -41,6 +42,19 @@ BULLETS_MAX = 3
 def _tokens(segments: list[Segment]) -> int:
     # 첫 버전은 어림 — 글자 수 ÷ 2(MS-003 3장 미결). 상한에 여유가 있어 오차가 문제되지 않는다
     return sum(len(s.text) for s in segments) // 2
+
+
+def _windows(segments: list[Segment]) -> list[list[Segment]]:
+    # 스크립트를 TEXT_WINDOW_SEC 구간으로 — 구간은 시작 시각으로 가른다
+    out: dict[int, list[Segment]] = {}
+    for s in segments:
+        out.setdefault(int(s.start_sec // config.TEXT_WINDOW_SEC), []).append(s)
+    return [out[k] for k in sorted(out)]
+
+
+def _span(window: list[Segment]) -> int:
+    # 구간 길이(초) — 포트가 인사이트 상한 · 목표 챕터 수를 이것으로 정한다
+    return max(int(window[-1].end_sec - window[0].start_sec), 1)
 
 
 def _sample(segments: list[Segment], limit: int) -> list[Segment]:
@@ -173,8 +187,9 @@ class AnalysisService:
         """VA-MS-003#AnalysisService.generate_summary
 
         한 줄 요약과 인사이트를 만들어 갈아 끼운다. 인사이트는 앞 n개(1시간 넘으면 10, 아니면 8),
-        출처 시각은 스크립트 범위로 보정하고, 출처가 남지 않은 인사이트는 뺀다.
-        스크립트가 토큰 상한을 넘으면 구간별 중간 요약 — 스텁, B2(VA-CODE-001 B1).
+        출처 시각은 스크립트 범위로 보정하고, 출처가 남지 않은 인사이트는 뺀다. 스크립트가 토큰
+        상한을 넘으면 구간(TEXT_WINDOW_SEC)마다 중간 요약을 받고, 그 한 줄 요약(구간 시작 시각) ·
+        인사이트(첫 출처 시각)를 시각순 가짜 구간으로 모아 최종 요약을 받는다.
 
         Args:
             video: 영상(id · 길이)
@@ -188,8 +203,9 @@ class AnalysisService:
             INSIGHTS_MAX_LONG if video.duration_sec > config.PART_THRESHOLD_SEC else INSIGHTS_MAX
         )
         if _tokens(segments) > config.TEXT_TOKEN_LIMIT:
-            raise NotImplementedYet("아주 긴 스크립트의 요약은 아직 지원하지 않아요")
-        draft = await self.summarizer.summary(segments, video.duration_sec, model)
+            draft = await self._summary_by_windows(segments, video.duration_sec, model)
+        else:
+            draft = await self.summarizer.summary(segments, video.duration_sec, model)
         insights = []
         for text, secs in draft.insights[:n_max]:
             clamped = self.clamp_secs(secs, video.duration_sec, segments)
@@ -197,6 +213,22 @@ class AnalysisService:
                 insights.append((text, clamped))
         await crud.replace_summary(self.session, video.id, draft.one_liner, model, insights)
         await self.session.commit()
+
+    async def _summary_by_windows(
+        self, segments: list[Segment], duration_sec: int, model: str
+    ) -> SummaryDraft:
+        # 중간 요약들 → 시각 붙은 가짜 구간 → 최종 요약. 시각은 절대 시각으로 온다(어댑터 규칙)
+        notes: list[tuple[float, str]] = []
+        for window in _windows(segments):
+            part = await self.summarizer.summary(window, _span(window), model)
+            notes.append((window[0].start_sec, part.one_liner))
+            notes += [(secs[0], text) for text, secs in part.insights if secs]
+        notes.sort(key=lambda n: n[0])
+        fake = [
+            Segment(seq=i, start_sec=at, end_sec=at, text=text)
+            for i, (at, text) in enumerate(notes, 1)
+        ]
+        return await self.summarizer.summary(fake, duration_sec, model)
 
     async def generate_chapters(self, video: Video) -> None:
         """VA-MS-003#AnalysisService.generate_chapters

@@ -172,12 +172,31 @@ async def test_generate_summary_twice_one_set(db, make, summarizer, env_file) ->
     assert (await _count(db, SummaryRow), await _count(db, InsightRow)) == (1, 6)
 
 
-async def test_generate_summary_windowed_is_stub(db, make, summarizer, env_file) -> None:
+async def test_generate_summary_by_windows(db, make, summarizer, env_file) -> None:
     video = await _video(db, make, duration_sec=9000)
-    await make.transcript(video.id, ["가" * 1000] * 90)  # 글자 90,000 → 토큰 45,000 > 40,000
-    with pytest.raises(NotImplementedYet):
-        await AnalysisService(db, summarizer).generate_summary(video)
-    assert summarizer.calls == []
+    # 글자 90,000 → 토큰 45,000 > 40,000. 100초마다 한 줄 — 30분 구간 다섯
+    await make.transcript(video.id, ["가" * 1000] * 90, step=100)
+    summarizer.summary_draft = SummaryDraft(
+        one_liner="구간 요약", insights=[(f"인사이트 {i}", [i * 100.0]) for i in range(1, 4)]
+    )
+    await AnalysisService(db, summarizer).generate_summary(video)
+    calls = summarizer.calls
+    assert [name for name, _ in calls] == ["summary"] * 6  # 구간 5 + 최종 1
+    assert [len(segs) for _, segs in calls[:5]] == [18] * 5
+    final = calls[5][1]  # 가짜 구간 — 구간마다 한 줄 요약 하나 + 인사이트 셋
+    assert len(final) == 5 * 4
+    assert [s.start_sec for s in final] == sorted(s.start_sec for s in final)  # 시각순
+    summaries = [s.start_sec for s in final if s.text == "구간 요약"]
+    assert summaries == [0, 1800, 3600, 5400, 7200]  # 한 줄 요약은 구간 시작 시각에
+
+
+async def test_generate_summary_long_but_within_limit_is_one_call(
+    db, make, summarizer, env_file
+) -> None:
+    video = await _video(db, make, duration_sec=9000)  # 150분이라도 토큰이 상한 안이면 한 번
+    await make.transcript(video.id, ["짧은 문장"] * 90, step=100)
+    await AnalysisService(db, summarizer).generate_summary(video)
+    assert [name for name, _ in summarizer.calls] == ["summary"]
 
 
 # --- generate_chapters
