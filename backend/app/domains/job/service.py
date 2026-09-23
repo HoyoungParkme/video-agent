@@ -30,7 +30,15 @@ from app.domains.job.models import (
     JobStage,
     JobStatus,
 )
-from app.domains.job.schemas import Chunk, Chunks, Estimate, Job, JobError, JobSummary
+from app.domains.job.schemas import (
+    Chunk,
+    ChunkPlan,
+    Chunks,
+    Estimate,
+    Job,
+    JobError,
+    JobSummary,
+)
 
 if TYPE_CHECKING:
     from app.domains.video.schemas import Video
@@ -434,6 +442,20 @@ class JobService:
         if row.stage != JobStage.pending:
             took = round(_elapsed(row.stage_started_at))
             row.stage_durations_sec = {**row.stage_durations_sec, row.stage.value: took}
+
+    async def plan_chunks(self, job_id: int, plans: list[ChunkPlan]) -> None:
+        """VA-MS-002#JobService.plan_chunks
+
+        조각 행을 만든다 — 전부 waiting. 이미 있으면(다시 시도) 만들지 않는다.
+
+        Args:
+            job_id: 작업 id
+            plans: 자른 조각들(seq 순)
+        """
+        if await crud.has_chunks(self.session, job_id):
+            return
+        crud.add_chunks(self.session, job_id, plans)
+        await self.session.commit()
 
     async def finish(self, job_id: int) -> None:
         """VA-MS-002#JobService.finish

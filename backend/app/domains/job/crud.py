@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from app.domains.job.models import AnalysisJobRow, AudioChunkRow, ChunkState, JobStatus
+from app.domains.job.schemas import ChunkPlan
 
 Job = AnalysisJobRow
 
@@ -49,6 +50,30 @@ async def chunks(session: AsyncSession, job_id: int) -> list[AudioChunkRow]:
             .order_by(AudioChunkRow.seq)
             .options(defer(AudioChunkRow.result))
         )
+    )
+
+
+async def has_chunks(session: AsyncSession, job_id: int) -> bool:
+    """조각 행이 하나라도 있는지 — 이미 나눴으면 다시 만들지 않는다."""
+    found = await session.scalar(
+        select(AudioChunkRow.id).where(AudioChunkRow.job_id == job_id).limit(1)
+    )
+    return found is not None
+
+
+def add_chunks(session: AsyncSession, job_id: int, plans: list[ChunkPlan]) -> None:
+    """조각 행을 넣는다 — 전부 waiting, 보낸 횟수 0."""
+    session.add_all(
+        AudioChunkRow(
+            job_id=job_id,
+            seq=p.seq,
+            offset_sec=p.offset_sec,
+            duration_sec=p.duration_sec,
+            path=p.path,
+            state=ChunkState.waiting,
+            attempts=0,
+        )
+        for p in plans
     )
 
 

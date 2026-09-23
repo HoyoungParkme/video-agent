@@ -21,7 +21,7 @@ from app.domains.job.models import (
     JobStage,
     JobStatus,
 )
-from app.domains.job.schemas import JobError
+from app.domains.job.schemas import ChunkPlan, JobError
 from app.domains.job.service import JobService
 from app.domains.video.models import SourceKind
 from app.domains.video.schemas import Video
@@ -394,6 +394,21 @@ async def test_latest_by_videos_constant_queries(db, make, queries) -> None:
 async def test_latest_by_videos_empty(db, queries) -> None:
     assert await JobService(db).latest_by_videos([]) == {}
     assert queries == []
+
+
+# --- plan_chunks
+
+
+async def test_plan_chunks_makes_rows_once(db, make) -> None:
+    job = await make.job((await make.video()).id, JobStatus.running, stage="transcribe")
+    plans = [ChunkPlan(i, (i - 1) * 600.0, 600.0, f"/tmp/{i}.mp3") for i in range(1, 31)]
+    svc = JobService(db)
+    await svc.plan_chunks(job.id, plans)
+    await svc.plan_chunks(job.id, plans[:3])  # 다시 불러도 늘지 않는다(다시 시도)
+    rows = (await db.scalars(select(AudioChunkRow).order_by(AudioChunkRow.seq))).all()
+    assert [r.seq for r in rows] == list(range(1, 31))
+    assert {(r.state, r.attempts) for r in rows} == {(ChunkState.waiting, 0)}
+    assert (rows[1].offset_sec, rows[1].duration_sec, rows[1].path) == (600.0, 600.0, "/tmp/2.mp3")
 
 
 # --- mark_stage · finish · fail
