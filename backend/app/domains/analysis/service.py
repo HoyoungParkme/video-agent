@@ -168,3 +168,32 @@ class AnalysisService:
             raise ValueError("스크립트에 넣을 줄이 없어요")
         await crud.replace_transcript(self.session, video_id, source, language, model, clean)
         await self.session.commit()
+
+    async def generate_summary(self, video: Video) -> None:
+        """VA-MS-003#AnalysisService.generate_summary
+
+        한 줄 요약과 인사이트를 만들어 갈아 끼운다. 인사이트는 앞 n개(1시간 넘으면 10, 아니면 8),
+        출처 시각은 스크립트 범위로 보정하고, 출처가 남지 않은 인사이트는 뺀다.
+        스크립트가 토큰 상한을 넘으면 구간별 중간 요약 — 스텁, B2(VA-CODE-001 B1).
+
+        Args:
+            video: 영상(id · 길이)
+
+        Raises:
+            포트 예외는 그대로 — 파이프라인이 fail로 접는다
+        """
+        segments = await self.segments_of(video.id)
+        model = settings.current_models().text.id
+        n_max = (
+            INSIGHTS_MAX_LONG if video.duration_sec > config.PART_THRESHOLD_SEC else INSIGHTS_MAX
+        )
+        if _tokens(segments) > config.TEXT_TOKEN_LIMIT:
+            raise NotImplementedYet("아주 긴 스크립트의 요약은 아직 지원하지 않아요")
+        draft = await self.summarizer.summary(segments, video.duration_sec, model)
+        insights = []
+        for text, secs in draft.insights[:n_max]:
+            clamped = self.clamp_secs(secs, video.duration_sec, segments)
+            if clamped:
+                insights.append((text, clamped))
+        await crud.replace_summary(self.session, video.id, draft.one_liner, model, insights)
+        await self.session.commit()

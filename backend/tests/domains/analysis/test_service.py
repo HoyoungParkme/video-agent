@@ -117,3 +117,64 @@ async def test_save_transcript_empty(db, make, summarizer) -> None:
         await AnalysisService(db, summarizer).save_transcript(
             row.id, TranscriptSource.caption_auto, "ko", None, []
         )
+
+
+# --- generate_summary
+
+
+async def test_generate_summary_50_minutes(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=3000)
+    await make.transcript(video.id, [f"문장 {i}" for i in range(300)])
+    summarizer.summary_draft = SummaryDraft(
+        one_liner="한 줄",
+        insights=[(f"인사이트 {i}", [i * 100.0]) for i in range(1, 11)]  # 열 개 와도
+        + [("범위 밖", [99999.0]), ("출처 없음", [])],
+    )
+    await AnalysisService(db, summarizer).generate_summary(video)
+    assert [name for name, _ in summarizer.calls] == ["summary"]  # 포트 호출 1회
+    rows = list(await db.scalars(select(InsightRow).order_by(InsightRow.seq)))
+    assert len(rows) == 8  # 1시간 이하는 8개까지
+    s = await db.scalar(select(SummaryRow))
+    assert (s.one_liner, s.model) == ("한 줄", "gpt-5-mini")
+
+
+async def test_generate_summary_clamps_and_drops(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=3000)
+    await make.transcript(video.id, [f"문장 {i}" for i in range(300)])  # 0~2990초
+    summarizer.summary_draft = SummaryDraft(
+        one_liner="한 줄",
+        insights=[("범위 밖", [99999.0, 12.0]), ("출처 없음", []), ("정상", [760.0])],
+    )
+    await AnalysisService(db, summarizer).generate_summary(video)
+    rows = list(await db.scalars(select(InsightRow).order_by(InsightRow.seq)))
+    assert [(r.text, r.source_secs) for r in rows] == [
+        ("범위 밖", [12.0, 2990.0]),
+        ("정상", [760.0]),
+    ]
+
+
+async def test_generate_summary_long_video_allows_ten(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=9000)
+    await make.transcript(video.id, ["짧은 문장"] * 50, step=180)
+    summarizer.summary_draft = SummaryDraft(
+        one_liner="한 줄", insights=[(f"{i}", [i * 60.0]) for i in range(1, 13)]
+    )
+    await AnalysisService(db, summarizer).generate_summary(video)
+    assert await _count(db, InsightRow) == 10
+
+
+async def test_generate_summary_twice_one_set(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=3000)
+    await make.transcript(video.id, ["문장"] * 10)
+    svc = AnalysisService(db, summarizer)
+    await svc.generate_summary(video)
+    await svc.generate_summary(video)
+    assert (await _count(db, SummaryRow), await _count(db, InsightRow)) == (1, 6)
+
+
+async def test_generate_summary_windowed_is_stub(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=9000)
+    await make.transcript(video.id, ["가" * 1000] * 90)  # 글자 90,000 → 토큰 45,000 > 40,000
+    with pytest.raises(NotImplementedYet):
+        await AnalysisService(db, summarizer).generate_summary(video)
+    assert summarizer.calls == []
