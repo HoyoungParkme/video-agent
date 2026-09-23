@@ -3,6 +3,7 @@
  * 보이는 시간과 겹침은 아직 미결이다(VA-UI-002 2장) — 첫 값 4초, 새 알림이 앞의 것을 바꾼다.
  * 화면이 바뀌면서 알리는 경우(UI-1 → UI-4 '이미 분석한 영상입니다')는 새 화면에서 보인다 —
  * 연 쪽이 flash로 맡기고 새 화면이 takeFlash로 꺼낸다(주소를 바꾸지 않는다).
+ * 와이어프레임 요소 번호는 화면마다 달라 쓰는 화면이 el로 준다(UI-4는 11).
  */
 "use client";
 
@@ -26,9 +27,10 @@ interface Props {
   message: string;
   onDone: () => void;
   ms?: number;
+  el?: string;
 }
 
-export default function Toast({ message, onDone, ms = 4000 }: Props) {
+export default function Toast({ message, onDone, ms = 4000, el }: Props) {
   // onDone이 그릴 때마다 새 함수여도 시계를 다시 맞추지 않는다
   const done = useRef(onDone);
   useEffect(() => {
@@ -39,7 +41,7 @@ export default function Toast({ message, onDone, ms = 4000 }: Props) {
     return () => clearTimeout(timer);
   }, [message, ms]);
   return (
-    <div role="status" className="toast" data-el="11">
+    <div role="status" className="toast" data-el={el}>
       <svg
         className="icon toast-icon"
         width="18"

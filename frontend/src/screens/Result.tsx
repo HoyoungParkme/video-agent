@@ -293,7 +293,7 @@ export default function Result({ id }: { id: number }) {
         </div>
       </aside>
 
-      {notice && <Toast message={notice} onDone={() => setNotice(null)} />}
+      {notice && <Toast el="11" message={notice} onDone={() => setNotice(null)} />}
     </div>
   );
 }
