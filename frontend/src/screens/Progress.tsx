@@ -6,7 +6,8 @@
  * 1초마다 진행을 새로 받는다. 끝나면 UI-4로(방문 기록을 바꿔치기), 작업 · 영상이 없으면 UI-1로.
  * 서버에 잠깐 닿지 못하면 영상 정보도 진행도 1초 뒤 다시 받는다 — 빈 화면으로 멈추지 않게.
  * 대기 상태도 같은 화면이다. 화면은 계산하지 않는다 — 서버 값을 그대로 쓴다. 실패하면 폴링을 멈추고,
- * 다시 시도(5.4)가 받아 주면 실패 알림을 지우고 다시 폴링한다.
+ * 다시 시도(5.4)가 받아 주면 실패 알림을 지우고 다시 폴링한다. 받아 주지 않으면 까닭에 따라 —
+ * 이미 다른 창에서 다시 시도했으면 다시 받아 그리고, 그 밖은 5.2 아래에 한 줄로 알린다.
  */
 "use client";
 
@@ -158,6 +159,8 @@ export default function Progress({ id }: { id: number }) {
   const [video, setVideo] = useState<Video | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [retrying, setRetrying] = useState(false);
+  // 다시 시도가 받아들여지지 않은 까닭 한 줄 — 5.2 아래(UI-3 규칙)
+  const [retryError, setRetryError] = useState<string | null>(null);
   // 다시 시도가 받아 주면 늘린다 — 멈췄던 폴링을 다시 돌린다
   const [round, setRound] = useState(0);
 
@@ -297,12 +300,22 @@ export default function Progress({ id }: { id: number }) {
     }
     if (retrying) return;
     setRetrying(true);
+    setRetryError(null);
     try {
       setJob(await api.retry(id)); // 실패 알림이 사라지고 진행 · 대기 상태로
       setRound((n) => n + 1);
     } catch (e) {
       if (e instanceof ApiError && (e.kind === "key-missing" || e.kind === "key-invalid")) {
         void loadSettings(); // 누를 때 확인에 실패했으면 배너가 뜬다
+      } else if (e instanceof ApiError && e.kind === "job-not-failed") {
+        setRound((n) => n + 1); // 다른 창에서 이미 다시 시도했다 — 지금 상태를 다시 받는다
+      } else if (e instanceof ApiError && e.status === 404) {
+        router.replace("/"); // 영상이 지워졌다
+      } else {
+        // 우리 서버의 답(problem+json)이 아니면 — 끊김 · 웹이 api에 닿지 못함 — 연결 문구로
+        const ours = e instanceof ApiError && e.kind !== "unknown";
+        const why = ours ? e.reason.replace(/[.。]\s*$/, "") : "서버에 연결할 수 없음";
+        setRetryError(`다시 시도하지 못했어요 — ${why}`);
       }
     } finally {
       setRetrying(false);
@@ -428,6 +441,7 @@ export default function Progress({ id }: { id: number }) {
                 <span className="failure-body" data-el="5.2">
                   {body}
                 </span>
+                {retryError && <span className="failure-retry-error">{retryError}</span>}
               </span>
             </div>
             <div className="failure-actions">

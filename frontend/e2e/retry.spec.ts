@@ -63,6 +63,14 @@ test("8번 조각이 세 번 실패 → 실패 알림 → 다시 시도하면 8�
   const before = await fakeOpenAI(request);
   expect([...before.transcribed].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 9]);
 
+  // 다시 시도가 서버에 닿지 못하면 5.2 아래에 한 줄 — 알림은 그대로이고 5.4를 다시 누를 수 있다
+  await page.route("**/job/retry", (route) => route.abort(), { times: 1 });
+  await el(page, "5.4").click();
+  await expect(page.locator(".failure-retry-error")).toHaveText(
+    "다시 시도하지 못했어요 — 서버에 연결할 수 없음",
+  );
+  await expect(el(page, "5")).toBeVisible();
+
   // 다시 시도 — 실패 알림이 사라지고 8번 조각부터 끝까지 간다
   await el(page, "5.4").click();
   await expect(el(page, "5")).toHaveCount(0);
