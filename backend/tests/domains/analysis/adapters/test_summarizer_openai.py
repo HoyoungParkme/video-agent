@@ -212,3 +212,36 @@ async def test_chapters_none_left_is_failure(chat, adapter) -> None:
     chat.replies = [bad, bad]
     with pytest.raises(OpenAIOutputError):
         await summarizer.chapters(segs(3000), 3000, "m")
+
+
+# --- questions
+
+
+async def test_questions(chat, adapter) -> None:
+    summarizer, _ = adapter
+    chat.replies = [
+        js(
+            {
+                "questions": [
+                    " 누가 만들었나요? ",
+                    "왜 쉬운가요",
+                    "누가 만들었나요?",
+                    "",
+                    "어디에 쓰나요?",
+                    "네 번째?",
+                ]
+            }
+        )
+    ]
+    got = await summarizer.questions(segs(3000), "m")
+    assert got == ["누가 만들었나요?", "왜 쉬운가요?", "어디에 쓰나요?"]  # 물음표 · 중복 · 셋까지
+    system, user = chat.calls[0]
+    assert system["content"] == prompts.render("questions", question_count=3)
+    assert user["content"].startswith("<transcript>")
+
+
+async def test_questions_empty_is_failure(chat, adapter) -> None:
+    summarizer, _ = adapter
+    chat.replies = [js({"questions": []}), js({"questions": [" "]})]
+    with pytest.raises(OpenAIOutputError):
+        await summarizer.questions(segs(3000), "m")

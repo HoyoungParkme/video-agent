@@ -170,3 +170,35 @@ class SummarizerOpenAI:
             return ChapterDraft(parts=parts, chapters=chapters)
 
         return await self._ask(model, system, user, parse)
+
+    async def questions(self, segments: list[Segment], model: str) -> list[str]:
+        """VA-MS-006#summarizer_openai.questions
+
+        이 스크립트만으로 답할 수 있는 질문 `config.QUESTION_COUNT`개. 물음표로 끝나게 한다.
+
+        Args:
+            segments: 보낼 구간들
+            model: 텍스트 모델
+
+        Returns:
+            질문들 — 빈 문장과 중복을 뺀 앞 QUESTION_COUNT개
+
+        Raises:
+            OpenAIOutputError: 다시 불러도 형식이 틀렸다
+        """
+        user, _, _ = _script(segments)
+        system = prompts.render("questions", question_count=config.QUESTION_COUNT)
+
+        def parse(data: Any) -> list[str]:
+            out: list[str] = []
+            for q in _list(_obj(data)["questions"]):
+                q = _text(q)
+                if q and not q.endswith(("?", "？")):
+                    q += "?"
+                if q and q not in out:
+                    out.append(q)
+            if not out:
+                raise ValueError("질문이 없다")
+            return out[: config.QUESTION_COUNT]
+
+        return await self._ask(model, system, user, parse)
