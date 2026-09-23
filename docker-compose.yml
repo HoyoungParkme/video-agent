@@ -1,0 +1,54 @@
+# web · api · db 셋 (INFRA 8절). `docker compose up -d` 한 번으로 뜬다
+# 브라우저는 web(127.0.0.1:3000) 하나만 본다 — web이 /api/*를 api로 넘기므로 api · db는 호스트에 열지 않는다
+name: video-agent
+
+services:
+  db:
+    image: postgres:16.15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-va}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-va}
+      POSTGRES_DB: ${POSTGRES_DB:-va}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-va}:${POSTGRES_PASSWORD:-va}@db:5432/${POSTGRES_DB:-va}
+      INBOX_DISPLAY_PATH: ${PWD:-.}/inbox
+    volumes:
+      - ./inbox:/app/inbox:ro
+      - ./data:/app/data
+      # 키 · 모델 선택이 사는 파일 하나. 앱이 그 줄을 제자리에서 고친다(INFRA C6).
+      # 없으면 디렉터리를 만들지 말고 멈춘다 — `.env.example`을 복사해 두라는 뜻
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        bind:
+          create_host_path: false
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:

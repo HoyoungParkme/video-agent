@@ -1,0 +1,22 @@
+# frontend 이미지 — Next.js standalone 출력(DOM-002 1장). docker-compose.yml의 web
+FROM node:24.21-trixie-slim AS build
+WORKDIR /web
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+# next.config.ts의 rewrites가 빌드 때 이 주소를 굳힌다 — /api/*를 compose 안의 api로
+ENV API_URL=http://api:8000
+RUN npm run build
+
+FROM node:24.21-trixie-slim
+WORKDIR /web
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
+COPY --from=build /web/.next/standalone ./
+COPY --from=build /web/.next/static ./.next/static
+COPY --from=build /web/public ./public
+USER node
+CMD ["node", "server.js"]
