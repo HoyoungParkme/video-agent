@@ -56,13 +56,13 @@ OpenAI 모델 중 `verbose_json`으로 segment 시작·끝 시각을 주는 것�
 
 출처: [[VA-PRD-001#R2]], [[VA-UC-001#UC-S2]]
 
-YouTube는 공식 다운로드 API가 없다. `yt-dlp`가 사실상 표준이지만 YouTube 쪽 변경에 따라 깨질 수 있어 **주기적 업데이트**가 필요하다. 자막은 같은 도구로 가져온다.
+YouTube는 공식 다운로드 API가 없다. `yt-dlp`가 사실상 표준이지만 YouTube 쪽 변경에 따라 깨질 수 있어 **주기적 업데이트**가 필요하다. 자막은 같은 도구로 가져온다. YouTube의 재생 서명을 풀려면 yt-dlp가 JavaScript 실행기를 부른다 — 그래서 yt-dlp는 풀이 스크립트(yt-dlp-ejs)를 함께 까는 `yt-dlp[default]`로 설치하고, yt-dlp가 기본으로 찾는 실행기 **deno**를 API 이미지에 넣는다(2026-09-23 카드 A에서 확인).
 
 #### C8 설치는 명령 하나
 
 출처: [[VA-PRD-001#N4]]
 
-`docker compose up`으로 앱·프론트·DB가 뜬다. ffmpeg·yt-dlp는 API 이미지에 들어간다. 호스트에 필요한 건 Docker와 `.env`뿐.
+`docker compose up`으로 앱·프론트·DB가 뜬다. ffmpeg·yt-dlp·deno는 API 이미지에 들어간다. 호스트에 필요한 건 Docker와 `.env`뿐.
 
 #### C9 결과·기록은 내 PC에만
 
@@ -138,7 +138,9 @@ flowchart LR
 | SQLAlchemy · Alembic · asyncpg | 2.0.54 · 1.20.0 · 0.31.0 | |
 | pydantic · pydantic-settings | 2.13.5 · 2.15.0 | |
 | openai (Python SDK) | 3.19.0 | 3.0(2026-08-12)부터 HTTP 클라이언트가 HTTPX2. 채팅 완성 · 받아쓰기 호출은 그대로 |
-| yt-dlp | 2026.8.19 | 이미지 빌드 때 고정. YouTube 쪽 변경으로 깨지면 다시 빌드한다([[#C7]]) |
+| yt-dlp | 2026.8.19 (`yt-dlp[default]`, 풀이 스크립트 yt-dlp-ejs 0.8.0 포함) | 파이썬 의존성으로 잠근다. YouTube 쪽 변경으로 깨지면 올려서 다시 빌드한다([[#C7]]) |
+| deno | 2.9.7 | yt-dlp가 YouTube 서명을 풀 때 부르는 JavaScript 실행기. yt-dlp가 기본으로 찾는 것이라 따로 설정하지 않는다([[#C7]]) |
+| uv | 0.12.18 | 파이썬 의존성 설치와 잠금 파일(`uv.lock`) |
 | Node | 24 LTS | 26은 LTS가 아니다 |
 | Next.js · React | 16.3.6 · 19.3.0 | |
 | TypeScript | 5.9.3 | 7.0은 네이티브 컴파일러라 Next의 타입 검사와 맞는지 확인되지 않았다 |
@@ -188,7 +190,7 @@ web은 화면 명세(7단계) 산출물을 그대로 두고, API 호출 층만 �
 - 로컬 파일은 `inbox/`에 넣거나, compose에서 마운트 경로를 바꾼다
 - 로그는 표준 출력. 별도 모니터링 없음
 - 백업: `pgdata` 볼륨. 개인용이라 자동 백업은 두지 않는다
-- 개발 시 api는 `uv run uvicorn --reload`, web은 `npm run dev`로 컨테이너 밖에서 돌릴 수 있다. db만 compose로
+- 개발 시 api는 `uv run uvicorn --reload`, web은 `npm run dev`로 컨테이너 밖에서 돌릴 수 있다. db만 compose로. 이때 진짜 영상을 돌리려면 호스트에도 ffmpeg와 deno가 있어야 한다(yt-dlp는 파이썬 의존성이라 함께 깔린다)
 
 ## 9. 미결사항
 
