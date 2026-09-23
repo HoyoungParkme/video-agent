@@ -73,3 +73,37 @@ async def extract_audio(src: str, dest: str) -> str:
     out = os.path.join(dest, "audio.mp3")
     await _run(config.FFMPEG_BIN, "-y", "-v", "error", "-i", src, "-vn", *config.AUDIO_FORMAT, out)
     return out
+
+
+async def silences(path: str) -> list[float]:
+    """VA-MS-007#ffmpeg.silences
+
+    무음 구간을 찾아 각 구간의 가운데 시각을 돌려준다. 끝이 없는 마지막 구간은 버린다.
+
+    Args:
+        path: 음성 파일
+
+    Returns:
+        가운데 시각(초) 오름차순. 무음이 없으면 빈 목록
+    """
+    _, err = await _run(
+        config.FFMPEG_BIN,
+        "-v",
+        "info",
+        "-i",
+        path,
+        "-af",
+        f"silencedetect=noise={config.SILENCE_DB:g}dB:d={config.SILENCE_MIN_SEC:g}",
+        "-f",
+        "null",
+        "-",
+    )
+    mids: list[float] = []
+    start: float | None = None
+    for which, value in _SILENCE.findall(err):
+        if which == "start":
+            start = float(value)
+        elif start is not None:
+            mids.append((start + float(value)) / 2)
+            start = None
+    return sorted(mids)

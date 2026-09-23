@@ -55,3 +55,15 @@ async def test_extract_audio_args(fake, tmp_path: Path) -> None:
     assert "-vn" in args
     assert args[args.index("-vn") + 1 : -1] == config.AUDIO_FORMAT
     assert args[-1] == out
+
+
+async def test_silences_midpoints(fake) -> None:
+    fake.behave(stderr=SILENCE_LOG)
+    assert await ffmpeg.silences("audio.mp3") == [11.0, 21.5]  # 짝 없는 마지막 start는 버린다
+    [args] = fake.calls()
+    assert args[args.index("-af") + 1] == "silencedetect=noise=-35dB:d=0.5"
+
+
+async def test_silences_none(fake) -> None:
+    fake.behave(stderr="size=N/A time=00:00:30.00\n")
+    assert await ffmpeg.silences("audio.mp3") == []
