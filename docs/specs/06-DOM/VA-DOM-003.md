@@ -162,6 +162,7 @@ erDiagram
 - 목록 속성(`stages` · `stage_durations_sec` · `result` · `source_secs` · `bullets` · `cited_secs`)은 `jsonb`다. 단독으로 조회 · 조인하는 일이 없어 자식 테이블을 만들지 않는다(3장 정규화)
 - **`videos`에 `status` · `analyzed_at`이 없다.** 가장 최근 `analysis_jobs` 행에서 계산한다([[VA-DOM-002#Video]]). 상태가 두 곳에 있으면 어긋난다
 - **`running`인 작업은 프로세스 전체에 하나다.** 나머지는 `queued`로 기다린다. 앱은 `running`이 없을 때만 다음 작업을 꺼내고([[VA-DOM-002#JobService]] `claim_next`), DB도 부분 unique 인덱스로 막는다(3장)
+- **영상 하나에 기다리는 · 도는 작업은 하나다.** 앱이 작업이 있는지 먼저 보고([[VA-DOM-002#JobService]] `start`), 같은 영상에 [분석 시작]이 동시에 두 번 오면 DB가 부분 unique 인덱스로 둘째를 막는다(3장 · 4장 6)
 
 ---
 
@@ -338,6 +339,7 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 |---|---|---|
 | analysis_jobs | `(video_id, started_at desc)` | 영상의 최근 작업 · `JobService.latest` · `latest_by_videos`. 목록의 최근 순 정렬도 이 컬럼 |
 | analysis_jobs | `(status) where status = 'running'` **부분 unique** | 프로세스 전체에 `running` 하나. `claim_next`의 뒷받침 — 두 워커가 동시에 꺼내려 해도 하나만 성공한다. 서버가 두 번 떠도 둘이 동시에 돌 수 없다 |
+| analysis_jobs | `(video_id) where status in ('queued', 'running')` **부분 unique** | 영상 하나에 기다리는 · 도는 작업은 하나. `start`의 뒷받침 — 같은 영상에 [분석 시작]이 동시에 두 번 와도(탭 둘) 하나만 들어간다. 끝난 · 실패한 작업은 막지 않는다 |
 | analysis_jobs | `(queued_at) where status = 'queued'` 부분 | 대기열. `claim_next`(가장 이른 것 하나) · `queue_position`(자기보다 이른 것의 수). 대기 행은 많아야 몇 개라 부분 인덱스로 작게 둔다 |
 | audio_chunks | `(job_id, state)` | 조각 집계(done · in_flight · failed · waiting) · `next_seq` · 재개 때 `done`이 아닌 조각 |
 | segments | `(transcript_id, start_sec)` | 시각으로 구간 찾기(답변 맥락의 시각 범위, 시각 보정 `clamp_secs`). 순번 UK `(transcript_id, seq)`가 목록 조회를 맡는다 |
@@ -350,7 +352,7 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 
 비정규화(중복 저장)는 없다. `videos`의 상태 · 분석 완료 시각을 컬럼으로 두지 않은 것이 그 결정이다(1장 설계 규칙). `analysis_jobs.est_*`는 사전 안내 값의 사본처럼 보이지만 설정(단가 · 조각 길이)이 바뀌면 다시 계산되는 값이라 그때의 예상치를 남기는 이력이다.
 
-**마이그레이션** — Alembic 리비전 하나 = ERD 변경 하나. 첫 리비전 `0001_initial`이 11개 테이블과 위 인덱스 전부다. 열거형 값 추가는 마이그레이션 없이 앱 상수만 바꾼다. `downgrade`를 반드시 쓴다.
+**마이그레이션** — Alembic 리비전 하나 = ERD 변경 하나. 첫 리비전 `0001_initial`이 11개 테이블과 인덱스 전부였고, `0002_job_active_per_video`가 영상 하나에 기다리는 · 도는 작업 하나를 막는 부분 unique를 더한다(4장 6). 열거형 값 추가는 마이그레이션 없이 앱 상수만 바꾼다. `downgrade`를 반드시 쓴다.
 
 ---
 
@@ -365,6 +367,8 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 **4. 챕터가 다른 영상의 파트를 가리키는 것을 막는다 — 결정: 복합 FK.** `chapters.part_id → parts.id` 하나로는 파트가 같은 영상 것인지 보장하지 못한다. `(part_id, video_id) → parts(id, video_id)`로 걸면 DB가 막는다. 앱 버그를 데이터로 굳히지 않기 위해서다.
 
 **5. 삭제는 cascade 하나로 — 결정: 앱은 `videos` 행만 지운다.** 딸린 것 열 종류를 앱이 순서대로 지우면 빠뜨린다. FK cascade가 전부 지운다. 임시 파일(`data/tmp/{video_id}`)만 DB 밖이라 서비스가 따로 지운다([[VA-DOM-002#VideoService]] `delete`).
+
+**6. 같은 영상에 작업이 둘 생기지 않게 DB가 막는다 — 결정: `(video_id) where status in ('queued', 'running')` 부분 unique 인덱스.** `start`는 작업이 있는지 먼저 보지만, 보는 것과 넣는 것 사이에 같은 영상의 [분석 시작]이 하나 더 오면(탭 둘) 둘 다 들어간다 — 파이프라인이 두 번 돌아 비용이 두 배가 되고 뒤 것이 결과를 갈아 끼운다. 영상과 작업은 1:N(분석 시도)이라 `video_id` 전체에 unique를 걸지 않고 기다리거나 도는 작업만 막는다. 다시 시도는 같은 행을 쓰므로 걸리지 않는다. 카드 B1 코드 리뷰에서 찾았다(2026-09-23).
 
 ---
 
