@@ -87,6 +87,8 @@ function rowStatus(v: VideoSummary): { text: string; tone: string } {
           tone: "failed",
         };
       }
+      // 첫 단계에 들어가기 전 — 워커가 꺼낸 직후 서버가 죽었거나 임시 폴더를 만들지 못했다
+      if (job.stage === "pending") return { text: "시작하기 전에 멈춤", tone: "failed" };
       return { text: `${stageName(job.stage, v.has_captions)}에서 멈춤`, tone: "failed" };
   }
 }
