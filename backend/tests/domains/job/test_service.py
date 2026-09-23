@@ -110,9 +110,45 @@ def test_remaining_sec_without_chunks() -> None:
         assert JobService.remaining_sec(_row(status=status), []) is None
 
 
-def test_remaining_sec_chunks_is_stub() -> None:
-    with pytest.raises(NotImplementedYet):
-        JobService.remaining_sec(_row(stage=JobStage.transcribe, stages=STT_STAGES), [])
+def _transcribe_row(started_ago: float) -> AnalysisJobRow:
+    return _row(
+        stage=JobStage.transcribe,
+        stages=STT_STAGES,
+        est_seconds=600,
+        stage_durations_sec={"download": 30},
+        stage_started_at=datetime.now(UTC) - timedelta(seconds=started_ago),
+    )
+
+
+def _chunks(row: AnalysisJobRow, done_now: int, done_before: int, total: int) -> list:
+    # done_now개는 이번 실행에서, done_before개는 단계 시작 전(이전 실행)에 끝났다
+    now, before = row.stage_started_at + timedelta(seconds=1), T0
+    out = [_chunk(i, ChunkState.done) for i in range(1, done_now + done_before + 1)]
+    for i, c in enumerate(out):
+        c.done_at = now if i < done_now else before
+    return out + [_chunk(i, ChunkState.waiting) for i in range(len(out) + 1, total + 1)]
+
+
+def test_remaining_sec_transcribe_from_this_run_rate() -> None:
+    row = _transcribe_row(started_ago=240)  # 12개가 4분 — 초당 0.05개
+    got = JobService.remaining_sec(row, _chunks(row, done_now=12, done_before=0, total=30))
+    assert got in (360, 361)  # 남은 18개는 6분
+
+
+def test_remaining_sec_transcribe_before_first_chunk() -> None:
+    row = _transcribe_row(started_ago=20)
+    assert JobService.remaining_sec(row, _chunks(row, 0, 0, 30)) == 10 * 45  # 30 ÷ 동시 3 × 45초
+
+
+def test_remaining_sec_transcribe_after_retry_ignores_old_chunks() -> None:
+    # 다시 시도 — 이전 실행의 15개는 속도에 안 든다. 이번 실행에서 끝난 것이 없으면 예상치
+    row = _transcribe_row(started_ago=2)
+    assert JobService.remaining_sec(row, _chunks(row, 0, 15, 30)) == 5 * 45
+
+
+def test_remaining_sec_transcribe_while_splitting() -> None:
+    row = _transcribe_row(started_ago=100)  # 조각 행이 아직 없다 — 예상 전체 − 지난 시간
+    assert JobService.remaining_sec(row, []) in (469, 470)  # 600 − 30 − 100
 
 
 # --- to_job

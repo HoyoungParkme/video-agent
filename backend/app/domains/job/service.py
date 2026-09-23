@@ -125,8 +125,10 @@ class JobService:
     def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None:
         """VA-MS-002#JobService.remaining_sec
 
-        남은 시간. 조각이 없는 단계는 예상 전체 시간에서 지난 시간을 뺀다(0 아래로 가지 않는다).
-        받아쓰기 단계(조각 갈래)는 스텁 — B2(VA-CODE-001 B1).
+        남은 시간. 받아쓰기는 남은 조각 수 ÷ 이번 실행의 속도 — 이번 실행에서 끝난 조각(단계 시작
+        뒤에 끝난 것)만 센다. 다시 시도 뒤 이전 실행의 조각까지 세면 속도가 부푼다. 이번 실행에서
+        아직 끝난 조각이 없으면 조각당 예상 시간으로. 조각이 없는 단계(와 조각을 나누는 중)는
+        예상 전체 시간에서 지난 시간을 뺀다(0 아래로 가지 않는다).
 
         Args:
             row: 작업 행
@@ -137,8 +139,17 @@ class JobService:
         """
         if row.status != JobStatus.running:
             return None
-        if row.stage == JobStage.transcribe:
-            raise NotImplementedYet("받아쓰기의 남은 시간은 아직 지원하지 않아요")
+        if row.stage == JobStage.transcribe and chunks:
+            left = sum(1 for c in chunks if c.state != ChunkState.done)
+            now_done = sum(
+                1
+                for c in chunks
+                if c.state == ChunkState.done and c.done_at and c.done_at >= row.stage_started_at
+            )
+            if not now_done:
+                return math.ceil(left / row.concurrency) * config.CHUNK_EST_SEC
+            rate = now_done / max(_elapsed(row.stage_started_at), 1.0)  # 초당 조각
+            return math.ceil(left / rate)
         spent = sum(row.stage_durations_sec.values()) + _elapsed(row.stage_started_at)
         return max(round(row.est_seconds - spent), 0)
 
