@@ -754,7 +754,7 @@ classDiagram
 - `wake`: 그 신호를 켠다. 부르는 곳은 셋 — `start` · `retry`(커밋 뒤)와 삭제 라우터(`VideoService.delete` 뒤). `finish` · `fail` · `cancel`은 깨우지 않는다 — 워커가 도는 태스크를 직접 기다리므로 끝나면 스스로 다음으로 간다
 - `queue_position`: `queued`인 행 중 `queued_at`이 자기보다 이른 것의 수 + 1. `queued`가 아니면 None. 도는 작업이 하나 있고 자기가 대기열 맨 앞이면 1이고, 그때 화면의 '앞 영상 1개'와 '1번째'가 같은 수다([[VA-API-001]] 5장 8)
 - `cancel`: 태스크 핸들이 있으면 취소하고 기다린다. 행은 지우지 않는다(cascade가 지운다). 없으면(대기 중 · 실패 · 완료) 아무것도 안 한다 — 대기 중인 작업은 행이 지워지면 대기열에서 빠진 것이다. 워커는 깨우지 않는다 — 삭제 라우터가 행을 지운 뒤에 `wake`를 부른다
-- `progress` · `to_job`: `remaining_sec` = 받아쓰기 단계면 미완료 조각 수 × 이번 실행에서 끝난 조각의 조각당 평균(`done_at`이 단계 시작 뒤인 것만 — 다시 시도 뒤 이전 실행의 조각은 세지 않는다. 조각 행이 아직 없으면 다른 단계처럼), 다른 단계는 예상 전체 시간 − 지난 시간(0 아래로 내려가지 않는다), `running`이 아니면 null. `queue_position`은 위 규칙대로. `chunks.next_seq`는 `done`이 아닌 첫 조각. `Chunks`의 집계(done · in_flight · failed · waiting)는 조각 행에서 센다. `progress_pct`는 파이프라인이 단계 가중치로 갱신한 값을 그대로
+- `progress` · `to_job`: `remaining_sec` = 작업 전체가 끝날 때까지 — 받아쓰기 단계면 미완료 조각 수 × 이번 실행에서 끝난 조각의 조각당 평균(`done_at`이 단계 시작 뒤인 것만 — 다시 시도 뒤 이전 실행의 조각은 세지 않는다. 조각 행이 아직 없으면 앞 단계처럼)에 요약 세 단계의 예상 몫을 더하고, 요약 세 단계면 그 몫 − 세 단계에 쓴 시간, 그 앞 단계는 예상 전체 시간 − 지난 시간(끝난 단계의 오차는 뒤로 넘기지 않는다. 0 아래로 내려가지 않는다), `running`이 아니면 null. `queue_position`은 위 규칙대로. `chunks.next_seq`는 `done`이 아닌 첫 조각. `Chunks`의 집계(done · in_flight · failed · waiting)는 조각 행에서 센다. `progress_pct`는 파이프라인이 단계 가중치로 갱신한 값을 그대로
 - `mark_stage`: 끝난 단계의 걸린 시간을 적고(다시 시도로 같은 단계를 또 돌면 더한다) 새 단계의 시작 시각과 진행률(앞선 단계 가중치 합)을 적는다. 받아쓰기로 다시 들어가면 이미 끝난 조각 몫까지 넣는다 — 진행률이 뒤로 가지 않게
 - `mark_chunk`: `in_flight`로 바꿀 때 `attempts`를 1 올린다. `done`으로 바꿀 때 `done_at` · `result`를 저장하고 `progress_pct`를 완료 조각 비율로 갱신한다. `waiting`(재시도 대기) · `failed`는 상태만 바꾼다
 - `fail_orphans`: 시작 때 `running`인 작업을 `failed`(kind `unknown`, reason '서버가 다시 시작됨')로, `queued`는 그대로 둔다(워커가 뜨면 이어서 돈다). 되돌린 작업의 `in_flight` 조각을 `waiting`으로 돌린다. 핸들이 없는 작업은 돌지 않는데 화면에는 도는 것처럼 보이기 때문이다(5장 8)
@@ -1093,7 +1093,7 @@ class VideoRow(Base):
 - [x] (반영: 도메인 모델 v3) 도메인 모델 갱신 요청 — [[VA-DOM-001#Video]]에 작업 없는 영상(`registered`)과 실패 구분, 「분석완료시각」이 계산값이라는 것 · [[VA-DOM-001#AnalysisJob]]에 상태와 단계 분리(5장 4 · 5)
 - [x] ERD·DD가 생기면 2장 각 항목에 테이블 참조를 더한다 — 반영. JSONB 속성 다섯은 [[VA-DOM-003]] 3장에서 확정
 - [x] 텍스트 모델 비용 추정식(`JobService.estimate`) — 반영: MINISPEC 작업 서비스 `JobService.estimate` 5번(분당 토큰 추정 × 단가)
-- [x] 조각이 없는 단계의 남은 시간 — 결정: 예상 전체 시간 − 지난 시간, 0 아래로 내려가지 않는다(4.2 `progress`)
+- [x] 조각이 없는 단계의 남은 시간 — 결정: 예상 전체 시간 − 지난 시간, 0 아래로 내려가지 않는다(4.2 `progress`). 바꿈(사용자 결정, 2026-09-23): 작업 전체가 끝날 때까지, 끝난 단계의 오차는 넘기지 않는다(같은 줄, [[VA-UI-001]] 8장)
 - [x] `progress_pct`의 단계 가중치 — 반영: MINISPEC 작업 서비스 0장(받아쓰기가 있으면 70, 나머지 단계가 30을 나눈다)
 - [x] inbox 길이 캐시 — 첫 버전은 캐시 없이 동시 4개로 잰다(MINISPEC 영상 서비스 `VideoService.list_inbox`). 느리면 그 문서 3장에서 다시 정한다
 - [x] 내보내기 파일 이름 규칙 — 반영: MINISPEC 결과 서비스 `AnalysisService.filename_for`

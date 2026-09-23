@@ -368,11 +368,12 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **처리**
 - if `row.status != running` → `→ None`
-- elif `row.stage == transcribe`이고 조각 행이 있음 → `left = done이 아닌 조각 수` · `now_done = [c for c in chunks if c.state == done and c.done_at ≥ row.stage_started_at]` — **이번 실행에서 끝난 조각만**(다시 시도 뒤 이전 실행의 조각까지 세면 속도가 부푼다) · if `now_done` 비어 있음 → `→ ceil(left / row.concurrency) × config.CHUNK_EST_SEC` · else → `rate = len(now_done) / (now − row.stage_started_at)`(초당 조각) · `→ ceil(left / rate)`
-- elif `row.stage == transcribe`이고 조각 행이 없음(음성을 나누는 중) → 아래 조각 없는 단계와 같다
-- else → `→ max(row.est_seconds − Σ row.stage_durations_sec.values() − (now − row.stage_started_at), 0)` — 예상 전체에서 지난 시간을 뺀다. 0이 되면 화면이 '약 0초'가 아니라 값을 비운다([[VA-API-001#GET/api/videos/{id}/job]] — 0이면 화면이 비운다)
+- 남은 시간은 **작업 전체**가 끝날 때까지다. 끝난 단계가 예상보다 빨랐거나 늦었던 차이는 뒤 단계로 넘기지 않는다 — 넘기면 받아쓰기가 예상보다 빨리 끝났을 때 쓰지 않은 시간이 요약 단계로 넘어와 남은 시간이 거꾸로 는다(사용자 결정 2026-09-23, [[VA-UI-001]] 8장). `text = config.TEXT_EST_SEC` — 요약 세 단계(`summarize` · `chapter` · `suggest`)의 예상 몫([[#JobService.estimate]])
+- elif `row.stage == transcribe`이고 조각 행이 있음 → `left = done이 아닌 조각 수` · `now_done = [c for c in chunks if c.state == done and c.done_at ≥ row.stage_started_at]` — **이번 실행에서 끝난 조각만**(다시 시도 뒤 이전 실행의 조각까지 세면 속도가 부푼다) · if `now_done` 비어 있음 → `stt = ceil(left / row.concurrency) × config.CHUNK_EST_SEC` · else → `rate = len(now_done) / (now − row.stage_started_at)`(초당 조각) · `stt = ceil(left / rate)` · `→ stt + text`
+- elif `row.stage`가 요약 세 단계 중 하나 → `spent = Σ row.stage_durations_sec[세 단계] + (now − row.stage_started_at)` · `→ max(text − spent, 0)`
+- else(자막 가져오기 · 음성 내려받기 · 음성 추출 · 받아쓰기에 들어갔지만 조각 행이 없음 — 음성을 나누는 중) → `→ max(row.est_seconds − Σ row.stage_durations_sec.values() − (now − row.stage_started_at), 0)` — 앞 단계라 예상 전체에서 지난 시간을 뺀다. 0이 되면 화면이 '약 0초'가 아니라 값을 비운다([[VA-API-001#GET/api/videos/{id}/job]] — 0이면 화면이 비운다)
 
-**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 · 첫 조각 완료 전에는 예상치 기반 · 요약 단계에서 예상보다 오래 걸리면 0 · 다시 시도 뒤 이전 실행의 완료 조각은 속도에 안 든다 · 조각 행이 아직 없으면 예상 전체 − 지난 시간
+**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 + 요약 세 단계 몫 · 첫 조각 완료 전에는 예상치 기반 · 받아쓰기가 예상보다 빨리 끝나도 요약 단계는 세 단계 몫에서 시작한다(받아쓰기 때보다 늘지 않는다) · 챕터 단계에서는 요약에 쓴 시간만큼 줄어 있다 · 요약 세 단계가 예상보다 오래 걸리면 0 · 다시 시도 뒤 이전 실행의 완료 조각은 속도에 안 든다 · 조각 행이 아직 없으면 예상 전체 − 지난 시간
 
 ---
 

@@ -389,7 +389,7 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 | 전송 표시(6.1) | `stage` · `models.stt` · `models.text` · `concurrency` |
 | 떠나기 안내(6.2) | `stage` · `chunks.next_seq` |
 
-- `remaining_sec`는 받아쓰기 단계에서 미완료 조각 수 × 지금까지 조각당 평균이다([[VA-UC-001#UC-S6]] 2번). 조각이 없는 단계는 예상 전체 시간에서 지난 시간을 뺀 값이고 0보다 작아지지 않는다(MINISPEC 작업 서비스 `JobService.remaining_sec`). **0이면 화면은 남은 시간을 비운다** — '약 0초'를 보이지 않는다. 돌고 있지 않으면(`queued` · `failed` · `done`) null이다.
+- `remaining_sec`는 작업 전체가 끝날 때까지의 남은 예상 시간이다. 받아쓰기 단계는 미완료 조각 수 × 지금까지 조각당 평균([[VA-UC-001#UC-S6]] 2번)에 요약 세 단계(핵심 요약 · 챕터 · 추천 질문)의 예상 몫을 더한다. 요약 세 단계는 그 몫에서 세 단계에 쓴 시간을 뺀다. 그 앞 단계(자막 가져오기 · 음성 내려받기 · 음성 추출 · 음성을 나누는 중)는 예상 전체 시간에서 지난 시간을 뺀다. 끝난 단계가 예상보다 빨랐거나 늦었던 차이는 뒤 단계로 넘기지 않고, 0보다 작아지지 않는다(MINISPEC 작업 서비스 `JobService.remaining_sec`). **0이면 화면은 남은 시간을 비운다** — '약 0초'를 보이지 않는다. 돌고 있지 않으면(`queued` · `failed` · `done`) null이다.
 - `chunks`는 받아쓰기가 있는 작업에만 있고, 받아쓰기가 끝난 뒤에도 남는다(모두 `done`). `next_seq`는 완료하지 않은 첫 조각 번호이고 모두 끝나면 null이다.
 - `error`는 `status = failed`일 때만 있다. `attempts`는 자동 재시도를 포함해 그 조각(또는 단계)을 보낸 횟수다.
 
@@ -1352,7 +1352,7 @@ components:
 - [x] 분석이 도는 동안 새 분석 — 결정: 대기열(`status = queued`, `queue_position`). 409 `another-job-running`은 없앴다(5장 8, 사용자 결정 2026-09-21)
 - [x] 웹에서 받은 키의 저장 위치 — 결정: `.env` 파일 하나, 앱이 그 줄을 고친다. `KeyStatus.stored_in`은 '.env에 저장됨' 고정([[VA-INFRA-001#C6]], 사용자 결정 2026-09-21)
 - [ ] 예상 비용의 텍스트 모델 몫(`Estimate.text_cost_usd`) 추정식 — MINISPEC
-- [x] 조각이 없는 단계의 `Job.remaining_sec` 계산 — 결정: 예상 전체 시간 − 지난 시간, 0이면 화면이 비운다(MINISPEC 작업 서비스 `JobService.remaining_sec`)
+- [x] 조각이 없는 단계의 `Job.remaining_sec` 계산 — 결정: 예상 전체 시간 − 지난 시간, 0이면 화면이 비운다(MINISPEC 작업 서비스 `JobService.remaining_sec`). 바꿈(사용자 결정, 2026-09-23): 작업 전체가 끝날 때까지, 끝난 단계의 오차는 넘기지 않는다 — 받아쓰기에 요약 세 단계 몫을 더하고 요약 세 단계는 그 몫에서 뺀다([[VA-UI-001]] 8장)
 - [ ] inbox 파일 길이 재기 비용 — 파일마다 ffprobe. 수십 개면 첫 응답이 느릴 수 있어 수정 시각 기준 캐시를 둘지 MINISPEC
 - [ ] 내보내기 파일 이름 규칙(제목 → 파일 이름, 금지 문자, 같은 이름) — MINISPEC
 - [ ] 서버 재시작으로 죽은 작업 — 시작 때 `running`인 작업을 `failed`(kind `unknown`)로 돌려 다시 시도할 수 있게. 클래스 명세 · MINISPEC

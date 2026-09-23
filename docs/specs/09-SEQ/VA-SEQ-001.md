@@ -441,7 +441,7 @@ sequenceDiagram
 ```
 
 **읽을 때 볼 것**
-- 읽기만 한다. 파이프라인이 쓴 행을 `JobService`가 응답 형태로 만든다. `remaining_sec`은 받아쓰기 단계면 미완료 조각 수 × `done_at` 간격의 평균, 다른 단계면 예상 전체 시간 − 지난 시간이다. 0이면 화면이 남은 시간을 비우고, `running`이 아니면 null이다([[VA-API-001#GET/api/videos/{id}/job]])
+- 읽기만 한다. 파이프라인이 쓴 행을 `JobService`가 응답 형태로 만든다. `remaining_sec`은 작업 전체가 끝날 때까지다 — 받아쓰기 단계면 미완료 조각 수 × `done_at` 간격의 평균에 요약 세 단계 몫을 더하고, 요약 세 단계면 그 몫 − 세 단계에 쓴 시간, 그 앞 단계면 예상 전체 시간 − 지난 시간이다(끝난 단계의 오차는 넘기지 않는다). 0이면 화면이 남은 시간을 비우고, `running`이 아니면 null이다([[VA-API-001#GET/api/videos/{id}/job]])
 - 대기 중에도 같은 폴링이다. `queue_position`이 줄어들다가 `status`가 `running`으로 바뀌면 같은 화면이 진행 상태가 된다 — 화면을 새로 열지 않는다([[VA-UI-002#UI-3]] 규칙)
 - 화면은 계산하지 않는다. 표의 값을 그대로 쓴다([[VA-API-001#GET/api/videos/{id}/job]]의 요소 ↔ 필드 표)
 - 폴링이 `done`을 보면 UI-4로 넘긴다. 서버가 화면을 밀어 주는 길(SSE)은 없다([[VA-INFRA-001]] 3절)
