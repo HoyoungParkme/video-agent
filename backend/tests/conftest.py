@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import asyncpg
@@ -34,10 +36,13 @@ async def _ensure_database() -> None:
 
 asyncio.run(_ensure_database())
 
+# 여기부터는 접속 주소를 덮어쓴 뒤에 — 앱 모듈이 import 때 설정을 읽는다
+from alembic import command  # noqa: E402
 from alembic.config import Config as AlembicConfig  # noqa: E402
 
-from alembic import command  # noqa: E402 — 주소를 덮어쓴 뒤에
 from app.core.config import config  # noqa: E402
+from app.infra import openai  # noqa: E402
+from app.infra.openai import KeyCheck, KeyState, ReasonKind  # noqa: E402
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -73,3 +78,35 @@ def env_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     path = tmp_path / ".env"
     monkeypatch.setattr(config, "ENV_PATH", str(path))
     yield path
+
+
+REASONS = {
+    ReasonKind.format: "키 형식이 아닙니다",
+    ReasonKind.auth: "인증에 실패했습니다",
+    ReasonKind.quota: "잔액이 없습니다",
+    ReasonKind.network: "연결하지 못했습니다",
+}
+
+
+@dataclass
+class FakeVerify:
+    """openai.verify_key 자리. fail을 정하면 그 이유로 실패하고, error를 정하면 던진다."""
+
+    fail: ReasonKind | None = None
+    error: Exception | None = None
+    calls: list[str] = field(default_factory=list)
+
+    async def __call__(self, key: str) -> KeyCheck:
+        self.calls.append(key)
+        if self.error:
+            raise self.error
+        if self.fail:
+            return KeyCheck(KeyState.invalid, self.fail, REASONS[self.fail], datetime.now(UTC))
+        return KeyCheck(KeyState.ok, None, None, datetime.now(UTC))
+
+
+@pytest.fixture
+def verify(monkeypatch: pytest.MonkeyPatch) -> FakeVerify:
+    fake = FakeVerify()
+    monkeypatch.setattr(openai, "verify_key", fake)
+    return fake
