@@ -4,7 +4,8 @@
  * 6 챕터(6.1 · 6.2 · 6.3 카드). 오른쪽 7 패널 — 7.1 스크립트 탭 · 8 스크립트(8.1 출처 · 8.2 선택한 시각 · 8.3 구간).
  * 11 짧은 알림 — UI-1에서 이미 분석한 영상을 넣어 열렸을 때.
  * 시각을 누르는 곳(4.3 · 6.3 · 8.3)은 모두 같은 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤 ·
- * 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로.
+ * 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
+ * 서버에 잠깐 닿지 못하면 2초 뒤 다시 받는다.
  * B1이 채우지 않은 것: 내보내기(1.2) · 휴지통(1.3)은 B4, 파트(6.4 ~ 6.6)는 B2, 질문하기 탭(7.2 · 7.3 · 9 · 10)과
  * 추천 질문 전송은 B3 — 알약(5.1)은 보이되 누르면 아무 일도 없다.
  */
@@ -18,6 +19,9 @@ import { api, ApiError, type Result as ResultData } from "@/api/client";
 import TimeChip, { durationLabel, isLong, timeLabel } from "@/components/TimeChip";
 import Toast, { takeFlash } from "@/components/Toast";
 import { analyzedLabel, languageName } from "@/labels";
+
+// 결과를 받지 못했는데 서버에 잠깐 닿지 못한 것이면 다시 받는 간격(UI-4 규칙)
+const RETRY_MS = 2000;
 
 /** 스크립트 출처(8.1) — '자막(수동) · 한국어' · '자막(자동) · 한국어' · '받아쓰기 {모델} · {언어}'. */
 function sourceLabel(r: ResultData): string {
@@ -51,24 +55,33 @@ export default function Result({ id }: { id: number }) {
 
   useEffect(() => {
     let alive = true;
-    void (async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
       try {
         const got = await api.result(id);
         if (!alive) return;
         setResult(got);
         setNotice(takeFlash()); // UI-1에서 이미 분석한 영상을 넣어 열렸으면
       } catch (e) {
-        if (!alive || !(e instanceof ApiError)) return;
-        const status = e.body.video_status;
-        if (e.kind === "result-not-ready" && (status === "in_progress" || status === "failed")) {
-          router.replace(`/videos/${id}/progress`);
-        } else if (e.status === 404 || e.status === 409 || e.status === 422) {
-          router.replace("/");
+        if (!alive) return;
+        if (e instanceof ApiError) {
+          const status = e.body.video_status;
+          if (e.kind === "result-not-ready" && (status === "in_progress" || status === "failed")) {
+            router.replace(`/videos/${id}/progress`);
+            return;
+          }
+          if (e.status === 404 || e.status === 409 || e.status === 422) {
+            router.replace("/");
+            return;
+          }
         }
+        timer = setTimeout(load, RETRY_MS); // 연결 끊김 · 서버 오류 — 빈 화면으로 멈추지 않게
       }
-    })();
+    };
+    void load();
     return () => {
       alive = false;
+      clearTimeout(timer);
     };
   }, [id, router]);
 
