@@ -71,3 +71,49 @@ def test_clamp_secs() -> None:
     assert clamp([12.5, 700], 3000, segs) == [12.5, 700]  # 범위 안은 그대로
     assert clamp([30, 30, 5], 3000, segs) == [5, 30]  # 중복 없이 오름차순
     assert clamp([-1, 3001], 3000, []) == []  # 구간이 없으면 범위 밖은 뺀다
+
+
+# --- save_transcript
+
+
+async def test_save_transcript_replaces_and_sorts(db, make, summarizer, queries) -> None:
+    row = await make.video()
+    svc = AnalysisService(db, summarizer)
+    lines = [
+        CaptionLine(20, 25, "셋째"),
+        CaptionLine(0, 5, "첫째"),
+        CaptionLine(10, 8, "둘째"),
+        CaptionLine(30, 31, "  "),
+    ]
+    await svc.save_transcript(row.id, TranscriptSource.caption_manual, "ko", None, lines)
+    await svc.save_transcript(row.id, TranscriptSource.caption_manual, "ko", None, lines)  # 두 번
+    assert await _count(db, TranscriptRow) == 1  # 한 벌
+    segs = list(await db.scalars(select(SegmentRow).order_by(SegmentRow.seq)))
+    assert [(s.seq, s.text) for s in segs] == [
+        (1, "첫째"),
+        (2, "둘째"),
+        (3, "셋째"),
+    ]  # 시각순 · 빈 줄 없음
+    assert (segs[1].start_sec, segs[1].end_sec) == (10, 10)  # 끝이 시작보다 앞이면 시작으로
+    t = await db.scalar(select(TranscriptRow))
+    assert (t.source, t.language, t.model) == ("caption_manual", "ko", None)
+
+
+async def test_save_transcript_3000_lines_one_insert(db, make, summarizer, queries) -> None:
+    row = await make.video()
+    lines = [CaptionLine(i, i + 1, f"줄 {i}") for i in range(3000)]
+    queries.clear()
+    await AnalysisService(db, summarizer).save_transcript(
+        row.id, TranscriptSource.stt, "ko", "whisper-1", lines
+    )
+    inserts = [q for q in queries if q.startswith("INSERT INTO segments")]
+    assert len(inserts) == 1  # 3,000줄이 쿼리 하나로
+    assert await _count(db, SegmentRow) == 3000
+
+
+async def test_save_transcript_empty(db, make, summarizer) -> None:
+    row = await make.video()
+    with pytest.raises(ValueError):
+        await AnalysisService(db, summarizer).save_transcript(
+            row.id, TranscriptSource.caption_auto, "ko", None, []
+        )

@@ -136,3 +136,35 @@ class AnalysisService:
             elif segments:
                 out.add(min(segments, key=lambda s: abs(s.start_sec - sec)).start_sec)
         return sorted(out)
+
+    async def save_transcript(
+        self,
+        video_id: int,
+        source: TranscriptSource,
+        language: str,
+        model: str | None,
+        lines: list[CaptionLine],
+    ) -> None:
+        """VA-MS-003#AnalysisService.save_transcript
+
+        스크립트와 구간을 갈아 끼운다 — 한 트랜잭션. 줄은 시각순으로 정렬하고 빈 줄은 뺀다.
+
+        Args:
+            video_id: 영상 id
+            source: 수동 자막 · 자동 자막 · 받아쓰기
+            language: 언어 코드
+            model: 받아쓰기 모델(자막이면 None)
+            lines: 줄들 — 시각순이 아닐 수 있다(조각 병렬)
+
+        Raises:
+            ValueError: 남는 줄이 없다 — 파이프라인이 unknown으로 접는다
+        """
+        clean = [
+            CaptionLine(line.start_sec, max(line.end_sec, line.start_sec), line.text.strip())
+            for line in sorted(lines, key=lambda x: x.start_sec)
+            if line.text.strip()
+        ]
+        if not clean:
+            raise ValueError("스크립트에 넣을 줄이 없어요")
+        await crud.replace_transcript(self.session, video_id, source, language, model, clean)
+        await self.session.commit()
