@@ -185,7 +185,7 @@ async def test_run_cancelled_writes_nothing(db, make, ports) -> None:
 async def load_video(video_id: int):
     """main.py의 load_video와 같은 일 — 짧은 세션으로 VideoService.get."""
     async with SessionLocal() as s:
-        return (await VideoService(s, None).get(video_id)).video
+        return (await VideoService(s, None, None).get(video_id)).video
 
 
 def _worker(load=load_video) -> asyncio.Task:

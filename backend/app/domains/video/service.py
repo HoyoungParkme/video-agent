@@ -1,12 +1,15 @@
-"""VideoService — 영상 등록 · 목록 · 하나(VA-MS-001). 라우터와 main.py(load_video)가 부른다.
+"""VideoService — inbox 목록 · 영상 등록 · 목록 · 하나(VA-MS-001).
 
-세션은 부르는 쪽의 것이다. 작업 요약과 대화 수는 JobService · ChatService에 id로 묻는다 —
-같은 세션으로(VA-DOM-002 3.2).
+라우터와 main.py(load_video)가 부른다. 세션은 부르는 쪽의 것이다. 작업 요약과 대화 수는
+JobService · ChatService에 id로 묻는다 — 같은 세션으로(VA-DOM-002 3.2).
 """
 
 from __future__ import annotations
 
+import asyncio
+import os
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -15,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
 from app.core.errors import (
+    Internal,
     NotFound,
     NotImplementedYet,
     PathOutsideInbox,
@@ -29,8 +33,10 @@ from app.domains.job.schemas import JobSummary
 from app.domains.job.service import JobService
 from app.domains.video import crud
 from app.domains.video.models import VideoRow
-from app.domains.video.ports import YouTubeInfoPort
+from app.domains.video.ports import MediaProbePort, YouTubeInfoPort
 from app.domains.video.schemas import (
+    InboxFile,
+    InboxListing,
     RegisterRequest,
     SourceInfo,
     Video,
@@ -67,6 +73,15 @@ def accepted() -> list[str]:
     return config.VIDEO_EXTS + config.AUDIO_EXTS
 
 
+def _ext(name: str) -> str:
+    return Path(name).suffix.lower().lstrip(".")
+
+
+def _listed(entry: os.DirEntry[str]) -> bool:
+    # inbox 바로 아래의 받는 형식 파일만 — 하위 폴더 · 숨김 파일 · 다른 확장자는 안 보인다
+    return entry.is_file() and not entry.name.startswith(".") and _ext(entry.name) in accepted()
+
+
 def _check_inbox_name(name: str) -> None:
     # inbox 바로 아래 파일 이름만 — 하위 폴더 · 절대 경로 · 숨김 · ..는 막는다
     if "/" in name or "\\" in name or name.startswith(".") or ".." in name:
@@ -80,14 +95,18 @@ def _check_inbox_name(name: str) -> None:
 class VideoService:
     """영상 행과 그 응답 형태. 상태(status)를 계산하는 곳은 to_dto 하나다.
 
+    - list_inbox(): inbox 파일 목록(길이까지)
     - register(): 키 확인 → 형식 → 정보 → 길이 상한 → 중복 → 생성 또는 덮어쓰기
     - list() · get(): 작업이 있는 영상 목록(최근 순) · 영상 하나와 최근 작업
     - info_of() · to_dto(): 출처별 정보 조회 · 행 → Video
     """
 
-    def __init__(self, session: AsyncSession, youtube_info: YouTubeInfoPort) -> None:
+    def __init__(
+        self, session: AsyncSession, youtube_info: YouTubeInfoPort, media_probe: MediaProbePort
+    ) -> None:
         self.session = session
         self.youtube_info = youtube_info
+        self.media_probe = media_probe
         self.jobs = JobService(session)
         self.chats = ChatService(session)
 
@@ -130,6 +149,45 @@ class VideoService:
             created_at=row.created_at,
             chat_turn_count=chat_count,
         )
+
+    async def list_inbox(self) -> InboxListing:
+        """VA-MS-001#VideoService.list_inbox
+
+        inbox 폴더 바로 아래의 영상 · 음성 파일, 수정 시각 최근 순. 길이는 파일마다
+        `config.PROBE_CONCURRENCY`개씩 동시에 잰다 — 못 재면 None(그 파일을 고르면 등록이
+        unsupported-file을 낸다).
+
+        Returns:
+            사용자에게 보일 폴더 경로와 파일 목록. 빈 폴더면 files=[]
+
+        Raises:
+            Internal: inbox 폴더가 없거나 읽을 수 없다 — 마운트가 안 된 설치 오류(빈 폴더와 다르다)
+        """
+        try:
+            entries = [e for e in os.scandir(config.INBOX_DIR) if _listed(e)]
+        except OSError as e:
+            raise Internal("inbox 폴더를 읽을 수 없어요") from e
+        sem = asyncio.Semaphore(config.PROBE_CONCURRENCY)
+
+        async def one(entry: os.DirEntry[str]) -> InboxFile:
+            stat = entry.stat()
+            duration: int | None = None
+            async with sem:
+                try:
+                    duration = (await self.media_probe.probe(entry.path))[0]
+                except Exception:  # 깨진 파일도 목록에는 보인다
+                    duration = None
+            return InboxFile(
+                name=entry.name,
+                size_bytes=stat.st_size,
+                duration_sec=duration,
+                kind="audio" if _ext(entry.name) in config.AUDIO_EXTS else "video",
+                modified_at=datetime.fromtimestamp(stat.st_mtime, UTC),
+            )
+
+        files = list(await asyncio.gather(*(one(e) for e in entries)))
+        files.sort(key=lambda f: f.modified_at, reverse=True)
+        return InboxListing(path=config.INBOX_DISPLAY_PATH, files=files)
 
     async def info_of(self, req: RegisterRequest) -> SourceInfo:
         """VA-MS-001#VideoService.info_of

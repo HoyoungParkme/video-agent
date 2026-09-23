@@ -12,7 +12,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import config
 from app.core.db import get_session
 from app.core.errors import NotImplementedYet
 from app.domains.job.service import JobService
@@ -32,7 +31,7 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 def video_service(request: Request, session: Session) -> VideoService:
     """요청 세션과 main.py가 조립한 어댑터로(VA-DOM-002 6장 서비스 조립)."""
-    return VideoService(session, request.app.state.youtube_info)
+    return VideoService(session, request.app.state.youtube_info, request.app.state.media_probe)
 
 
 def job_service(session: Session) -> JobService:
@@ -44,9 +43,9 @@ Jobs = Annotated[JobService, Depends(job_service)]
 
 
 @router.get("/inbox")
-async def get_inbox() -> InboxListing:
-    """inbox 파일 목록 — 스텁, 빈 목록(B2가 VideoService.list_inbox로 채운다)."""
-    return InboxListing(path=config.INBOX_DISPLAY_PATH, files=[])
+async def get_inbox(videos: Videos) -> InboxListing:
+    """inbox 파일 목록 — 길이까지, 수정 시각 최근 순. 빈 폴더면 files=[]."""
+    return await videos.list_inbox()
 
 
 @router.get("/videos")

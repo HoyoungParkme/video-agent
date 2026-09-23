@@ -267,7 +267,7 @@ async def test_result_of(db, make, summarizer, youtube, env_file, queries) -> No
     await svc.generate_chapters(video)
     await svc.generate_questions(video)
     await make.job(video.id, JobStatus.done)
-    done = (await VideoService(db, youtube).get(video.id)).video
+    done = (await VideoService(db, youtube, None).get(video.id)).video
     queries.clear()
     result = await svc.result_of(done)
     assert len(queries) <= 6  # 쿼리 여섯을 넘지 않는다

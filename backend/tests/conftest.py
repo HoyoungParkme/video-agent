@@ -50,7 +50,7 @@ from alembic.config import Config as AlembicConfig  # noqa: E402
 
 from app.core.config import config  # noqa: E402
 from app.core.db import SessionLocal, engine  # noqa: E402
-from app.core.errors import SourceUnavailable  # noqa: E402
+from app.core.errors import SourceUnavailable, UnsupportedFile  # noqa: E402
 from app.core.settings import settings  # noqa: E402
 from app.domains.analysis.models import TranscriptSource  # noqa: E402
 from app.domains.analysis.schemas import (  # noqa: E402
@@ -314,6 +314,28 @@ def youtube() -> FakeYouTube:
     return FakeYouTube()
 
 
+@dataclass
+class FakeMediaProbe:
+    """MediaProbePort 자리. 파일 이름으로 정한 (길이, 음성 유무)를 주고, 없는 이름은 default.
+    default가 None이거나 이름의 값이 None이면 열 수 없는 파일(unsupported-file)."""
+
+    files: dict[str, tuple[int, bool] | None] = field(default_factory=dict)
+    default: tuple[int, bool] | None = (1800, True)
+    calls: list[str] = field(default_factory=list)
+
+    async def probe(self, path: str) -> tuple[int, bool]:
+        self.calls.append(path)
+        got = self.files.get(Path(path).name, self.default)
+        if got is None:
+            raise UnsupportedFile(reason="영상·음성 파일이 아닙니다", accepted=[])
+        return got
+
+
+@pytest.fixture
+def probe() -> FakeMediaProbe:
+    return FakeMediaProbe()
+
+
 @pytest.fixture
 def unavailable() -> SourceUnavailable:
     return SourceUnavailable(reason="비공개 영상이에요", hint=None)
@@ -398,11 +420,12 @@ def audio_source() -> FakeAudioSource:
 
 
 @pytest.fixture
-async def api(db, youtube, summarizer, monkeypatch) -> AsyncIterator[httpx.AsyncClient]:
+async def api(db, youtube, probe, summarizer, monkeypatch) -> AsyncIterator[httpx.AsyncClient]:
     """앱에 바로 붙는 클라이언트 — 시작 이벤트(워커) 없이, 어댑터는 가짜로."""
     from app.main import app
 
     monkeypatch.setattr(app.state, "youtube_info", youtube)
+    monkeypatch.setattr(app.state, "media_probe", probe)
     monkeypatch.setattr(app.state, "summarizer", summarizer)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:

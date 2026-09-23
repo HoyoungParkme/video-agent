@@ -29,6 +29,7 @@ from app.domains.job import router as job_router
 from app.domains.job.adapters.audio_source import AudioSourceAdapter
 from app.domains.job.service import JobService
 from app.domains.video import router as video_router
+from app.domains.video.adapters.media_probe import MediaProbeAdapter
 from app.domains.video.adapters.youtube_info import YouTubeInfoAdapter
 from app.domains.video.schemas import Video
 from app.domains.video.service import VideoService
@@ -53,7 +54,9 @@ async def load_video(video_id: int) -> Video | None:
     """워커에게 넘기는 영상 읽기 — 짧은 세션으로 VideoService.get. 없으면 None."""
     async with SessionLocal() as session:
         try:
-            detail = await VideoService(session, app.state.youtube_info).get(video_id)
+            detail = await VideoService(session, app.state.youtube_info, app.state.media_probe).get(
+                video_id
+            )
         except NotFound:
             return None
     return detail.video
@@ -86,6 +89,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.ALLOWED_HOSTS)
 errors.install(app)
 
 app.state.youtube_info = YouTubeInfoAdapter()
+app.state.media_probe = MediaProbeAdapter()
 app.state.summarizer = SummarizerOpenAI(client_for)
 pipeline.audio_source = AudioSourceAdapter()
 pipeline.summarizer = app.state.summarizer

@@ -1,9 +1,10 @@
-"""video/service — 등록 · 목록 · 하나 · 정보 조회 · 상태 계산(VA-MS-001). B1 몫(로컬 정보 조회는 B2)."""
+"""video/service — inbox 목록 · 등록 · 목록 · 하나 · 정보 조회 · 상태 계산(VA-MS-001)."""
 
 from __future__ import annotations
 
 import ast
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from sqlalchemy import func, select
 from app.core.config import config
 from app.core.db import SessionLocal
 from app.core.errors import (
+    Internal,
     KeyMissing,
     NotFound,
     NotImplementedYet,
@@ -39,6 +41,71 @@ def yt(url: str = WATCH) -> YouTubeSource:
 
 async def _count(db) -> int:
     return await db.scalar(select(func.count()).select_from(VideoRow))
+
+
+# --- list_inbox
+
+
+def _touch(folder: Path, name: str, at: datetime, size: int = 3) -> None:
+    path = folder / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x" * size)
+    os.utime(path, (at.timestamp(), at.timestamp()))
+
+
+async def test_list_inbox_filters_and_orders(db, youtube, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "INBOX_DISPLAY_PATH", "~/video-agent/inbox")
+    _touch(tmp_path, "old.mp4", T0, size=10)
+    _touch(tmp_path, "talk.M4A", T0 + timedelta(minutes=1))  # 대문자 확장자도 받는다
+    _touch(tmp_path, "new.MP4", T0 + timedelta(minutes=2))
+    _touch(tmp_path, "broken.mkv", T0 + timedelta(seconds=30))
+    _touch(tmp_path, "notes.txt", T0 + timedelta(minutes=3))  # 받지 않는 형식
+    _touch(tmp_path, ".DS_Store", T0 + timedelta(minutes=4))  # 숨김
+    _touch(tmp_path, "sub/inner.mp4", T0 + timedelta(minutes=5))  # 하위 폴더
+    probe.files = {"broken.mkv": None, "talk.M4A": (600, True)}
+    listing = await VideoService(db, youtube, probe).list_inbox()
+    assert listing.path == "~/video-agent/inbox"  # 마운트 경로가 아니라 표시 경로
+    assert [f.name for f in listing.files] == ["new.MP4", "talk.M4A", "broken.mkv", "old.mp4"]
+    by = {f.name: f for f in listing.files}
+    assert by["broken.mkv"].duration_sec is None  # 깨진 파일도 목록에는 보인다
+    assert (by["talk.M4A"].kind, by["talk.M4A"].duration_sec) == ("audio", 600)
+    assert (by["old.mp4"].kind, by["old.mp4"].size_bytes, by["old.mp4"].modified_at) == (
+        "video",
+        10,
+        T0,
+    )
+
+
+async def test_list_inbox_empty_folder(db, youtube, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    assert (await VideoService(db, youtube, probe).list_inbox()).files == []
+
+
+async def test_list_inbox_without_mount_is_internal(db, youtube, probe, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path / "없음"))
+    with pytest.raises(Internal):
+        await VideoService(db, youtube, probe).list_inbox()
+
+
+async def test_list_inbox_probes_a_few_at_a_time(db, youtube, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    for i in range(10):
+        _touch(tmp_path, f"{i}.mp4", T0 + timedelta(seconds=i))
+
+    class Slow:
+        running = peak = 0
+
+        async def probe(self, path: str) -> tuple[int, bool]:
+            Slow.running += 1
+            Slow.peak = max(Slow.peak, Slow.running)
+            await asyncio.sleep(0.01)
+            Slow.running -= 1
+            return 60, True
+
+    listing = await VideoService(db, youtube, Slow()).list_inbox()
+    assert len(listing.files) == 10
+    assert Slow.peak == config.PROBE_CONCURRENCY
 
 
 # --- to_dto
@@ -86,41 +153,41 @@ def test_status_is_made_only_in_to_dto() -> None:
 # --- info_of
 
 
-async def test_info_of_youtube_asks_port(db, youtube) -> None:
-    info = await VideoService(db, youtube).info_of(yt())
+async def test_info_of_youtube_asks_port(db, youtube, probe) -> None:
+    info = await VideoService(db, youtube, probe).info_of(yt())
     assert youtube.calls == [WATCH]
     assert (info.source_id, info.has_captions, info.caption_kind) == ("dQw4w9WgXcQ", True, "manual")
 
 
-async def test_info_of_youtube_unavailable(db, youtube, unavailable) -> None:
+async def test_info_of_youtube_unavailable(db, youtube, unavailable, probe) -> None:
     youtube.error = unavailable
     with pytest.raises(SourceUnavailable) as e:
-        await VideoService(db, youtube).info_of(yt())
+        await VideoService(db, youtube, probe).info_of(yt())
     assert e.value.extra["reason"] == "비공개 영상이에요"
 
 
-async def test_info_of_local_is_stub(db, youtube) -> None:
+async def test_info_of_local_is_stub(db, youtube, probe) -> None:
     with pytest.raises(NotImplementedYet):
-        await VideoService(db, youtube).info_of(LocalSource(source="local", path="a.mp4"))
+        await VideoService(db, youtube, probe).info_of(LocalSource(source="local", path="a.mp4"))
 
 
 # --- register
 
 
-async def test_register_without_key_touches_nothing(db, youtube, env_file, verify) -> None:
+async def test_register_without_key_touches_nothing(db, youtube, env_file, verify, probe) -> None:
     with pytest.raises(KeyMissing):
-        await VideoService(db, youtube).register(yt())
+        await VideoService(db, youtube, probe).register(yt())
     assert youtube.calls == []  # YouTube에 닿지 않는다
     assert await _count(db) == 0
 
 
-async def test_register_checks_key_each_time(db, youtube, key, verify) -> None:
-    await VideoService(db, youtube).register(yt())
+async def test_register_checks_key_each_time(db, youtube, key, verify, probe) -> None:
+    await VideoService(db, youtube, probe).register(yt())
     assert len(verify.calls) == 1  # 분석 버튼을 누를 때 확인한다
 
 
-async def test_register_new_video(db, youtube, key) -> None:
-    video = await VideoService(db, youtube).register(yt())
+async def test_register_new_video(db, youtube, key, probe) -> None:
+    video = await VideoService(db, youtube, probe).register(yt())
     assert (video.status, video.source_id, video.title) == (
         "registered",
         "dQw4w9WgXcQ",
@@ -135,8 +202,8 @@ async def test_register_new_video(db, youtube, key) -> None:
     assert video.chat_turn_count == 0
 
 
-async def test_register_same_video_other_url(db, youtube, key) -> None:
-    svc = VideoService(db, youtube)
+async def test_register_same_video_other_url(db, youtube, key, probe) -> None:
+    svc = VideoService(db, youtube, probe)
     first = await svc.register(yt("https://youtu.be/dQw4w9WgXcQ"))
     second = await svc.register(yt(WATCH))
     shorts = await svc.register(yt("https://m.youtube.com/shorts/dQw4w9WgXcQ"))
@@ -144,7 +211,7 @@ async def test_register_same_video_other_url(db, youtube, key) -> None:
     assert await _count(db) == 1
 
 
-async def test_register_url_invalid(db, youtube, key) -> None:
+async def test_register_url_invalid(db, youtube, key, probe) -> None:
     for url in [
         "https://vimeo.com/123456",
         "https://www.youtube.com/watch?v=short",
@@ -152,20 +219,20 @@ async def test_register_url_invalid(db, youtube, key) -> None:
         "ftp://youtu.be/dQw4w9WgXcQ",
     ]:
         with pytest.raises(UrlInvalid) as e:
-            await VideoService(db, youtube).register(yt(url))
+            await VideoService(db, youtube, probe).register(yt(url))
         assert e.value.extra == {"accepted": ["watch", "youtu.be", "shorts"]}
     assert youtube.calls == []
 
 
-async def test_register_url_without_scheme(db, youtube, key) -> None:
-    video = await VideoService(db, youtube).register(yt("youtu.be/dQw4w9WgXcQ"))
+async def test_register_url_without_scheme(db, youtube, key, probe) -> None:
+    video = await VideoService(db, youtube, probe).register(yt("youtu.be/dQw4w9WgXcQ"))
     assert video.source_id == "dQw4w9WgXcQ"
 
 
-async def test_register_local_name_checks(db, youtube, key, tmp_path, monkeypatch) -> None:
+async def test_register_local_name_checks(db, youtube, key, tmp_path, monkeypatch, probe) -> None:
     monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
     (tmp_path / "notes.txt").write_text("x")
-    svc = VideoService(db, youtube)
+    svc = VideoService(db, youtube, probe)
     for name in ["../etc/passwd", "sub/a.mp4", ".hidden.mp4", "a\\b.mp4"]:
         with pytest.raises(PathOutsideInbox):
             await svc.register(LocalSource(source="local", path=name))
@@ -179,16 +246,16 @@ async def test_register_local_name_checks(db, youtube, key, tmp_path, monkeypatc
         await svc.register(LocalSource(source="local", path="talk.MP4"))
 
 
-async def test_register_too_long(db, youtube, key) -> None:
+async def test_register_too_long(db, youtube, key, probe) -> None:
     youtube.duration = 10801
     with pytest.raises(VideoTooLong) as e:
-        await VideoService(db, youtube).register(yt())
+        await VideoService(db, youtube, probe).register(yt())
     assert e.value.extra == {"duration_sec": 10801, "max_sec": 10800}
     assert await _count(db) == 0  # 행이 안 생긴다
 
 
-async def test_register_again_after_cancel_overwrites(db, youtube, key) -> None:
-    svc = VideoService(db, youtube)
+async def test_register_again_after_cancel_overwrites(db, youtube, key, probe) -> None:
+    svc = VideoService(db, youtube, probe)
     first = await svc.register(yt())
     youtube.title = "제목이 바뀐 강의"
     again = await svc.register(yt())
@@ -197,8 +264,8 @@ async def test_register_again_after_cancel_overwrites(db, youtube, key) -> None:
     assert again.created_at == first.created_at
 
 
-async def test_register_again_with_job_keeps_row(db, youtube, key, make) -> None:
-    svc = VideoService(db, youtube)
+async def test_register_again_with_job_keeps_row(db, youtube, key, make, probe) -> None:
+    svc = VideoService(db, youtube, probe)
     first = await svc.register(yt())
     await make.job(first.id, JobStatus.running)
     youtube.title = "다른 제목"
@@ -206,10 +273,10 @@ async def test_register_again_with_job_keeps_row(db, youtube, key, make) -> None
     assert (again.title, again.status) == ("자막 있는 강의", "in_progress")  # 작업을 따른다
 
 
-async def test_register_twice_at_once_makes_one_row(db, youtube, key) -> None:
+async def test_register_twice_at_once_makes_one_row(db, youtube, key, probe) -> None:
     async def one() -> int:
         async with SessionLocal() as s:
-            return (await VideoService(s, youtube).register(yt())).id
+            return (await VideoService(s, youtube, probe).register(yt())).id
 
     ids = await asyncio.gather(one(), one())
     assert ids[0] == ids[1]
@@ -219,62 +286,62 @@ async def test_register_twice_at_once_makes_one_row(db, youtube, key) -> None:
 # --- list
 
 
-async def test_list_only_videos_with_jobs(db, make, youtube) -> None:
+async def test_list_only_videos_with_jobs(db, make, youtube, probe) -> None:
     await make.video()  # 사전 안내에서 취소 — 작업이 없다
     done = await make.video()
     await make.job(done.id, JobStatus.done, at=T0)
     failed = await make.video()
     await make.job(failed.id, JobStatus.failed, at=T0 + timedelta(minutes=1))
-    got = await VideoService(db, youtube).list()
+    got = await VideoService(db, youtube, probe).list()
     assert [v.id for v in got] == [failed.id, done.id]  # 작업 시작 최근 순
     assert [v.status for v in got] == ["failed", "analyzed"]
     assert got[0].job.status == JobStatus.failed
 
 
-async def test_list_order_is_job_start_not_video_creation(db, make, youtube) -> None:
+async def test_list_order_is_job_start_not_video_creation(db, make, youtube, probe) -> None:
     older = await make.video()
     newer = await make.video()
     await make.job(newer.id, JobStatus.done, at=T0)
     await make.job(older.id, JobStatus.done, at=T0 + timedelta(hours=1))
-    assert [v.id for v in await VideoService(db, youtube).list()] == [older.id, newer.id]
+    assert [v.id for v in await VideoService(db, youtube, probe).list()] == [older.id, newer.id]
 
 
-async def test_list_queries_do_not_grow(db, make, youtube, queries) -> None:
+async def test_list_queries_do_not_grow(db, make, youtube, queries, probe) -> None:
     for i in range(3):
         v = await make.video()
         await make.job(v.id, JobStatus.done, at=T0 + timedelta(minutes=i))
     queries.clear()
-    await VideoService(db, youtube).list()
+    await VideoService(db, youtube, probe).list()
     three = len(queries)
     for i in range(3):
         v = await make.video()
         await make.job(v.id, JobStatus.done, at=T0 + timedelta(hours=i))
     queries.clear()
-    await VideoService(db, youtube).list()
+    await VideoService(db, youtube, probe).list()
     assert len(queries) == three == 4  # 영상 · 작업 · 조각 · 대화 — 영상 수에 비례하지 않는다
 
 
-async def test_list_empty(db, youtube) -> None:
-    assert await VideoService(db, youtube).list() == []
+async def test_list_empty(db, youtube, probe) -> None:
+    assert await VideoService(db, youtube, probe).list() == []
 
 
 # --- get
 
 
-async def test_get(db, make, youtube) -> None:
+async def test_get(db, make, youtube, probe) -> None:
     with pytest.raises(NotFound) as e:
-        await VideoService(db, youtube).get(999)
+        await VideoService(db, youtube, probe).get(999)
     assert e.value.extra == {"resource": "video", "id": 999}
     row = await make.video()
-    detail = await VideoService(db, youtube).get(row.id)
+    detail = await VideoService(db, youtube, probe).get(row.id)
     assert (detail.job, detail.video.status) == (None, "registered")
 
 
-async def test_get_after_finish(db, make, youtube) -> None:
+async def test_get_after_finish(db, make, youtube, probe) -> None:
     """JobService.finish 테스트 관점 — finish 뒤 get의 status=analyzed, analyzed_at = 끝난 시각."""
     video = await make.video()
     job = await make.job(video.id, JobStatus.running, stage="suggest")
     await JobService(db).finish(job.id)
-    detail = await VideoService(db, youtube).get(video.id)
+    detail = await VideoService(db, youtube, probe).get(video.id)
     assert detail.video.status == "analyzed"
     assert detail.video.analyzed_at == detail.job.finished_at is not None
