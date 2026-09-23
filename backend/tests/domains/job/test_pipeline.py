@@ -68,6 +68,41 @@ def test_error_kind_each() -> None:
     assert kind(NotImplementedYet("아직")) == ErrorKind.unknown
 
 
+# --- reason_of
+
+
+def _status_error(code: int, body_code: str | None = None) -> sdk.APIStatusError:
+    resp = httpx.Response(code, request=REQ)
+    body = (
+        {"code": body_code, "message": "error"} if body_code else None
+    )  # SDK는 error 안쪽을 넘긴다
+    return sdk.APIStatusError("error", response=resp, body=body)
+
+
+def test_reason_of_each() -> None:
+    reason = pipeline.reason_of
+    assert reason(sdk.APITimeoutError(request=REQ)) == "네트워크 시간 초과"
+    assert reason(TimeoutError()) == "네트워크 시간 초과"
+    assert reason(sdk.APIConnectionError(request=REQ)) == "네트워크에 연결할 수 없음"
+    assert reason(_status_error(401)) == "API 키 인증 실패"
+    assert reason(_status_error(429, "insufficient_quota")) == "OpenAI 잔액 부족"
+    assert reason(_status_error(429, "rate_limit_exceeded")) == "OpenAI 요청 한도 초과"
+    assert reason(_status_error(503)) == "OpenAI 서버 오류"
+    assert reason(_status_error(400)) == "OpenAI가 요청을 거절함(400)"
+    stderr = "WARNING: [youtube] slow\nERROR: [youtube] abc: Private video"
+    assert reason(YtdlpError(stderr, "private")) == "비공개 영상"  # 영어 표준 오류 → 표
+    assert reason(YtdlpError("자막을 찾지 못했습니다", "unavailable")) == "자막을 찾지 못했습니다"
+    assert reason(FfmpegError("Invalid data found", 1)) == "ffmpeg 처리 실패"
+    assert reason(OSError(errno.ENOSPC, "No space left on device")) == "저장 공간 부족"
+    assert reason(NotImplementedYet("아직 지원하지 않아요")) == "아직 지원하지 않아요"
+    assert (
+        reason(OpenAIOutputError("모델 출력을 읽지 못했어요(형식)"))
+        == "모델 출력을 읽지 못했어요(형식)"
+    )
+    assert reason(ValueError("첫 줄이에요\n둘째 줄")) == "첫 줄이에요"
+    assert reason(KeyError("x")) == "알 수 없는 오류(KeyError)"
+
+
 # --- 스텁
 
 
@@ -137,7 +172,7 @@ async def test_run_download_fails_removes_tmp(db, make, ports, tmp_path) -> None
         JobStage.download,
         ErrorKind.youtube,
     )
-    assert row.error_reason == "ERROR: Private video"  # 첫 줄
+    assert row.error_reason == "비공개 영상"  # 영어 표준 오류는 종류별 한국어로
     assert not (tmp_path / "tmp" / str(video.id)).exists()
 
 

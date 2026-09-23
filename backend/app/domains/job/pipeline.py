@@ -10,13 +10,14 @@ from __future__ import annotations
 import asyncio
 import errno
 import logging
+import re
 import shutil
 import socket
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from openai import APIConnectionError, OpenAIError
+from openai import APIConnectionError, APITimeoutError, OpenAIError
 
 from app.core.config import config
 from app.core.db import SessionLocal
@@ -39,6 +40,17 @@ log = logging.getLogger(__name__)
 # main.py가 시작 때 넣는다(VA-DOM-002 6장 서비스 조립). 테스트는 가짜로 바꿔 끼운다
 audio_source: AudioSourcePort | None = None
 summarizer: SummarizerPort | None = None
+
+_HANGUL = re.compile(r"[가-힣]")
+# yt-dlp 실패 종류 → 이유 한 줄(실패 알림 본문의 '왜')
+_YTDLP_REASONS = {
+    "private": "비공개 영상",
+    "unavailable": "삭제되었거나 볼 수 없는 영상",
+    "geo": "이 지역에서 볼 수 없는 영상",
+    "network": "YouTube 연결 실패",
+    "extractor": "yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트",
+    "other": "yt-dlp 오류",
+}
 
 
 def _ports() -> tuple[AudioSourcePort, SummarizerPort]:
@@ -72,6 +84,58 @@ def error_kind(e: BaseException) -> ErrorKind:
     return ErrorKind.unknown
 
 
+def reason_of(e: BaseException) -> str:
+    """VA-MS-002#pipeline.reason_of
+
+    예외 → 실패 이유 한 줄(한국어). 화면 실패 알림 본문의 '왜'다. 메시지 첫 줄에 한글이 있으면
+    앱이 만든 문장이라 그대로, 없으면(영어 SDK · yt-dlp 문구) 종류별 표로 바꾼다. 어댑터는 예외를
+    그대로 올린다 — 감싸 바꾸면 error_kind가 종류를 가를 수 없다.
+
+    Args:
+        e: 단계에서 난 예외
+
+    Returns:
+        한 줄
+    """
+    line = _first_line(e)
+    if _HANGUL.search(line):
+        return line
+    kind = error_kind(e)
+    if kind == ErrorKind.network:
+        timeout = isinstance(e, TimeoutError | APITimeoutError)
+        return "네트워크 시간 초과" if timeout else "네트워크에 연결할 수 없음"
+    if kind == ErrorKind.openai:
+        return _openai_reason(e)
+    if kind == ErrorKind.youtube:
+        return _YTDLP_REASONS.get(getattr(e, "kind", "other"), _YTDLP_REASONS["other"])
+    if kind == ErrorKind.ffmpeg:
+        return "ffmpeg 처리 실패"
+    if kind == ErrorKind.disk:
+        return "저장 공간 부족"
+    return f"알 수 없는 오류({type(e).__name__})"
+
+
+def _openai_reason(e: BaseException) -> str:
+    status = getattr(e, "status_code", None)
+    if status == 401:
+        return "API 키 인증 실패"
+    if status == 403:
+        return "OpenAI 권한 없음"
+    if status == 429:
+        quota = getattr(e, "code", None) == "insufficient_quota"
+        return "OpenAI 잔액 부족" if quota else "OpenAI 요청 한도 초과"
+    if isinstance(status, int) and status >= 500:
+        return "OpenAI 서버 오류"
+    if isinstance(status, int):
+        return f"OpenAI가 요청을 거절함({status})"
+    return "OpenAI 오류"
+
+
+def _first_line(e: BaseException) -> str:
+    text = str(e).strip()
+    return text.splitlines()[0].strip() if text else type(e).__name__
+
+
 async def transcribe_stage(job_id: int, video: Video, audio: str, tmp: str) -> None:
     """VA-MS-002#pipeline.transcribe_stage
 
@@ -81,12 +145,6 @@ async def transcribe_stage(job_id: int, video: Video, audio: str, tmp: str) -> N
         NotImplementedYet: 아직 없다
     """
     raise NotImplementedYet("받아쓰기는 아직 지원하지 않아요")
-
-
-def _first_line(e: BaseException) -> str:
-    # 실패 이유 한 줄 — 한국어 문구는 어댑터 · 서비스가 만든다
-    text = str(e).strip()
-    return text.splitlines()[0] if text else type(e).__name__
 
 
 async def run(job_id: int, video: Video) -> None:
@@ -118,7 +176,7 @@ async def run(job_id: int, video: Video) -> None:
         raise  # 삭제 · 서버 종료 — 행은 그대로 둔다
     except Exception as e:
         log.warning("작업 %d이 %s 단계에서 실패: %s", job_id, stage, type(e).__name__)
-        error = JobError(kind=error_kind(e), reason=_first_line(e), chunk_seq=None, attempts=1)
+        error = JobError(kind=error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1)
         async with SessionLocal() as s:
             await JobService(s).fail(job_id, error)
         if stage in (None, JobStage.download, JobStage.extract):  # 임시 파일이 쓸모없다
@@ -221,7 +279,7 @@ async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
 
 async def _fail_quietly(job_id: int, e: Exception) -> None:
     try:
-        error = JobError(kind=error_kind(e), reason=_first_line(e), chunk_seq=None, attempts=1)
+        error = JobError(kind=error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1)
         async with SessionLocal() as s:
             await JobService(s).fail(job_id, error)
     except Exception:
