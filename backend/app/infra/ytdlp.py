@@ -72,3 +72,37 @@ async def info(url: str) -> dict:
     """
     out = await _run("--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", url)
     return json.loads(out)
+
+
+async def captions(video_id: str, lang: str, kind: str) -> str:
+    """VA-MS-007#ytdlp.captions
+
+    자막 하나를 VTT로 받아 문자열로 돌려준다. 임시 파일은 읽은 뒤 지운다.
+
+    Args:
+        video_id: YouTube 영상 ID
+        lang: 자막 언어 코드
+        kind: `manual`이면 수동 자막, `auto`면 자동 자막
+
+    Returns:
+        VTT 원문
+    """
+    flag = "--write-subs" if kind == "manual" else "--write-auto-subs"
+    with tempfile.TemporaryDirectory() as tmp:
+        await _run(
+            "--skip-download",
+            "--no-playlist",
+            "--sub-format",
+            "vtt",
+            "--sub-langs",
+            lang,
+            flag,
+            "-o",
+            os.path.join(tmp, "%(id)s"),
+            WATCH.format(video_id),
+        )
+        path = os.path.join(tmp, f"{video_id}.{lang}.vtt")
+        if not os.path.exists(path):
+            raise YtdlpError(f"자막 파일이 만들어지지 않았습니다({lang}, {kind})", "other")
+        with open(path, encoding="utf-8") as f:
+            return f.read()

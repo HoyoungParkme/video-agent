@@ -62,3 +62,22 @@ async def test_no_shell(fake, tmp_path: Path) -> None:
     await ytdlp.info(url)
     assert fake.calls()[0][-1] == url
     assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    ("kind", "flag"), [("manual", "--write-subs"), ("auto", "--write-auto-subs")]
+)
+async def test_captions_reads_vtt(fake, kind: str, flag: str) -> None:
+    fake.behave(write_ext="unused", file="WEBVTT\n\n00:00.000 --> 00:02.000\n안녕하세요\n")
+    text = await ytdlp.captions("dQw4w9WgXcQ", "ko", kind)
+    assert text.startswith("WEBVTT") and "안녕하세요" in text
+    [args] = fake.calls()
+    assert flag in args
+    assert args[args.index("--sub-langs") + 1] == "ko"
+    assert args[-1] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+
+async def test_captions_missing_file(fake) -> None:
+    fake.behave()  # 성공하지만 파일을 만들지 않는다
+    with pytest.raises(YtdlpError):
+        await ytdlp.captions("dQw4w9WgXcQ", "ko", "manual")
