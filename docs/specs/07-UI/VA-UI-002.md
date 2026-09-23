@@ -188,6 +188,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - [ ] 캔버스에 없는 상태 보드의 검토 — 0장 「캔버스에 없는 상태는 이 문서에서 그렸다」의 보드들(UI-1 넷 · UI-2 둘 · UI-3 하나 · UI-4 다섯 · UI-5 둘 · UI-6 하나 · UI-7 하나, 대기 중 행 포함). 사용자가 보고 확정하면 캔버스에 보드로 더한다([[VA-UI-001]] 8장 디자인 보강)
 - [x] 배치를 싱크독 새 뷰에 맞춘다(2026-09-23) — 싱크독이 배치 html을 iframe에 격리해 그대로 그리게 되면서(카드 Z · AC · AE) 뷰가 주던 클래스 사전이 없어졌다. 클래스로 그린 뼈대가 스타일 없이 보여, 배치를 승인된 캔버스 html로 옮기고 「3. 공통 틀」을 더했다. 요소 번호와 요소 표·규칙·시나리오는 그대로다
 - [ ] 이미 보낸 추천 질문: 두 모양에서 뺄지, 그대로 두고 다시 누르면 같은 질문을 또 보내게 할지(1.8)
+- [x] UI-5 「키 없음」 상태 보드의 2.1 배지 색 — 보드는 칩 면(회색)으로 그렸는데 UI-5 규칙과 [[VA-UI-001]] 3.1 색 언어(빨강은 키 없음에)는 위험 톤이다. 결정: 규칙대로 위험 톤으로 보드를 고쳤다(카드 A 구현에서 찾음, 2026-09-23)
 
 ---
 
@@ -3115,7 +3116,7 @@ button, input, select, textarea { font-family: inherit; }
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4A463F" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path></svg>
 <h2 id="key-title" style="margin: 0; font-size: 19px; font-weight: 600;">OpenAI API 키</h2>
 </div>
-<span style="height: 28px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 14px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 600;">키 없음</span>
+<span style="height: 28px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 14px; background: #F7E6E2; color: #7A2A1E; font-size: 13px; font-weight: 600;">키 없음</span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 8px;">
 <label for="new-key" style="font-size: 14px; font-weight: 600; color: #4A463F;">키 넣기</label>
