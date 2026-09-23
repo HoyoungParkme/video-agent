@@ -1,10 +1,11 @@
 /**
  * VA-UI-002#UI-1 홈 — 2 제목 영역 · 3 YouTube 링크 카드(3.1 · 3.2 · 3.3 분석 · 3.4 · 3.5) · 4 내 파일 카드
- * (4.1 · 4.2 · 4.5 · 4.6) · 5 목록 머리(5.1 · 5.2 · 5.3) · 6 분석한 영상 목록(6.1 ~ 6.7) · 7 빈 상태 상자.
- * 키 없음 배너(1)는 layout의 공통 1.4다. 분석(3.3)은 등록 응답의 status로 갈 곳을 정한다 —
- * registered면 UI-2, analyzed면 UI-4와 짧은 알림, 그 밖은 UI-3.
- * B1이 채우지 않은 것: 3.4는 서버 문구 한 줄뿐(종류별 판 가르기는 B5) · inbox 파일 행(4.3 · 4.4)과 4.6의 동작은 B2 ·
- * 실패 행의 모양은 B2 · 행 휴지통(6.8)은 B4.
+ * (4.1 · 4.2 inbox 목록 · 4.3 파일 행 · 4.4 빈 안내 · 4.5 · 4.6 선택한 파일 분석) · 5 목록 머리(5.1 · 5.2 · 5.3) ·
+ * 6 분석한 영상 목록(6.1 ~ 6.7) · 7 빈 상태 상자. 키 없음 배너(1)는 layout의 공통 1.4다.
+ * 분석(3.3) · 선택한 파일 분석(4.6)은 등록 응답의 status로 갈 곳을 정한다 — registered면 UI-2, analyzed면
+ * UI-4와 짧은 알림, 그 밖은 UI-3. 대기 표시는 누른 버튼에, 그동안은 어느 쪽도 새 요청을 보내지 않는다.
+ * 채우지 않은 것: 3.4는 서버 문구 한 줄뿐 · 로컬 등록 실패는 시작 불가 판에 서버 이유 그대로(종류별 판은 B5) ·
+ * 행 휴지통(6.8)은 B4.
  */
 "use client";
 
@@ -18,7 +19,10 @@ import {
   keyBlocks,
   loadSettings,
   useSettings,
+  type Estimate as EstimateData,
+  type InboxListing,
   type RegisterResponse,
+  type Video,
   type VideoSummary,
 } from "@/api/client";
 import { Button } from "@/components/buttons";
@@ -26,7 +30,7 @@ import EmptyBox from "@/components/EmptyBox";
 import { durationLabel } from "@/components/TimeChip";
 import { flash } from "@/components/Toast";
 import { analyzedLabel, stageName } from "@/labels";
-import Estimate from "@/screens/Estimate";
+import Estimate, { Blocked } from "@/screens/Estimate";
 
 const EMPTY_TITLE = "아직 분석한 영상이 없어요";
 const EMPTY_BODY = "위에 링크를 붙여 넣거나 inbox 폴더에 파일을 넣어 보세요.";
@@ -61,6 +65,36 @@ function useVideos(): VideoSummary[] | null {
     };
   }, []);
   return rows;
+}
+
+/** inbox 파일 목록 — 처음 한 번. 서버가 아직 뜨는 중이면 3초마다 다시. 받기 전에는 null. */
+function useInbox(): InboxListing | null {
+  const [listing, setListing] = useState<InboxListing | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      try {
+        const got = await api.inbox();
+        if (alive) setListing(got);
+      } catch {
+        if (alive) timer = setTimeout(load, REFRESH_MS);
+      }
+    };
+    void load();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, []);
+  return listing;
+}
+
+/** 파일 크기(4.3) — '1.8 GB' · '640 MB' · '12 KB'. */
+function sizeLabel(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
 }
 
 /** 상태 글자(6.6)와 그 색 — 숫자는 UI-3 숫자 규칙대로 서버 값을 그대로 쓴다. */
@@ -157,13 +191,23 @@ export default function Home() {
   const router = useRouter();
   const settings = useSettings();
   const videos = useVideos();
+  const inbox = useInbox();
   const analyzeButton = useRef<HTMLButtonElement>(null);
+  const fileButton = useRef<HTMLButtonElement>(null);
   const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  // 대기 표시를 단 버튼 — 그동안은 3.3 · 4.6 어느 쪽도 새 요청을 보내지 않는다(UI-1 규칙)
+  const [busy, setBusy] = useState<"url" | "file" | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
-  const [opened, setOpened] = useState<(RegisterResponse & { othersRunning: boolean }) | null>(
-    null,
-  );
+  const [opened, setOpened] = useState<{
+    video: Video;
+    estimate: EstimateData;
+    othersRunning: boolean;
+  } | null>(null);
+  const [cannot, setCannot] = useState<{ reason: string; durationSec: number | null } | null>(null);
+  // 처음 열면 맨 위 파일이 골라져 있다(UI-1 규칙)
+  const chosen = picked ?? inbox?.files[0]?.name ?? null;
+  const inboxEmpty = inbox !== null && inbox.files.length === 0;
   // 키를 받기 전에는 막지 않는다 — 받은 뒤 막힘이 정해진다
   const blocked = settings ? keyBlocks(settings.key) : false;
   const noKey = settings?.key.state === "missing";
@@ -173,32 +217,64 @@ export default function Home() {
     if (blocked) router.push("/settings");
   }
 
+  /** 등록 응답으로 갈 곳 — registered는 UI-2, analyzed는 UI-4와 짧은 알림, 그 밖은 UI-3. */
+  function route(res: RegisterResponse) {
+    const v = res.video;
+    if (v.status === "registered" && res.estimate) {
+      // 대기 안내(6.1)는 열 때의 목록으로 정한다(UI-2 규칙)
+      setOpened({
+        video: v,
+        estimate: res.estimate,
+        othersRunning: (videos ?? []).some(inProgress),
+      });
+    } else if (v.status === "analyzed") {
+      flash("이미 분석한 영상입니다");
+      router.push(`/videos/${v.id}`);
+    } else {
+      router.push(`/videos/${v.id}/progress`);
+    }
+  }
+
+  function keyFailed(e: unknown): boolean {
+    const failed = e instanceof ApiError && (e.kind === "key-missing" || e.kind === "key-invalid");
+    if (failed) void loadSettings(); // 누를 때 확인에 실패했으면 배너가 뜬다
+    return failed;
+  }
+
   async function analyze() {
     if (blocked) return toSettingsIfBlocked();
     if (busy) return; // 대기 표시 중에는 새 요청을 보내지 않는다
     // 입력칸에서 Enter로 눌렀어도 연 버튼은 3.3 — 다이얼로그가 닫히면 초점이 여기로 돌아온다(공통 1.2)
     analyzeButton.current?.focus();
-    setBusy(true);
+    setBusy("url");
     setUrlError(null);
     try {
-      const res = await api.register(url);
-      const v = res.video;
-      if (v.status === "registered") {
-        // 대기 안내(6.1)는 열 때의 목록으로 정한다(UI-2 규칙)
-        setOpened({ ...res, othersRunning: (videos ?? []).some(inProgress) });
-      } else if (v.status === "analyzed") {
-        flash("이미 분석한 영상입니다");
-        router.push(`/videos/${v.id}`);
-      } else {
-        router.push(`/videos/${v.id}/progress`);
-      }
+      route(await api.register(url));
     } catch (e) {
-      if (e instanceof ApiError && (e.kind === "key-missing" || e.kind === "key-invalid")) {
-        void loadSettings(); // 누를 때 확인에 실패했으면 배너가 뜬다
-      }
+      keyFailed(e);
       setUrlError(e instanceof ApiError ? e.reason : "서버에 닿지 못했어요");
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function analyzeFile() {
+    if (blocked) return toSettingsIfBlocked();
+    if (busy || !chosen) return; // 빈 inbox — 요청을 보내지 않고 화면도 그대로
+    setBusy("file");
+    try {
+      route(await api.registerLocal(chosen));
+    } catch (e) {
+      if (!keyFailed(e)) {
+        // 시작할 수 없는 파일 — 이유와 (알면) 길이. 종류별 문구는 B5
+        const duration = e instanceof ApiError ? e.body.duration_sec : null;
+        setCannot({
+          reason: e instanceof ApiError ? e.reason : "서버에 닿지 못했어요",
+          durationSec: typeof duration === "number" ? duration : null,
+        });
+      }
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -259,7 +335,7 @@ export default function Home() {
                   kind="primary"
                   tall
                   blocked={blocked}
-                  busy={busy}
+                  busy={busy === "url"}
                   el="3.3"
                   onClick={() => void analyze()}
                 >
@@ -289,18 +365,48 @@ export default function Home() {
                 <span className="card-head-path">{settings?.inbox_path}</span>
               </div>
             </div>
-            {/* inbox 파일 행(4.3)과 빈 안내(4.4)는 B2의 GET /api/inbox로 채운다 */}
-            <div role="group" aria-label="inbox 파일" className="home-files" data-el="4.2" />
+            <div role="group" aria-label="inbox 파일" className="home-files" data-el="4.2">
+              {inbox?.files.map((f, i) => {
+                const on = f.name === chosen;
+                return (
+                  <button
+                    key={f.name}
+                    type="button"
+                    className={`file-row${on ? " is-picked" : ""}`}
+                    aria-pressed={on}
+                    data-el={i === 0 ? "4.3" : undefined}
+                    onClick={() => setPicked(f.name)}
+                  >
+                    <span className="file-radio" aria-hidden="true">
+                      <span className="file-radio-dot" />
+                    </span>
+                    <span className="file-name">{f.name}</span>
+                    <span className="file-length mono">
+                      {f.duration_sec === null ? "—" : durationLabel(f.duration_sec)}
+                    </span>
+                    <span className="file-size">{sizeLabel(f.size_bytes)}</span>
+                  </button>
+                );
+              })}
+              {inboxEmpty && (
+                <p id="inbox-empty" className="file-empty" data-el="4.4">
+                  inbox 폴더에 파일이 없어요
+                </p>
+              )}
+            </div>
             <div className="home-files-foot">
               <span className="caption" data-el="4.5">
                 mp4 · mkv · mov · webm · mp3 · m4a · wav
               </span>
               <Button
+                ref={fileButton}
                 kind="primary"
                 className="btn-wide"
-                blocked={blocked}
+                blocked={blocked || inboxEmpty}
+                busy={busy === "file"}
+                aria-describedby={!blocked && inboxEmpty ? "inbox-empty" : undefined}
                 el="4.6"
-                onClick={toSettingsIfBlocked}
+                onClick={() => void analyzeFile()}
               >
                 선택한 파일 분석
               </Button>
@@ -347,6 +453,13 @@ export default function Home() {
           estimate={opened.estimate}
           othersRunning={opened.othersRunning}
           onClose={() => setOpened(null)}
+        />
+      )}
+      {cannot && (
+        <Blocked
+          reason={cannot.reason}
+          durationSec={cannot.durationSec}
+          onClose={() => setCannot(null)}
         />
       )}
     </main>

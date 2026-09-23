@@ -262,6 +262,27 @@ h1, h2, p { margin: 0; }
 .card-head-path { font-family: var(--font-mono); font-size: var(--text-13); font-weight: 500; color: var(--c-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-files { display: flex; flex-direction: column; gap: var(--space-6); }
 .home-files-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-12); }
+/* UI-1 파일 행(4.3) — 고르는 행, 선택 모양은 VA-UI-001 4.2 */
+.file-row {
+  min-height: var(--tap); padding: 0 var(--space-12); display: flex; align-items: center; gap: var(--space-12);
+  border-radius: var(--radius-10); border: 1px solid var(--c-line); background: var(--c-faint);
+  color: var(--c-ink); text-align: left; cursor: pointer;
+}
+.file-row.is-picked { border-color: var(--c-teal); background: var(--c-teal-soft); }
+.file-radio {
+  width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--c-line-faint);
+  display: flex; align-items: center; justify-content: center;
+}
+.file-radio-dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+.file-row.is-picked .file-radio { border-color: var(--c-teal); }
+.file-row.is-picked .file-radio-dot { background: var(--c-teal); }
+.file-name { flex-grow: 1; min-width: 0; font-size: var(--text-15); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-length { font-size: var(--text-13); color: var(--c-ink-3); }
+.file-size { width: 60px; font-size: var(--text-13); color: var(--c-caption); text-align: right; }
+.file-empty {
+  margin: 0; min-height: var(--tap); padding: 0 var(--space-12); display: flex; align-items: center;
+  border-radius: var(--radius-10); border: 1px dashed var(--c-line-strong); font-size: var(--text-14); color: var(--c-ink-3);
+}
 .caption { font-size: var(--text-13); color: var(--c-caption); }
 .home-list { display: flex; flex-direction: column; gap: var(--space-12); }
 .home-list-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-16); }
