@@ -128,3 +128,23 @@ class VideoService:
             created_at=row.created_at,
             chat_turn_count=chat_count,
         )
+
+    async def info_of(self, req: RegisterRequest) -> SourceInfo:
+        """VA-MS-001#VideoService.info_of
+
+        출처에서 영상 정보를 읽는다. YouTube는 포트가 정보만 받는다(내려받지 않는다).
+        로컬 갈래는 스텁 — B2(VA-CODE-001 B1).
+
+        Args:
+            req: YouTube 주소 또는 inbox 파일 이름
+
+        Returns:
+            출처 식별자 · 제목 · 채널 · 길이 · 자막
+
+        Raises:
+            SourceUnavailable: YouTube 정보를 못 가져왔다
+            NotImplementedYet: inbox 파일(B2)
+        """
+        if isinstance(req, YouTubeSource):
+            return await self.youtube_info.info(req.url)
+        raise NotImplementedYet("inbox 파일 분석은 아직 지원하지 않아요")

@@ -81,3 +81,24 @@ def test_status_is_made_only_in_to_dto() -> None:
                 if "VideoStatus" in names:
                     users.append(f"{path.relative_to(APP)}:{fn.name}")
     assert users == ["domains/video/service.py:to_dto"]
+
+
+# --- info_of
+
+
+async def test_info_of_youtube_asks_port(db, youtube) -> None:
+    info = await VideoService(db, youtube).info_of(yt())
+    assert youtube.calls == [WATCH]
+    assert (info.source_id, info.has_captions, info.caption_kind) == ("dQw4w9WgXcQ", True, "manual")
+
+
+async def test_info_of_youtube_unavailable(db, youtube, unavailable) -> None:
+    youtube.error = unavailable
+    with pytest.raises(SourceUnavailable) as e:
+        await VideoService(db, youtube).info_of(yt())
+    assert e.value.extra["reason"] == "비공개 영상이에요"
+
+
+async def test_info_of_local_is_stub(db, youtube) -> None:
+    with pytest.raises(NotImplementedYet):
+        await VideoService(db, youtube).info_of(LocalSource(source="local", path="a.mp4"))
