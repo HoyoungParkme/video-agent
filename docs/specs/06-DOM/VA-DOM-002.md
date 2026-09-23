@@ -71,7 +71,8 @@ app/
 ├── main.py                 앱 조립. 라우터 등록, 시작 때(lifespan) 저장된 키 확인(SettingsService.check_stored_key),
 │                           서버가 죽어 running인 채 남은 작업을 failed로 되돌림(JobService.fail_orphans),
 │                           대기열 워커 하나를 띄움(pipeline.worker(load_video) — VideoService.get을 감싸 넘긴다) — 끌 때 취소한다.
-│                           어댑터에 넘길 client_for(부를 때마다 SettingsService.api_key로 openai.client)를 조립한다
+│                           어댑터를 한 번 만들어 라우터(app.state)와 파이프라인(모듈 속성)에 건넨다 — 테스트는 여기서 가짜로 바꿔 끼운다.
+│                           OpenAI 어댑터에는 client_for(부를 때마다 SettingsService.api_key로 openai.client)를 넘긴다
 │                           Host가 localhost · 127.0.0.1 · api가 아닌 요청은 입구 앞에서 400(TrustedHost — INFRA 5절)
 ├── core/                   도메인에 속하지 않는 것
 │   ├── config.py           환경 변수 → Config (DB URL · inbox/data 경로 · .env 경로 · 조각 길이 · 동시 수 · 재시도 상한 · 모델 목록과 단가)
@@ -128,6 +129,8 @@ app/
 │   └── timecode.py         초 ↔ `mm:ss` · `h:mm:ss`. 내보내기(analysis)와 OpenAI 어댑터 둘(analysis · chat)이 쓴다(MINISPEC 어댑터 `timecode.label` · MINISPEC 어댑터 `timecode.parse`)
 │
 └── infra/                  외부 시스템 공용 클라이언트. 도메인별 해석은 각 묶음의 adapters/에
+    ├── errors.py           밖이 실패했을 때의 예외 셋 — YtdlpError · FfmpegError · OpenAIOutputError(모델 출력이 형식에 맞지 않음, 어댑터가 던진다).
+    │                       파이프라인이 이것으로 ErrorKind를 가른다(MINISPEC infra 0장 · 작업 서비스 `pipeline.error_kind`)
     ├── ytdlp.py            영상 정보 · 자막 목록 · 자막 내려받기 · 음성 내려받기
     ├── ffmpeg.py           ffprobe(길이 · 음성 트랙) · 음성 추출 · 무음 탐지 · 자르기
     └── openai.py           클라이언트 생성 · 키 확인(모델 목록 조회) · 받아쓰기 호출 · 채팅 호출
@@ -1061,6 +1064,8 @@ class VideoRow(Base):
 ```
 
 **세션**: 요청마다 하나(`core/db.py`). 파이프라인 태스크는 단계마다 짧은 세션을 열고 닫는다 — 십여 분 도는 태스크가 세션 하나를 잡고 있지 않게. 트랜잭션 경계는 서비스 메서드 하나다.
+
+**서비스 조립**: 서비스는 클래스이고 생성자가 세션과 그 묶음의 포트를 받는다(`VideoService(session, youtube_info)` · `AnalysisService(session, summarizer)`). 라우터는 요청 세션과 `app.state`의 어댑터로 만들고, 파이프라인은 부를 때마다 짧은 세션으로 만든다. `JobService`가 들고 있는 태스크 핸들과 워커를 깨우는 신호는 프로세스에 하나라 클래스 속성이다. 작업 묶음은 `Video` 타입을 타입 검사 때만 import한다 — 영상 묶음을 부르지 않는다(3.2).
 
 **에러**: `core/errors.py`에 problem+json 종류마다 예외 클래스 하나. 라우터는 잡지 않고 앱 수준 핸들러가 `application/problem+json`으로 바꾼다. 포괄 핸들러가 나머지를 `urn:va:internal`로.
 
