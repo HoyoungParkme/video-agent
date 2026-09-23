@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
-from app.core.errors import NotImplementedYet, ResultNotReady
+from app.core.errors import ResultNotReady
 from app.domains.analysis import crud
 from app.domains.analysis.models import (
     ChapterRow,
@@ -56,11 +56,26 @@ async def test_segments_of(db, make, summarizer) -> None:
 
 async def test_chapters_of_without_parts(db, make, summarizer) -> None:
     row = await make.video()
-    await crud.replace_chapters(db, row.id, [(i * 360.0, f"챕터 {i}", ["a"]) for i in range(8)])
+    await crud.replace_chapters(
+        db, row.id, [], [(None, i * 360.0, f"챕터 {i}", ["a"]) for i in range(8)]
+    )
     await db.commit()
     chapters = await AnalysisService(db, summarizer).chapters_of(row.id)
     assert [c.seq for c in chapters] == list(range(1, 9))
     assert all(c.part_seq is None for c in chapters)
+
+
+async def test_chapters_of_with_parts(db, make, summarizer) -> None:
+    row = await make.video()
+    await crud.replace_chapters(
+        db,
+        row.id,
+        [("앞", 0.0), ("뒤", 3600.0)],
+        [(1, 0.0, "하나", ["a"]), (1, 1800.0, "둘", ["a"]), (2, 3600.0, "셋", ["a"])],
+    )
+    await db.commit()
+    chapters = await AnalysisService(db, summarizer).chapters_of(row.id)
+    assert [c.part_seq for c in chapters] == [1, 1, 2]
 
 
 def test_clamp_secs() -> None:
@@ -237,11 +252,68 @@ async def test_generate_chapters_twice_one_set(db, make, summarizer, env_file) -
     assert await _count(db, ChapterRow) == 8
 
 
-async def test_generate_chapters_parts_is_stub(db, make, summarizer, env_file) -> None:
+async def _parts_and_chapters(db, summarizer, video_id: int) -> tuple[list, list]:
+    parts = [(p.seq, p.title, p.start_sec) for p in await crud.parts(db, video_id)]
+    chapters = await AnalysisService(db, summarizer).chapters_of(video_id)
+    return parts, [(c.part_seq, c.start_sec) for c in chapters]
+
+
+async def test_generate_chapters_150_minutes_model_parts(db, make, summarizer, env_file) -> None:
     video = await _video(db, make, duration_sec=9000)
-    with pytest.raises(NotImplementedYet):
-        await AnalysisService(db, summarizer).generate_chapters(video)
-    assert summarizer.calls == []  # 모델을 부르기 전에 막는다
+    await make.transcript(video.id, ["x"] * 90, step=100)  # 0 ~ 8900초
+    summarizer.chapter_draft = ChapterDraft(
+        parts=[("오전 1", 300.0), ("오후", 5400.0), ("오전 2", 2400.0), ("빈 파트", 8950.0)],
+        chapters=[
+            (1, 0.0, "시작", ["a", "b"]),
+            (1, 1200.0, "둘", ["a", "b"]),
+            (3, 2500.0, "셋", ["a", "b"]),  # 모델의 파트 번호가 아니라 시각으로 정한다
+            (2, 3600.0, "넷", ["a", "b"]),
+            (3, 6000.0, "다섯", ["a", "b"]),
+        ],
+    )
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    parts, chapters = await _parts_and_chapters(db, summarizer, video.id)
+    # 시각순 · 첫 파트 0초로 당김 · 챕터가 없는 파트(8900초)는 빠진다
+    assert parts == [(1, "오전 1", 0), (2, "오전 2", 2400), (3, "오후", 5400)]
+    assert chapters == [(1, 0), (1, 1200), (2, 2500), (2, 3600), (3, 6000)]
+
+
+async def test_generate_chapters_one_model_part_groups_by_hour(
+    db, make, summarizer, env_file
+) -> None:
+    video = await _video(db, make, duration_sec=9000)
+    await make.transcript(video.id, ["x"] * 90, step=100)
+    starts = [0.0, 1800.0, 3700.0, 5000.0, 7300.0, 7400.0]
+    summarizer.chapter_draft = ChapterDraft(
+        parts=[("하나뿐", 0.0)],
+        chapters=[(None, st, f"챕터 {int(st)}", ["a", "b"]) for st in starts],
+    )
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    parts, chapters = await _parts_and_chapters(db, summarizer, video.id)
+    # 60분 묶음 — 제목은 묶음의 첫 챕터 제목, 시작은 그 챕터(첫 파트는 0초)
+    assert parts == [(1, "챕터 0", 0), (2, "챕터 3700", 3700), (3, "챕터 7300", 7300)]
+    assert [p for p, _ in chapters] == [1, 1, 2, 2, 3, 3]
+
+
+async def test_generate_chapters_by_windows(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=9000)
+    await make.transcript(video.id, ["가" * 1000] * 90, step=100)  # 토큰이 상한을 넘는다
+    windows: list[float] = []
+
+    async def chapters(segments, duration_sec, model):
+        start = segments[0].start_sec
+        windows.append(start)
+        return ChapterDraft(
+            parts=[("무시", 0.0)],  # 구간 갈래는 파트를 60분 묶음으로 만든다
+            chapters=[(None, start, f"{int(start)}", ["a", "b"]), (None, start + 600, "뒤", ["a"])],
+        )
+
+    summarizer.chapters = chapters
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    assert windows == [0, 1800, 3600, 5400, 7200]  # 30분 구간 다섯
+    parts, chapters_ = await _parts_and_chapters(db, summarizer, video.id)
+    assert len(chapters_) == 10
+    assert parts == [(1, "0", 0), (2, "3600", 3600), (3, "7200", 7200)]
 
 
 # --- generate_questions

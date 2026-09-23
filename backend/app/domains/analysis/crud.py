@@ -117,24 +117,33 @@ async def summary_with_insights(
 async def replace_chapters(
     session: AsyncSession,
     video_id: int,
-    chapters: list[tuple[float, str, list[str]]],
+    parts: list[tuple[str, float]],
+    chapters: list[tuple[int | None, float, str, list[str]]],
 ) -> None:
-    """파트와 챕터를 갈아 끼운다. B1은 파트가 없는 갈래만(챕터마다 part_id = None)."""
+    """파트와 챕터를 갈아 끼운다. 파트는 (제목, 시작), 챕터는 (파트 번호 1부터 또는 None, 시작,
+    제목, 요점). 파트 행을 먼저 넣어 id를 받고 챕터에 잇는다(복합 FK)."""
     await session.execute(delete(ChapterRow).where(ChapterRow.video_id == video_id))
     await session.execute(delete(PartRow).where(PartRow.video_id == video_id))
+    part_rows = [
+        PartRow(video_id=video_id, seq=i, title=title, start_sec=start)
+        for i, (title, start) in enumerate(parts, 1)
+    ]
+    session.add_all(part_rows)
+    await session.flush()
+    ids = {p.seq: p.id for p in part_rows}
     if chapters:
         await session.execute(
             insert(ChapterRow),
             [
                 {
                     "video_id": video_id,
-                    "part_id": None,
+                    "part_id": ids.get(part) if part is not None else None,
                     "seq": i,
                     "start_sec": start,
                     "title": title,
                     "bullets": bullets,
                 }
-                for i, (start, title, bullets) in enumerate(chapters, 1)
+                for i, (part, start, title, bullets) in enumerate(chapters, 1)
             ],
         )
 

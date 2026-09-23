@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
-from app.core.errors import NotImplementedYet, ResultNotReady
+from app.core.errors import ResultNotReady
 from app.core.settings import Models, settings
 from app.domains.analysis import crud
 from app.domains.analysis.models import TranscriptSource
@@ -55,6 +55,15 @@ def _windows(segments: list[Segment]) -> list[list[Segment]]:
 def _span(window: list[Segment]) -> int:
     # 구간 길이(초) — 포트가 인사이트 상한 · 목표 챕터 수를 이것으로 정한다
     return max(int(window[-1].end_sec - window[0].start_sec), 1)
+
+
+def _part_of(parts: list[tuple[str, float]], start: float) -> int | None:
+    # 챕터의 파트 번호(1부터) — 시작이 챕터 시작 이하인 마지막 파트. 파트가 없으면 None
+    found = None
+    for i, (_, part_start) in enumerate(parts, 1):
+        if part_start <= start:
+            found = i
+    return found
 
 
 def _sample(segments: list[Segment], limit: int) -> list[Segment]:
@@ -234,40 +243,88 @@ class AnalysisService:
         """VA-MS-003#AnalysisService.generate_chapters
 
         챕터를 만들어 갈아 끼운다 — 시작 시각 보정, 같은 시각은 하나로, 첫 챕터는 0초부터,
-        요점은 셋까지. 60분 넘는 영상의 파트 갈래(와 구간별 챕터)는 스텁 — B2(VA-CODE-001 B1).
-        모델을 부르기 전에 막는다 — 쓸모없는 호출을 하지 않게.
+        요점은 셋까지. 스크립트가 토큰 상한을 넘으면 구간마다 챕터를 받아 이어 붙인다. 60분 넘는
+        영상은 파트로 묶는다 — 모델이 파트를 둘 이상 주면 그것, 아니면 60분 묶음(제목은 묶음의
+        첫 챕터 제목). 파트도 시각순 · 보정 · 첫 파트 0초, 챕터의 파트는 시작 시각으로 정하고
+        챕터가 없는 파트는 뺀다.
 
         Args:
             video: 영상(id · 길이)
-
-        Raises:
-            NotImplementedYet: 60분 넘는 영상(B2)
         """
-        if video.duration_sec > config.PART_THRESHOLD_SEC:
-            raise NotImplementedYet("60분 넘는 영상의 챕터 묶기는 아직 지원하지 않아요")
         segments = await self.segments_of(video.id)
         model = settings.current_models().text.id
-        draft = await self.summarizer.chapters(segments, video.duration_sec, model)
-        placed = sorted(  # 시작 시각만으로 — 같은 시각이면 모델이 준 순서 그대로(안정 정렬)
+        if _tokens(segments) > config.TEXT_TOKEN_LIMIT:
+            drafted: list[tuple[int | None, float, str, list[str]]] = []
+            for window in _windows(segments):
+                drafted += (await self.summarizer.chapters(window, _span(window), model)).chapters
+            model_parts: list[tuple[str, float]] = []  # 파트는 아래에서 묶는다
+        else:
+            draft = await self.summarizer.chapters(segments, video.duration_sec, model)
+            drafted, model_parts = draft.chapters, draft.parts
+        chapters = self._place(drafted, video.duration_sec, segments)
+        parts: list[tuple[str, float]] = []
+        if video.duration_sec > config.PART_THRESHOLD_SEC and chapters:
+            parts = self._parts(model_parts, chapters, video.duration_sec, segments)
+        rows = [
+            (_part_of(parts, start), start, title, bullets) for start, title, bullets in chapters
+        ]
+        await crud.replace_chapters(self.session, video.id, parts, rows)
+        await self.session.commit()
+
+    def _place(
+        self,
+        drafted: list[tuple[int | None, float, str, list[str]]],
+        duration_sec: int,
+        segments: list[Segment],
+    ) -> list[tuple[float, str, list[str]]]:
+        # 시작 시각 보정 · 시각순(같은 시각이면 모델이 준 순서 — 안정 정렬) · 같은 시각은 하나 ·
+        # 첫 챕터 0초 · 요점 셋까지
+        placed = sorted(
             (
                 (
-                    (self.clamp_secs([start], video.duration_sec, segments) or [0.0])[0],
+                    (self.clamp_secs([start], duration_sec, segments) or [0.0])[0],
                     title,
                     bullets[:BULLETS_MAX],
                 )
-                for _, start, title, bullets in draft.chapters
+                for _, start, title, bullets in drafted
             ),
             key=lambda c: c[0],
         )
         chapters: list[tuple[float, str, list[str]]] = []
         for start, title, bullets in placed:
-            if chapters and chapters[-1][0] == start:  # 같은 시각이 둘이면 뒤 것을 뺀다
+            if chapters and chapters[-1][0] == start:
                 continue
             chapters.append((start, title, bullets))
         if chapters and chapters[0][0] != 0:  # 스크립트 처음이 어느 챕터에도 안 들어가지 않게
             chapters[0] = (0.0, *chapters[0][1:])
-        await crud.replace_chapters(self.session, video.id, chapters)
-        await self.session.commit()
+        return chapters
+
+    def _parts(
+        self,
+        model_parts: list[tuple[str, float]],
+        chapters: list[tuple[float, str, list[str]]],
+        duration_sec: int,
+        segments: list[Segment],
+    ) -> list[tuple[str, float]]:
+        # 파트 — 모델 것이 둘 이상이면 그것, 아니면 60분 묶음과 첫 챕터 제목(MS-003 미결)
+        if len(model_parts) >= 2:
+            raw = [
+                (title, (self.clamp_secs([start], duration_sec, segments) or [0.0])[0])
+                for title, start in model_parts
+            ]
+        else:
+            firsts: dict[int, tuple[str, float]] = {}
+            for start, title, _ in chapters:
+                firsts.setdefault(int(start // config.PART_THRESHOLD_SEC), (title, start))
+            raw = list(firsts.values())
+        raw.sort(key=lambda p: p[1])
+        parts: list[tuple[str, float]] = []
+        for title, start in raw:
+            if not parts or parts[-1][1] != start:
+                parts.append((title, start))
+        parts[0] = (parts[0][0], 0.0)  # 첫 챕터(0초)가 어느 파트에도 안 드는 것을 막는다
+        used = {_part_of(parts, start) for start, _, _ in chapters}
+        return [p for i, p in enumerate(parts, 1) if i in used]  # 챕터 없는 파트는 뺀다
 
     async def generate_questions(self, video: Video) -> None:
         """VA-MS-003#AnalysisService.generate_questions
