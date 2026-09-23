@@ -176,5 +176,15 @@ class SettingsService:
             ),
         )
 
+    def api_key(self) -> str | None:
+        """VA-MS-005#SettingsService.api_key
+
+        지금 키. 부를 때마다 파일에서 읽는다 — 응답 · 로그에 쓰지 않는다.
+
+        Returns:
+            키 문자열. 없거나 비었으면 None
+        """
+        return self.read_env().get("OPENAI_API_KEY") or None
+
 
 settings = SettingsService()

@@ -118,3 +118,14 @@ def test_current_models_defaults_and_prices(svc, env_file) -> None:
     m = svc.current_models()
     assert (m.stt.id, m.text.id) == ("whisper-1", "gpt-5.4")  # 목록에 없으면 기본값
     assert m.text.price.output_per_mtok_usd == 15.00
+
+
+def test_api_key(svc, env_file, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="app")
+    _write(env_file)
+    assert svc.api_key() == KEY
+    _write(env_file, NEW)
+    assert svc.api_key() == NEW  # 다시 띄우지 않아도 새 키
+    _write(env_file, "")
+    assert svc.api_key() is None
+    assert KEY not in caplog.text and NEW not in caplog.text
