@@ -34,8 +34,6 @@ async def _ensure_database() -> None:
         await conn.close()
 
 
-asyncio.run(_ensure_database())
-
 # 여기부터는 접속 주소를 덮어쓴 뒤에 — 앱 모듈이 import 때 설정을 읽는다
 from alembic import command  # noqa: E402
 from alembic.config import Config as AlembicConfig  # noqa: E402
@@ -67,7 +65,8 @@ def alembic() -> Callable[[str, str], Awaitable[None]]:
 
 @pytest.fixture(scope="session")
 async def migrated() -> AsyncIterator[None]:
-    """테스트 DB를 마지막 리비전으로."""
+    """테스트 DB를 만들고(없으면) 마지막 리비전으로. DB가 필요한 테스트만 부른다."""
+    await _ensure_database()
     await _alembic("upgrade", "head")
     yield
 

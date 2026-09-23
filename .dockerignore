@@ -13,3 +13,5 @@ docs
 **/.next
 frontend/test-results
 frontend/playwright-report
+frontend/.next-e2e
+frontend/e2e/.tmp
