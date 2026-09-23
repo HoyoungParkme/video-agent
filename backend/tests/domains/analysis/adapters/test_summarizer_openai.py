@@ -150,3 +150,65 @@ async def test_summary_empty_is_format_failure(chat, adapter) -> None:
     ]
     with pytest.raises(OpenAIOutputError):
         await summarizer.summary(segs(3000), 3000, "m")
+
+
+# --- chapters
+
+
+CHAPTERS = {
+    "parts": [{"title": "앞", "start": "00:00"}, {"title": "뒤", "start": "1:10:00"}],
+    "chapters": [
+        {"part": 2, "start": "1:20:00", "title": "셋째", "bullets": ["a", "", "b", "c", "d"]},
+        {"part": 1, "start": "00:00", "title": "첫째", "bullets": ["a", "b"]},
+        {"part": 9, "start": "0:30:00", "title": "둘째", "bullets": ["a", "b"]},
+        {"part": 1, "start": "??", "title": "시각 없음", "bullets": []},
+        {"part": 1, "start": "0:40:00", "title": " ", "bullets": []},
+    ],
+}
+
+
+async def test_chapters_short_video_drops_parts(chat, adapter) -> None:
+    summarizer, _ = adapter
+    short = {
+        "parts": [{"title": "앞", "start": "00:00"}],  # 와도 버린다
+        "chapters": [
+            {"part": 1, "start": "40:00", "title": "셋째", "bullets": ["a", "", "b", "c", "d"]},
+            {"part": 1, "start": "00:00", "title": "첫째", "bullets": ["a", "b"]},
+            {"part": 1, "start": "30:00", "title": "둘째", "bullets": ["a", "b"]},
+            {"part": 1, "start": "??", "title": "시각 없음", "bullets": []},
+            {"part": 1, "start": "45:00", "title": " ", "bullets": []},
+        ],
+    }
+    chat.replies = [js(short)]
+    draft = await summarizer.chapters(segs(3000), 3000, "m")
+    assert draft.parts == []  # 60분 이하 — 파트를 버린다
+    assert [(p, s, t) for p, s, t, _ in draft.chapters] == [
+        (None, 0.0, "첫째"),
+        (None, 1800.0, "둘째"),
+        (None, 2400.0, "셋째"),
+    ]  # 순서가 뒤섞여 와도 정렬 · 시각을 못 읽거나 제목이 빈 것은 버린다
+    assert draft.chapters[2][3] == ["a", "b", "c"]  # 빈 줄을 빼고 앞 셋
+    system = chat.calls[0][0]["content"]
+    assert system == prompts.render(
+        "chapters", chapter_target=8, part_count="0", time_format="mm:ss"
+    )
+
+
+async def test_chapters_long_video_with_parts(chat, adapter) -> None:
+    summarizer, _ = adapter
+    chat.replies = [js(CHAPTERS)]
+    draft = await summarizer.chapters(segs(9000), 9000, "m")
+    assert draft.parts == [("앞", 0.0), ("뒤", 4200.0)]
+    assert [p for p, *_ in draft.chapters] == [1, None, 2]  # 범위 밖 파트(9)는 null
+    assert "2~5" in chat.calls[0][0]["content"]
+    assert "25개 안팎" in chat.calls[0][0]["content"]  # 목표 = 150분 ÷ 6
+
+
+async def test_chapters_none_left_is_failure(chat, adapter) -> None:
+    summarizer, _ = adapter
+    bad = js(
+        {"parts": [], "chapters": [{"part": None, "start": "모름", "title": "x", "bullets": []}]}
+    )
+    chat.replies = [bad, bad]
+    with pytest.raises(OpenAIOutputError):
+        await summarizer.chapters(segs(3000), 3000, "m")

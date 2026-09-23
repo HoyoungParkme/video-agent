@@ -115,3 +115,58 @@ class SummarizerOpenAI:
             return SummaryDraft(one_liner=one_liner, insights=insights)
 
         return await self._ask(model, system, user, parse)
+
+    async def chapters(
+        self, segments: list[Segment], duration_sec: int, model: str
+    ) -> ChapterDraft:
+        """VA-MS-006#summarizer_openai.chapters
+
+        챕터(시작 · 제목 · 요점 2~3줄)와, 60분 넘는 영상이면 파트. 시작 순으로 정렬한다.
+
+        Args:
+            segments: 보낼 구간들
+            duration_sec: 영상 길이 — 목표 챕터 수(6분에 하나, 적어도 셋)와 파트 수
+            model: 텍스트 모델
+
+        Returns:
+            ChapterDraft. 60분 이하면 parts가 비고 part_seq가 모두 None
+
+        Raises:
+            OpenAIOutputError: 다시 불러도 형식이 틀렸다
+        """
+        target = max(3, round(duration_sec / 60 / 6))
+        with_parts = duration_sec > config.PART_THRESHOLD_SEC
+        user, end, long = _script(segments)
+        system = prompts.render(
+            "chapters",
+            chapter_target=target,
+            part_count="2~5" if with_parts else "0",
+            time_format=_fmt(long),
+        )
+
+        def parse(data: Any) -> ChapterDraft:
+            data = _obj(data)
+            parts: list[tuple[str, float]] = []
+            renumber: dict[int, int] = {}  # 응답의 파트 번호 → 읽을 수 있던 파트만 센 번호
+            if with_parts:
+                for i, p in enumerate(map(_obj, _list(data.get("parts", []))), 1):
+                    title, start = _text(p["title"]), timecode.parse(_text(p["start"]), end)
+                    if title and start is not None:
+                        parts.append((title, start))
+                        renumber[i] = len(parts)
+            chapters = []
+            for c in map(_obj, _list(data["chapters"])):
+                start = timecode.parse(_text(c["start"]), end)
+                title = _text(c["title"])
+                if start is None or not title:  # 시작을 못 읽거나 제목이 없으면 버린다
+                    continue
+                bullets = [b.strip() for b in _list(c.get("bullets", [])) if isinstance(b, str)]
+                part = c.get("part")
+                part_seq = renumber.get(part) if isinstance(part, int) else None
+                chapters.append((part_seq, start, title, [b for b in bullets if b][:BULLETS_MAX]))
+            if not chapters:
+                raise ValueError("챕터가 없다")
+            chapters.sort(key=lambda c: c[1])
+            return ChapterDraft(parts=parts, chapters=chapters)
+
+        return await self._ask(model, system, user, parse)
