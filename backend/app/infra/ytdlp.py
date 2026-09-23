@@ -106,3 +106,29 @@ async def captions(video_id: str, lang: str, kind: str) -> str:
             raise YtdlpError(f"자막 파일이 만들어지지 않았습니다({lang}, {kind})", "other")
         with open(path, encoding="utf-8") as f:
             return f.read()
+
+
+async def download_audio(video_id: str, dest: str) -> str:
+    """VA-MS-007#ytdlp.download_audio
+
+    가장 좋은 음성 스트림만 내려받는다. 변환은 어댑터가 ffmpeg로 한다.
+
+    Args:
+        video_id: YouTube 영상 ID
+        dest: 저장할 폴더
+
+    Returns:
+        받은 파일 경로 — `{dest}/source.{ext}`(m4a 또는 webm)
+    """
+    await _run(
+        "--no-playlist",
+        "-f",
+        "bestaudio",
+        "-o",
+        os.path.join(dest, "source.%(ext)s"),
+        WATCH.format(video_id),
+    )
+    done = [p for p in glob.glob(os.path.join(dest, "source.*")) if not p.endswith(".part")]
+    if not done:
+        raise YtdlpError("음성 파일이 만들어지지 않았습니다", "other")
+    return done[0]

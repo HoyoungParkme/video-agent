@@ -81,3 +81,19 @@ async def test_captions_missing_file(fake) -> None:
     fake.behave()  # 성공하지만 파일을 만들지 않는다
     with pytest.raises(YtdlpError):
         await ytdlp.captions("dQw4w9WgXcQ", "ko", "manual")
+
+
+async def test_download_audio(fake, tmp_path: Path) -> None:
+    fake.behave(write_ext="m4a")
+    path = await ytdlp.download_audio("dQw4w9WgXcQ", str(tmp_path))
+    assert path == str(tmp_path / "source.m4a")
+    assert Path(path).exists()
+    [args] = fake.calls()
+    assert args[args.index("-f") + 1] == "bestaudio"
+
+
+async def test_download_audio_network(fake, tmp_path: Path) -> None:
+    fake.behave(stderr="ERROR: Unable to download webpage: timed out\n", exit=1)
+    with pytest.raises(YtdlpError) as e:
+        await ytdlp.download_audio("dQw4w9WgXcQ", str(tmp_path))
+    assert e.value.kind == "network"
