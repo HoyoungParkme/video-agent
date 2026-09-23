@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -67,18 +68,20 @@ class Settings(BaseModel):
 
 
 def _parse(line: str) -> tuple[str, str] | None:
-    """`.env` 한 줄 → (이름, 값). 빈 줄 · 주석이면 None.
-
-    앞의 `export `와 값을 감싼 따옴표 한 쌍은 뗀다.
+    """`.env` 한 줄 → (이름, 값). 빈 줄 · 주석이면 None. compose와 셸이 읽는 대로 —
+    앞의 `export `를 떼고, 따옴표로 시작하면 짝 따옴표까지가 값, 아니면 ` #`부터는 주석이다.
     """
     s = line.strip()
     if not s or s.startswith("#") or "=" not in s:
         return None
     s = s.removeprefix("export ").lstrip()
-    name, value = s.split("=", 1)
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        value = value[1:-1]
+    name, raw = s.split("=", 1)
+    raw = raw.strip()
+    if raw[:1] in ("'", '"'):
+        end = raw.find(raw[0], 1)
+        value = raw[1:end] if end != -1 else raw[1:]
+    else:
+        value = re.split(r"\s#", raw, maxsplit=1)[0].strip()
     return name.strip(), value
 
 
@@ -111,16 +114,21 @@ class SettingsService:
         """VA-MS-005#SettingsService.read_env
 
         `.env`에서 세 값(키 · 받아쓰기 모델 · 텍스트 모델)만 읽는다. 같은 이름이 두 번이면 뒤의 것.
+        던지지 않는다 — 파일을 읽을 수 없으면 경고 로그를 남기고 빈 dict다.
 
         Returns:
-            있는 것만 담긴 dict. 파일이 없으면 빈 dict
+            있는 것만 담긴 dict. 파일이 없거나 읽을 수 없으면 빈 dict
         """
         try:
-            text = Path(config.ENV_PATH).read_text(encoding="utf-8")
+            data = Path(config.ENV_PATH).read_bytes()
         except FileNotFoundError:
             return {}
+        except OSError as e:  # 권한 · 디렉터리 등 — 서버 시작과 GET이 멈추면 안 된다
+            log.warning(".env를 읽지 못했다: %s", type(e).__name__)
+            return {}
+        # 세 줄은 ASCII라 주석이 다른 인코딩이어도 읽힌다
         out: dict[str, str] = {}
-        for line in text.splitlines():
+        for line in data.decode("utf-8", errors="replace").splitlines():
             parsed = _parse(line)
             if parsed and parsed[0] in NAMES:
                 out[parsed[0]] = parsed[1]
@@ -138,6 +146,7 @@ class SettingsService:
 
         Raises:
             OSError: 파일을 쓰지 못했다(읽기 전용 마운트 등). 부르는 쪽이 internal로 접는다
+            UnicodeDecodeError: UTF-8이 아닌 파일 — 사용자의 주석을 깨뜨리지 않게 쓰지 않는다
         """
         unknown = set(values) - set(NAMES)
         if unknown:
@@ -198,13 +207,14 @@ class SettingsService:
         env = self.read_env()
         key = env.get("OPENAI_API_KEY") or None
         c = self.last_check
+        # 키가 사는 곳은 파일이다 — 앱이 도는 동안 손으로 지웠으면 옛 결과와 상관없이 키 없음
         status = KeyStatus(
-            state=c.state,
+            state=c.state if key else KeyState.missing,
             masked=_mask(key) if key else None,
             stored_in=STORED_IN if key else None,
             checked_at=c.checked_at,
-            reason_kind=c.reason_kind,
-            reason=c.reason,
+            reason_kind=c.reason_kind if key else None,
+            reason=c.reason if key else None,
         )
         m = self._models(env)
         return Settings(
@@ -246,6 +256,8 @@ class SettingsService:
             KeyMissing: 저장된 키가 없다
             KeyInvalid: 마지막 확인이 실패했다(reason_kind · reason · checked_at)
         """
+        if not self.api_key():  # 손으로 지운 키를 옛 확인 결과로 통과시키지 않는다
+            raise KeyMissing()
         c = self.last_check
         if c.state == KeyState.invalid and c.reason_kind == ReasonKind.network:
             await self.check_stored_key()
@@ -284,7 +296,7 @@ class SettingsService:
             raise KeyRejected(reason_kind=check.reason_kind, reason=check.reason)
         try:
             self.write_env({"OPENAI_API_KEY": k})
-        except OSError as e:
+        except (OSError, UnicodeError) as e:
             raise Internal("키를 .env에 쓰지 못했어요") from e
         self.last_check = check
         return self.get()
@@ -317,7 +329,7 @@ class SettingsService:
             raise Validation(errors=errors)
         try:
             self.write_env({"STT_MODEL": stt_model, "TEXT_MODEL": text_model})
-        except OSError as e:
+        except (OSError, UnicodeError) as e:
             raise Internal("모델 선택을 .env에 쓰지 못했어요") from e
         return self.get()
 

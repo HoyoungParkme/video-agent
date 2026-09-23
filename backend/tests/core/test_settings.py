@@ -64,6 +64,32 @@ def test_read_env_rules(svc, env_file) -> None:
     }
 
 
+def test_read_env_inline_comments_and_quotes(svc, env_file) -> None:
+    env_file.write_text(
+        "TEXT_MODEL=gpt-5.4 # 비싸다\nSTT_MODEL=whisper-1#붙은 건 값\n"
+        'OPENAI_API_KEY="sk-a#b c" # 주석\n'
+    )
+    assert svc.read_env() == {
+        "TEXT_MODEL": "gpt-5.4",  # compose처럼 공백 뒤 #부터는 주석
+        "STT_MODEL": "whisper-1#붙은 건 값",  # 공백 없이 붙은 #는 값이다
+        "OPENAI_API_KEY": "sk-a#b c",
+    }
+
+
+def test_read_env_other_encoding(svc, env_file) -> None:
+    """주석이 CP949여도 세 값(ASCII)은 읽힌다."""
+    env_file.write_bytes(
+        "# 내 키 메모장에서 저장\n".encode("cp949") + f"OPENAI_API_KEY={KEY}\n".encode()
+    )
+    assert svc.read_env() == {"OPENAI_API_KEY": KEY}
+
+
+def test_read_env_unreadable(svc, env_file, caplog: pytest.LogCaptureFixture) -> None:
+    env_file.mkdir()  # 파일 자리에 디렉터리 — 읽을 수 없다
+    assert svc.read_env() == {}
+    assert ".env를 읽지 못했다" in caplog.text
+
+
 # write_env
 
 
@@ -90,6 +116,14 @@ def test_write_env_last_of_duplicates(svc, env_file) -> None:
     env_file.write_text("TEXT_MODEL=a\nexport TEXT_MODEL=b\n")
     svc.write_env({"TEXT_MODEL": "gpt-5.4"})
     assert env_file.read_text() == "TEXT_MODEL=a\nTEXT_MODEL=gpt-5.4\n"
+
+
+def test_write_env_refuses_other_encoding(svc, env_file) -> None:
+    before = "# 내 키\n".encode("cp949") + b"OPENAI_API_KEY=\n"
+    env_file.write_bytes(before)
+    with pytest.raises(UnicodeDecodeError):
+        svc.write_env({"OPENAI_API_KEY": KEY})
+    assert env_file.read_bytes() == before
 
 
 def test_write_env_rejects_other_names(svc, env_file) -> None:
@@ -144,6 +178,14 @@ def test_get_masks_and_sends_nothing(svc, env_file, verify, monkeypatch) -> None
     assert s.model_options == config.MODEL_OPTIONS
     assert s.inbox_path == config.INBOX_DISPLAY_PATH
     assert verify.calls == []
+
+
+def test_get_key_deleted_by_hand(svc, env_file, verify) -> None:
+    _write(env_file)
+    svc.last_check = KeyCheck(KeyState.ok, None, None, datetime.now(UTC))
+    _write(env_file, "")  # 앱이 도는 동안 손으로 지웠다
+    k = svc.get().key
+    assert (k.state, k.masked, k.reason_kind) == (KeyState.missing, None, None)
 
 
 def test_get_empty_key(svc, env_file) -> None:
@@ -204,6 +246,15 @@ async def test_require_missing(svc, env_file, verify) -> None:
     with pytest.raises(KeyMissing):
         await svc.require_key()
     assert verify.calls == []
+
+
+async def test_require_key_deleted_by_hand(svc, env_file, verify) -> None:
+    _write(env_file)
+    await svc.check_stored_key()
+    _write(env_file, "")
+    with pytest.raises(KeyMissing):
+        await svc.require_key()
+    assert len(verify.calls) == 1  # 시작 때 한 번뿐
 
 
 async def test_require_quota_does_not_recheck(svc, env_file, verify) -> None:
@@ -279,6 +330,14 @@ async def test_set_key_validation(svc, env_file, verify, bad) -> None:
     with pytest.raises(Validation):
         await svc.set_key(bad)
     assert verify.calls == []
+
+
+async def test_set_key_other_encoding_is_internal(svc, env_file, verify) -> None:
+    before = "# 내 키\n".encode("cp949")
+    env_file.write_bytes(before)
+    with pytest.raises(Internal):
+        await svc.set_key(NEW)
+    assert env_file.read_bytes() == before
 
 
 async def test_set_key_write_failure(svc, env_file, verify, monkeypatch) -> None:
