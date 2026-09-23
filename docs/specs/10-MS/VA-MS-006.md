@@ -168,7 +168,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 근거: [[VA-SEQ-001#SEQ-4]] 6~8번 · [[VA-UC-001#UC-S2]] 1b · 1c · [[VA-INFRA-001#C4]] · [[VA-INFRA-001]] 9절(음성 파일 형식)
 
-**처리** `→ EXT: ffmpeg.extract_audio(src, dest)` — `config.AUDIO_FORMAT`(mp3 64kbps 모노 16kHz). `src`는 읽기만 한다. 로컬 음성 파일(mp3 · m4a · wav)도 같은 변환을 거친다 — 크기와 형식을 맞추기 위해. `FfmpegError`는 그대로
+**처리** `→ EXT: ffmpeg.extract_audio(src, dest)` — `config.AUDIO_FORMAT`(mp3 64kbps 모노 16kHz). `src`는 읽기만 한다. 로컬 음성 파일(mp3 · m4a · wav)도 같은 변환을 거친다 — 크기와 형식을 맞추기 위해. 음성 파일에는 추출 단계가 없어 받아쓰기 단계가 조각을 나누기 전에 부른다([[VA-MS-002#pipeline.run]]). [[VA-MS-007#ffmpeg.cut]]은 다시 인코딩하지 않아 wav · m4a를 그대로 mp3 조각으로 자를 수 없다. `FfmpegError`는 그대로
 
 **테스트 관점** 결과가 모노 · 16kHz · 64kbps(ffprobe로 확인) · `src`의 mtime · 크기가 그대로 · 150분 영상 → 약 72MB
 
@@ -181,7 +181,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 근거: [[VA-SEQ-001#SEQ-4]] 12~14번 · [[VA-UC-001#UC-S3]] 1~2번 · [[VA-INFRA-001#C2]] · [[VA-MS-002#pipeline.transcribe_stage]] 1번
 
 **처리**
-1. `total = ffmpeg.probe(path).format.duration` · if `total ≤ config.CHUNK_SEC + config.SPLIT_WINDOW_SEC` → 조각 하나: `→ [ChunkPlan(seq=1, offset_sec=0, duration_sec=total, path=path)]` (자르지 않는다)
+1. `total = ffmpeg.probe(path).format.duration` · if `total ≤ config.CHUNK_SEC + config.SPLIT_WINDOW_SEC` → 조각 하나: `→ [ChunkPlan(seq=1, offset_sec=0, duration_sec=total, path=path)]` (자르지 않는다. `path`는 늘 `tmp` 안의 mp3다 — 로컬 음성도 받아쓰기 단계가 먼저 바꾸므로 inbox 원본이 조각이 되지 않는다. 받아쓰기가 끝나면 파이프라인이 지운다)
 2. `silences = EXT: ffmpeg.silences(path)` — 무음 구간의 가운데 시각 목록(`config.SILENCE_DB` · `SILENCE_MIN_SEC`)
 3. 경계 = `k × config.CHUNK_SEC`(k = 1, 2, …)마다 `[목표 − SPLIT_WINDOW_SEC, 목표 + SPLIT_WINDOW_SEC]` 안에서 목표에 가장 가까운 무음 시각 · 없으면 목표 시각 그대로(문장이 잘릴 수 있다 — 어쩔 수 없다)
 4. 경계마다 `EXT: ffmpeg.cut(path, start, end, f"{dest_dir}/{seq}.mp3")` · `ChunkPlan(seq, offset_sec=start, duration_sec=end − start, path)`
@@ -208,7 +208,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 1. `raw = EXT: openai.transcribe(client_for(), path, model)` — `response_format=verbose_json` · `timestamp_granularities=[segment]` · 언어는 지정하지 않는다(자동 감지, [[VA-UC-001#UC-S3]] 3번)
 2. `lang = raw.language`(ISO 639-1로 정규화 — whisper-1은 `korean` 같은 이름을 준다. 표에 없으면 그대로)
 3. `→ [SttSegment(start_sec=s.start, end_sec=s.end, text=s.text.strip(), language=lang) for s in raw.segments if s.text.strip()]` — 시각은 조각 안 상대 시각. 오프셋은 파이프라인이 더한다
-4. 예외(`APIConnectionError` · `APIStatusError` · 시간 초과)는 그대로 올린다 — 재시도 · 분류는 파이프라인의 몫([[VA-MS-002#pipeline.transcribe_stage]] · [[VA-MS-002#pipeline.error_kind]])
+4. 예외(`APIConnectionError` · `APIStatusError` · 시간 초과)는 그대로 올린다 — 재시도 · 분류 · 이유 한 줄은 파이프라인의 몫([[VA-MS-002#pipeline.transcribe_stage]] · [[VA-MS-002#pipeline.error_kind]] · [[VA-MS-002#pipeline.reason_of]])
 
 **출력** `list[SttSegment]`
 
@@ -364,7 +364,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 - [x] 프롬프트 원문의 자리 — 결정: `app/prompts/*.md` 파일 넷(사용자 결정 2026-09-21). 명세는 자리 표시 · 반드시 들어갈 규칙 · 출력 형식만 정하고 문장은 파일에 둔다(0장 「프롬프트 파일」). [[VA-DOM-002]] 7장의 「자리 표시 이름과 출력 형식」 미결을 여기서 닫는다
 - [ ] 자동 자막의 굴러가는 중복 제거 규칙(`captions` 4번)이 YouTube 형식 변화에 약하다. 실제 영상 셋으로 검증 뒤 조정 — 카드 B1에서 실제 한국어 영상 하나(22분, 자동 728큐 → 365줄, 겹침 0 · 수동 388큐)로 확인했다. 같은 카드의 코드 리뷰로 겹침 떼기를 글자에서 줄 단위로 바꿨다 — 같은 영상에서 결과가 같다. 나머지는 C 카드의 세 영상으로
-- [ ] 파이프라인 안에서 난 yt-dlp 실패의 이유 한 줄 — [[#audio_source.captions]] · [[#audio_source.download_audio]]가 그대로 올리는 `YtdlpError`의 메시지는 표준 오류 끝 세 줄(영어, 경고 줄이 섞인다)이고 [[VA-MS-002#pipeline.run]]은 그 첫 줄을 `error_reason`으로 적는다. 「한국어 문구는 어댑터가 만든다」대로 어댑터가 종류별 한국어 한 줄(예: [[#youtube_info.info]]의 이유 표를 같이 쓰기)로 바꿔 올려야 한다. B1에서는 이유가 화면에 나오지 않는다 — 실패 알림 상자를 그리는 B2에서 정한다(카드 B1 코드 리뷰)
+- [x] 파이프라인 안에서 난 yt-dlp 실패의 이유 한 줄 — 결정(카드 B2): 이유 한 줄은 [[VA-MS-002#pipeline.reason_of]]가 만든다. 어댑터는 예외를 그대로 올린다 — 재시도 · 분류가 파이프라인의 몫이듯, 어댑터가 SDK 예외를 감싸 바꾸면 종류(`error_kind`)를 가를 수 없다. 메시지에 한글이 있으면(앱이 만든 문장) 그대로, 아니면 종류별 한국어 표(yt-dlp는 `YtdlpError.kind`, OpenAI는 상태 코드). 받아쓰기 조각 실패의 '네트워크 시간 초과' 같은 이유도 같은 함수다(카드 B1 코드 리뷰에서 찾음)
 - [x] 자동 자막 목록에 기계 번역이 섞인다 — 실제 yt-dlp 출력(2026-09-23)에서 `automatic_captions` 키가 150개 넘게 왔다(원래 언어의 받아쓰기 `xx-orig` 하나 + 나머지는 번역). 수동 키도 `ko-FmoQciUtYSc`처럼 트랙 이름이 붙어 온다. 옛 규칙(자동에서 `ko`를 찾는다)이면 영어 영상도 번역된 한국어를 골랐다. 결정(카드 B1): 원래 언어만 보고 키의 앞 부분을 언어로 읽는다 — 규칙은 [[#captions.pick]] 하나에
 - [ ] 로컬 음성 파일(mp3 · m4a · wav)도 mp3 64kbps로 다시 변환한다(`extract_audio`). 이미 작은 mp3면 건너뛸지 — 첫 버전은 항상 변환(형식을 하나로)
 - [ ] whisper-1 언어 이름 → ISO 코드 표 — 자주 나오는 20개만 두고 나머지는 그대로. 음성 형식 미결은 `config.AUDIO_FORMAT`으로 닫혔다([[VA-INFRA-001]] 9절)
