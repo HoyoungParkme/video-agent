@@ -241,3 +241,50 @@ async def test_require_network_twice(svc, env_file, verify) -> None:
         await svc.require_key()
     assert e.value.extra["reason_kind"] == ReasonKind.network
     assert len(verify.calls) == 2  # 되풀이하지 않는다
+
+
+# set_key
+
+
+@pytest.mark.parametrize(
+    ("fail", "error"), [(ReasonKind.auth, KeyRejected), (ReasonKind.network, LlmUnavailable)]
+)
+async def test_set_key_failure_keeps_everything(svc, env_file, verify, fail, error) -> None:
+    before = _write(env_file)
+    await svc.check_stored_key()
+    verify.fail = fail
+    with pytest.raises(error):
+        await svc.set_key(NEW)
+    assert env_file.read_text() == before
+    assert svc.get().key.state == KeyState.ok
+
+
+async def test_set_key_saves(svc, env_file, verify) -> None:
+    _write(env_file, "")
+    old = svc.last_check.checked_at
+    s = await svc.set_key(f"  {NEW}  ")
+    assert svc.read_env()["OPENAI_API_KEY"] == NEW
+    assert (s.key.state, s.key.masked, s.key.stored_in) == (
+        KeyState.ok,
+        "sk-…9876",
+        ".env에 저장됨",
+    )
+    assert s.key.checked_at > old
+    assert verify.calls == [NEW]
+    assert svc.get().key.masked == "sk-…9876"
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "sk-abc\nSTT_MODEL=x", "sk-abc\rx"])
+async def test_set_key_validation(svc, env_file, verify, bad) -> None:
+    with pytest.raises(Validation):
+        await svc.set_key(bad)
+    assert verify.calls == []
+
+
+async def test_set_key_write_failure(svc, env_file, verify, monkeypatch) -> None:
+    def broken(_values):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(svc, "write_env", broken)
+    with pytest.raises(Internal):
+        await svc.set_key(NEW)

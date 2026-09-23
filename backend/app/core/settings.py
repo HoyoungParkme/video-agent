@@ -257,5 +257,37 @@ class SettingsService:
                 reason_kind=c.reason_kind, reason=c.reason, checked_at=c.checked_at.isoformat()
             )
 
+    async def set_key(self, key: str) -> Settings:
+        """VA-MS-005#SettingsService.set_key
+
+        새 키를 확인하고, 통과하면 `.env`에 저장한다. 실패하면 저장하지 않고 마지막 결과도 그대로.
+
+        Args:
+            key: 붙여 넣은 키
+
+        Returns:
+            갱신된 설정(key.state = ok)
+
+        Raises:
+            Validation: 빈 값 · 줄바꿈
+            KeyRejected: 형식 오류 · 인증 실패 · 잔액 없음
+            LlmUnavailable: OpenAI에 닿지 못함
+            Internal: 파일 쓰기 실패
+        """
+        k = key.strip()
+        if not k or "\n" in k or "\r" in k:
+            raise Validation(errors=[{"field": "key", "message": "키가 비었거나 줄바꿈이 있어요"}])
+        check = await openai.verify_key(k)
+        if check.state == KeyState.invalid:
+            if check.reason_kind == ReasonKind.network:
+                raise LlmUnavailable(reason=check.reason)
+            raise KeyRejected(reason_kind=check.reason_kind, reason=check.reason)
+        try:
+            self.write_env({"OPENAI_API_KEY": k})
+        except OSError as e:
+            raise Internal("키를 .env에 쓰지 못했어요") from e
+        self.last_check = check
+        return self.get()
+
 
 settings = SettingsService()
