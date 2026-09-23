@@ -203,3 +203,11 @@ class JobService:
         if row.status != JobStatus.queued:
             return None
         return await crud.count_queued_before(self.session, row.queued_at, row.id) + 1
+
+    @classmethod
+    def wake(cls) -> None:
+        """VA-MS-002#JobService.wake
+
+        워커를 깨운다. start · retry(커밋 뒤)와 삭제 라우터(삭제 뒤)가 부른다.
+        """
+        cls.work_event.set()
