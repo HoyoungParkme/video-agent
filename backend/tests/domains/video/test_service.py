@@ -214,3 +214,45 @@ async def test_register_twice_at_once_makes_one_row(db, youtube, key) -> None:
     ids = await asyncio.gather(one(), one())
     assert ids[0] == ids[1]
     assert await _count(db) == 1
+
+
+# --- list
+
+
+async def test_list_only_videos_with_jobs(db, make, youtube) -> None:
+    await make.video()  # 사전 안내에서 취소 — 작업이 없다
+    done = await make.video()
+    await make.job(done.id, JobStatus.done, at=T0)
+    failed = await make.video()
+    await make.job(failed.id, JobStatus.failed, at=T0 + timedelta(minutes=1))
+    got = await VideoService(db, youtube).list()
+    assert [v.id for v in got] == [failed.id, done.id]  # 작업 시작 최근 순
+    assert [v.status for v in got] == ["failed", "analyzed"]
+    assert got[0].job.status == JobStatus.failed
+
+
+async def test_list_order_is_job_start_not_video_creation(db, make, youtube) -> None:
+    older = await make.video()
+    newer = await make.video()
+    await make.job(newer.id, JobStatus.done, at=T0)
+    await make.job(older.id, JobStatus.done, at=T0 + timedelta(hours=1))
+    assert [v.id for v in await VideoService(db, youtube).list()] == [older.id, newer.id]
+
+
+async def test_list_queries_do_not_grow(db, make, youtube, queries) -> None:
+    for i in range(3):
+        v = await make.video()
+        await make.job(v.id, JobStatus.done, at=T0 + timedelta(minutes=i))
+    queries.clear()
+    await VideoService(db, youtube).list()
+    three = len(queries)
+    for i in range(3):
+        v = await make.video()
+        await make.job(v.id, JobStatus.done, at=T0 + timedelta(hours=i))
+    queries.clear()
+    await VideoService(db, youtube).list()
+    assert len(queries) == three == 4  # 영상 · 작업 · 조각 · 대화 — 영상 수에 비례하지 않는다
+
+
+async def test_list_empty(db, youtube) -> None:
+    assert await VideoService(db, youtube).list() == []

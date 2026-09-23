@@ -203,3 +203,24 @@ class VideoService:
             return found
         await self.session.refresh(row)  # created_at은 DB가 채운다
         return row
+
+    async def list(self) -> list[VideoSummary]:
+        """VA-MS-001#VideoService.list
+
+        작업이 있는 영상 목록, 작업을 시작한 때의 최근 순. 작업 요약과 대화 수는 한 번에 받는다.
+
+        Returns:
+            목록 행들. 없으면 빈 목록(화면이 빈 상태 상자)
+        """
+        rows = await crud.with_jobs(self.session)
+        ids = [r.id for r in rows]
+        jobs = await self.jobs.latest_by_videos(ids)
+        counts = await self.chats.count_by_videos(ids)
+        out = [
+            VideoSummary(
+                **self.to_dto(r, jobs[r.id], counts.get(r.id, 0)).model_dump(), job=jobs[r.id]
+            )
+            for r in rows
+            if r.id in jobs
+        ]
+        return sorted(out, key=lambda v: v.job.started_at, reverse=True)
