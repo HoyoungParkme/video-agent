@@ -223,3 +223,27 @@ async def test_generate_chapters_parts_is_stub(db, make, summarizer, env_file) -
     with pytest.raises(NotImplementedYet):
         await AnalysisService(db, summarizer).generate_chapters(video)
     assert summarizer.calls == []  # 모델을 부르기 전에 막는다
+
+
+# --- generate_questions
+
+
+async def test_generate_questions(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make)
+    await make.transcript(video.id, ["문장"] * 10)
+    summarizer.question_list = ["하나?", "둘?", " ", "둘?", "셋?", "넷?", "다섯?"]
+    svc = AnalysisService(db, summarizer)
+    await svc.generate_questions(video)
+    await svc.generate_questions(video)  # 두 번 돌려도 셋
+    rows = list(await db.scalars(select(SuggestedQuestionRow).order_by(SuggestedQuestionRow.seq)))
+    assert [r.text for r in rows] == ["하나?", "둘?", "셋?"]
+
+
+async def test_generate_questions_samples_long_script(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=9000)
+    await make.transcript(video.id, ["가" * 1000] * 90)
+    await AnalysisService(db, summarizer).generate_questions(video)
+    _, sent = summarizer.calls[0]
+    assert sum(len(s.text) for s in sent) // 2 <= 40000 + 1000  # 앞 · 가운데 · 끝에서 상한의 셋째씩
+    seqs = [s.seq for s in sent]
+    assert seqs[0] == 1 and seqs[-1] == 90 and 45 in seqs

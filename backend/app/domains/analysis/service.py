@@ -236,3 +236,23 @@ class AnalysisService:
             chapters[0] = (0.0, *chapters[0][1:])
         await crud.replace_chapters(self.session, video.id, chapters)
         await self.session.commit()
+
+    async def generate_questions(self, video: Video) -> None:
+        """VA-MS-003#AnalysisService.generate_questions
+
+        추천 질문 셋을 만들어 갈아 끼운다. 스크립트가 길면 앞 · 가운데 · 끝만 보낸다.
+
+        Args:
+            video: 영상(id)
+        """
+        segments = await self.segments_of(video.id)
+        if _tokens(segments) > config.TEXT_TOKEN_LIMIT:
+            segments = _sample(segments, config.TEXT_TOKEN_LIMIT)
+        model = settings.current_models().text.id
+        texts: list[str] = []
+        for q in await self.summarizer.questions(segments, model):
+            q = q.strip()
+            if q and q not in texts:
+                texts.append(q)
+        await crud.replace_questions(self.session, video.id, texts[: config.QUESTION_COUNT])
+        await self.session.commit()
