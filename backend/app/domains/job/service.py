@@ -339,3 +339,38 @@ class JobService:
             raise NotFound(resource="job", id=video_id)
         chunks = await crud.chunks(self.session, row.id)
         return self.to_job(row, chunks, await self.queue_position(row))
+
+    async def latest(self, video_id: int) -> JobSummary | None:
+        """VA-MS-002#JobService.latest
+
+        영상의 가장 최근 작업 요약 — 영상 하나(VideoService.get · register)에 붙는다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            작업 요약. 작업이 없으면 None
+        """
+        row = await crud.latest(self.session, video_id)
+        if row is None:
+            return None
+        counts = await crud.chunk_counts(self.session, [row.id])
+        done, total = counts.get(row.id, (None, None))
+        return self._summary(row, done, total, await self.queue_position(row))
+
+    @staticmethod
+    def _summary(
+        row: AnalysisJobRow, done: int | None, total: int | None, position: int | None
+    ) -> JobSummary:
+        return JobSummary(
+            id=row.id,
+            status=row.status,
+            stage=row.stage,
+            queue_position=position,
+            progress_pct=row.progress_pct,
+            chunks_done=done,
+            chunks_total=total,
+            failed_chunk_seq=row.error_chunk_seq,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+        )

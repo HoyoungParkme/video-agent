@@ -331,3 +331,24 @@ async def test_progress_counts_chunks_without_result(db, make, queries) -> None:
     )
     assert len(queries) == 2  # 작업 · 조각(대기 중이 아니라 차례를 세지 않는다)
     assert all("result" not in q for q in queries)  # 받아쓰기 결과는 읽지 않는다
+
+
+# --- latest · latest_by_videos
+
+
+async def test_latest(db, make) -> None:
+    plain = await make.video()
+    await make.job(plain.id, JobStatus.running)
+    s = await JobService(db).latest(plain.id)
+    assert (s.chunks_done, s.chunks_total, s.failed_chunk_seq) == (None, None, None)
+    failed = await make.video()
+    job = await make.job(
+        failed.id, JobStatus.failed, stage="transcribe", stages=STT_STAGES, error_chunk_seq=16
+    )
+    await make.chunks(job.id, [ChunkState.done] * 15 + [ChunkState.failed])
+    s = await JobService(db).latest(failed.id)
+    assert (s.chunks_done, s.chunks_total, s.failed_chunk_seq) == (15, 16, 16)
+    queued = await make.video()
+    await make.job(queued.id, JobStatus.queued)
+    assert (await JobService(db).latest(queued.id)).queue_position == 1
+    assert await JobService(db).latest((await make.video()).id) is None
