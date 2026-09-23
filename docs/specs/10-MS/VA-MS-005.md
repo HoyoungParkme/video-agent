@@ -10,7 +10,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 ## 0. 이 문서가 다루는 것
 
-`core/settings.py`의 함수 8개. 클래스 명세 [[VA-DOM-002#SettingsService]]의 시그니처를 함수 내부까지 내린 것. `infra/openai.verify_key`는 4.7의 MS 문서에서.
+`core/settings.py`의 함수 9개. 클래스 명세 [[VA-DOM-002#SettingsService]]의 시그니처를 함수 내부까지 내린 것. `infra/openai.verify_key`는 4.7의 MS 문서에서.
 
 형식은 명세 작성 규약 2.10. 내부 타입(`KeyCheck`)은 [[VA-DOM-002]] 2.6, 응답 형태(`Settings` `KeyStatus` `Models` `ModelOption`)는 [[VA-API-001]] 4장.
 
@@ -45,6 +45,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 | [[#SettingsService.check_stored_key]] | 저장된 키 확인 (시작 · 분석 버튼 · 연결 실패 뒤) |
 | [[#SettingsService.require_key]] | 마지막 결과로 막기 — 연결 실패였으면 한 번 다시 확인 |
 | [[#SettingsService.current_models]] | 지금 모델과 단가 |
+| [[#SettingsService.api_key]] | 지금 키 — 어댑터의 클라이언트를 만들 때만 |
 | [[#SettingsService.read_env]] | `.env`에서 세 값을 읽는다 |
 | [[#SettingsService.write_env]] | `.env`의 그 줄만 고친다 |
 
@@ -179,6 +180,20 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 ---
 
+#### SettingsService.api_key 지금 키
+
+**시그니처** `def api_key() -> str | None`
+
+근거: [[VA-DOM-002#SettingsService]] 규칙(`api_key` — 어댑터에 넘길 `client_for`가 부른다) · [[VA-MS-006]] 0장(키는 부를 때마다 받는다)
+
+**처리** `k = read_env().get("OPENAI_API_KEY")` · `→ k if k else None`. 부를 때마다 파일에서 읽는다 — 화면이나 `.env`에서 키를 바꾸면 다음 호출부터 새 키다. 부르는 곳은 `main.py`가 조립해 어댑터에 넘기는 `client_for` 하나다(`lambda: openai.client(settings.api_key())`, 키가 없으면 어댑터가 부르기 전에 `require_key`가 막는다). 키 전체가 밖으로 나가는 유일한 길이라 응답 · 로그에 쓰지 않는다
+
+**호출하는 것** [[#SettingsService.read_env]]
+
+**테스트 관점** 키 있음 → 그 문자열 · `OPENAI_API_KEY=`(빈 값) → None · 파일에서 키를 바꾸면 다음 호출이 새 키 · 로그에 키가 찍히지 않는다
+
+---
+
 #### SettingsService.read_env .env에서 세 값을 읽는다
 
 **시그니처** `def read_env() -> dict[str, str]`
@@ -223,6 +238,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 - [x] 키 확인이 네트워크로 실패했을 때의 배너 문구 — 결정: 문구를 가르고 버튼을 막지 않는다. 그래서 `require_key`가 마지막 결과가 `network`면 한 번 다시 확인한다([[VA-API-001]] 5장 11 · [[VA-UI-002]] 2장 되먹임 반영)
 - [x] 화면에서 모델을 바꾸는 유스케이스 — 반영: [[VA-UC-001#UC-H8]] 5번
 - [ ] 텍스트 모델 `gpt-5.4-mini` · `gpt-5.4`의 단가 — 카드 A를 시작할 때 당시 값을 `config.MODEL_OPTIONS`에 채운다([[VA-INFRA-001]] 9절 버전 고정과 같은 때, 사용자 결정 2026-09-21)
-- [ ] **되먹임** — `.env`를 rename으로 바꿔치기할 수 없다(0장). [[VA-DOM-002#SettingsService]] 규칙과 [[VA-SEQ-001#SEQ-12]]의 「임시 파일 → rename」을 「제자리 쓰기」로 고친다. 폴더를 마운트하면 rename이 되지만 저장소 뿌리 전체를 api 컨테이너에 쓰기로 여는 것이라 택하지 않았다
-- [ ] **되먹임** — `require_key`가 `async`가 됐다(OpenAI를 부를 수 있다). 부르는 네 곳(`VideoService.register` · `JobService.start` · `retry` · `ChatService.ask`)은 이미 `async`라 `await`만 붙는다. `read_env` · `write_env` 둘을 [[VA-DOM-002#SettingsService]]에 private 메서드로 더한다
+- [x] (반영: 클래스 명세 v12 · 시퀀스 v3 SEQ-12) **되먹임** — `.env`를 rename으로 바꿔치기할 수 없다(0장). [[VA-DOM-002#SettingsService]] 규칙과 [[VA-SEQ-001#SEQ-12]]의 「임시 파일 → rename」을 「제자리 쓰기」로 고친다. 폴더를 마운트하면 rename이 되지만 저장소 뿌리 전체를 api 컨테이너에 쓰기로 여는 것이라 택하지 않았다
+- [x] (반영: 클래스 명세 v12) **되먹임** — `require_key`가 `async`가 됐다(OpenAI를 부를 수 있다). 부르는 네 곳(`VideoService.register` · `JobService.start` · `retry` · `ChatService.ask`)은 이미 `async`라 `await`만 붙는다. `read_env` · `write_env` 둘을 [[VA-DOM-002#SettingsService]]에 private 메서드로 더한다
 - [ ] compose의 `env_file: .env` — api 서비스에 걸면 같은 이름의 환경 변수가 컨테이너에 옛 값으로 남는다. 이 서비스는 읽지 않으므로 해는 없지만, OpenAI SDK가 `OPENAI_API_KEY` 환경 변수를 스스로 읽지 않게 `infra/openai`가 키를 늘 인자로 넘긴다 — 카드 A에서 확인
+- [x] 어댑터에 줄 키 — 결정: 공개 함수 [[#SettingsService.api_key]]. 어댑터 MINISPEC의 되먹임(「키를 돌려주는 공개 함수가 없다」)을 여기서 닫는다
