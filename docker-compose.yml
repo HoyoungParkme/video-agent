@@ -24,9 +24,10 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-va}:${POSTGRES_PASSWORD:-va}@db:5432/${POSTGRES_DB:-va}
-      INBOX_DISPLAY_PATH: ${PWD:-.}/inbox
+      # 마운트와 화면에 보일 경로를 한 값에서 — 둘이 어긋나지 않게(INFRA 8절)
+      INBOX_DISPLAY_PATH: ${INBOX_HOST_DIR:-./inbox}
     volumes:
-      - ./inbox:/app/inbox:ro
+      - ${INBOX_HOST_DIR:-./inbox}:/app/inbox:ro
       - ./data:/app/data
       # 키 · 모델 선택이 사는 파일 하나. 앱이 그 줄을 제자리에서 고친다(INFRA C6).
       # 없으면 디렉터리를 만들지 말고 멈춘다 — `.env.example`을 복사해 두라는 뜻
@@ -38,6 +39,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
     restart: unless-stopped
 
   web:
@@ -47,7 +54,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

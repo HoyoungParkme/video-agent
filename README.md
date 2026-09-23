@@ -21,9 +21,11 @@ flowchart LR
 2. `docker compose up -d` — 처음에는 이미지를 만드느라 몇 분 걸린다
 3. 브라우저에서 <http://localhost:3000>
 
-로컬 영상은 `inbox/`에 넣는다 — mp4 · mkv · mov · webm · mp3 · m4a · wav, 3시간까지. 앱은 이 폴더를 읽기만 한다. 다른 폴더를 쓰려면 `docker-compose.yml`의 `./inbox`를 바꾼다.
+로컬 영상은 `inbox/`에 넣는다 — mp4 · mkv · mov · webm · mp3 · m4a · wav, 3시간까지. 앱은 이 폴더를 읽기만 한다. 다른 폴더를 쓰려면 `.env`의 `INBOX_HOST_DIR`에 그 경로를 적는다.
 
-YouTube 쪽이 바뀌어 받기가 실패하면 yt-dlp를 올린다 — `cd backend && uv lock --upgrade-package yt-dlp` 뒤 `docker compose up -d --build api`.
+키와 모델은 설정 화면에서 바꾼다. 앱이 도는 동안 `.env`를 편집기로 고쳤다면 `docker compose up -d --force-recreate api`로 다시 띄운다 — 파일 하나를 마운트한 것이라 새 파일로 바꿔 저장하는 편집기로 고치면 앱이 옛 파일을 계속 본다.
+
+YouTube 쪽이 바뀌어 받기가 실패하면 yt-dlp를 올린다 — 저장소 뿌리에서 `(cd backend && uv lock --upgrade-package yt-dlp) && docker compose up -d --build api`.
 
 ## 밖으로 나가는 데이터
 
