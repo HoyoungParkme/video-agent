@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
-from app.core.errors import JobExists, NotFound, NotImplementedYet
+from app.core.errors import JobExists, JobNotFailed, NotFound
 from app.core.settings import Models, settings
 from app.domains.job import crud
 from app.domains.job.models import (
@@ -89,7 +89,8 @@ class JobService:
     - latest() · latest_by_videos(): 영상에 붙는 최근 작업 요약
     - mark_stage() · finish() · fail(): 파이프라인이 단계마다 부른다
     - fail_orphans() · claim_next() · wake() · wait_for_work(): 서버 시작 정리와 대기열
-    - retry() · cancel(): 스텁 — B2 · B4에서 채운다(VA-CODE-001 B1)
+    - plan_chunks() · mark_chunk(): 받아쓰기 조각 행
+    - retry(): 실패한 작업을 같은 행으로 대기열 끝에 · cancel(): 스텁 — B4(VA-CODE-001)
     """
 
     # 도는 파이프라인 태스크(영상 id → 태스크). 워커가 넣고 빼며, 삭제가 취소한다(B4)
@@ -598,12 +599,40 @@ class JobService:
     async def retry(self, video: Video) -> Job:
         """VA-MS-002#JobService.retry
 
-        실패한 작업을 같은 행으로 대기열 끝에. 스텁 — B2에서 채운다(VA-CODE-001 B1).
+        실패한 작업을 같은 행으로 대기열 끝에 넣고 워커를 깨운다. `id` · `started_at` · 단계 목록 ·
+        모델은 그대로이고 `queued_at`만 지금으로 — 다른 영상이 돌고 있으면 끝에서 기다린다.
+        `stage`가 실패한 단계 그대로라 워커가 resume으로 돌린다. 실패 조각은 다시 보내도록
+        waiting으로 — 보낸 횟수는 누적 이력이라 그대로 두고 상한은 다음 실행에서 새로 센다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받아 넘긴 영상
+
+        Returns:
+            같은 작업. 워커가 벌써 꺼냈으면 running, 아니면 queued와 차례
 
         Raises:
-            NotImplementedYet: 아직 없다
+            KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다
+            NotFound: 작업이 없다(resource=job)
+            JobNotFailed: 실패한 작업이 아니다
         """
-        raise NotImplementedYet("다시 시도는 아직 지원하지 않아요")
+        await settings.require_key()
+        row = await crud.latest(self.session, video.id)
+        if row is None:
+            raise NotFound(resource="job", id=video.id)
+        if row.status != JobStatus.failed:
+            raise JobNotFailed(job_status=row.status.value)
+        row.status = JobStatus.queued
+        row.queued_at = datetime.now(UTC)
+        row.error_kind = row.error_reason = None
+        row.error_chunk_seq = row.error_attempts = None
+        await crud.failed_to_waiting(self.session, row.id)
+        await self.session.commit()
+        self.wake()
+        await asyncio.sleep(0)  # start와 같다 — 도는 작업이 없으면 워커가 곧 꺼낸다(보장은 아니다)
+        await self.session.refresh(row)
+        return self.to_job(
+            row, await crud.chunks(self.session, row.id), await self.queue_position(row)
+        )
 
     async def cancel(self, video_id: int) -> None:
         """VA-MS-002#JobService.cancel

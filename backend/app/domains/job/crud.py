@@ -150,6 +150,15 @@ async def running_all(session: AsyncSession) -> list[AnalysisJobRow]:
     return list(await session.scalars(select(Job).where(Job.status == JobStatus.running)))
 
 
+async def failed_to_waiting(session: AsyncSession, job_id: int) -> None:
+    """실패한 조각을 기다림으로 — 다시 시도가 다시 보낸다. 보낸 횟수는 그대로(누적 이력)."""
+    await session.execute(
+        update(AudioChunkRow)
+        .where(AudioChunkRow.job_id == job_id, AudioChunkRow.state == ChunkState.failed)
+        .values(state=ChunkState.waiting)
+    )
+
+
 async def in_flight_to_waiting(session: AsyncSession, job_ids: list[int]) -> None:
     """보내던 조각을 기다림으로 — 응답을 받지 못한 채 서버가 죽었다."""
     await session.execute(

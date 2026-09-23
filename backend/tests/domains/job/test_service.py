@@ -1,4 +1,4 @@
-"""job/service — 작업 시작 · 진행 · 대기열(VA-MS-002 JobService). B1 몫 전부와 스텁 둘."""
+"""job/service — 작업 시작 · 진행 · 조각 · 다시 시도 · 대기열(VA-MS-002 JobService)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.config import config
-from app.core.errors import JobExists, KeyMissing, NotFound, NotImplementedYet
+from app.core.errors import JobExists, JobNotFailed, KeyMissing, NotFound
 from app.domains.job import crud
 from app.domains.job.models import (
     AnalysisJobRow,
@@ -639,12 +639,75 @@ async def test_claim_next_empty(db) -> None:
     assert await JobService(db).claim_next() is None
 
 
-# --- 스텁
+# --- retry
 
 
-async def test_retry_is_stub(db, make) -> None:
-    with pytest.raises(NotImplementedYet):
+async def test_retry_same_row_back_in_queue(db, make, key) -> None:
+    video = await make.video(has_captions=False, caption_language=None, caption_kind=None)
+    job = await make.job(
+        video.id,
+        JobStatus.failed,
+        stage="transcribe",
+        stages=STT_STAGES,
+        at=T0,
+        error_kind=ErrorKind.network,
+        error_reason="네트워크 시간 초과",
+        error_chunk_seq=2,
+        error_attempts=3,
+    )
+    await make.chunks(job.id, [ChunkState.done, ChunkState.failed, ChunkState.waiting])
+    JobService.work_event.clear()
+    got = await JobService(db).retry(_video(video, "failed"))
+    assert (got.id, got.status, got.stage, got.error) == (
+        job.id,
+        JobStatus.queued,
+        JobStage.transcribe,
+        None,
+    )
+    assert got.queue_position == 1 and JobService.work_event.is_set()
+    row = await _job_row(db, job.id)
+    assert (row.started_at, row.stages) == (T0, STT_STAGES)  # 같은 행 — 목록 순서도 그대로
+    assert (datetime.now(UTC) - row.queued_at).total_seconds() < 5  # 대기열 끝으로 — 지금
+    assert (row.error_kind, row.error_reason, row.error_chunk_seq, row.error_attempts) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    chunks = [await _chunk_row(db, job.id, i) for i in (1, 2, 3)]
+    assert [(c.state, c.attempts) for c in chunks] == [
+        (ChunkState.done, 1),
+        (ChunkState.waiting, 1),  # 실패 조각도 다시 보낸다. 보낸 횟수는 누적 그대로
+        (ChunkState.waiting, 0),
+    ]
+
+
+async def test_retry_waits_behind_others(db, make, key) -> None:
+    await make.job((await make.video()).id, JobStatus.running)
+    await make.job((await make.video()).id, JobStatus.queued, at=datetime.now(UTC))
+    video = await make.video()
+    await make.job(video.id, JobStatus.failed, stage="summarize", at=T0)
+    got = await JobService(db).retry(_video(video, "failed"))
+    assert (got.status, got.queue_position) == (JobStatus.queued, 2)
+
+
+async def test_retry_only_failed(db, make, key) -> None:
+    video = await make.video()
+    await make.job(video.id, JobStatus.running, stage="summarize")
+    with pytest.raises(JobNotFailed) as e:
+        await JobService(db).retry(_video(video, "in_progress"))
+    assert e.value.extra == {"job_status": "running"}
+    with pytest.raises(NotFound) as e2:
         await JobService(db).retry(_video(await make.video()))
+    assert e2.value.extra["resource"] == "job"
+
+
+async def test_retry_without_key_changes_nothing(db, make, env_file) -> None:
+    video = await make.video()
+    job = await make.job(video.id, JobStatus.failed, stage="summarize")
+    with pytest.raises(KeyMissing):
+        await JobService(db).retry(_video(video, "failed"))
+    assert (await _job_row(db, job.id)).status == JobStatus.failed
 
 
 async def test_cancel_is_noop(db) -> None:
