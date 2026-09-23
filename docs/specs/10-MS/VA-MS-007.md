@@ -16,7 +16,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 **표기** — `→` 반환, `!` 예외, `EXT:` 외부에 닿는 호출, `PROC:` 자식 프로세스 실행.
 
-**예외 클래스** — `infra/errors.py`에 둘: `YtdlpError(reason, kind)`(`kind` ∈ `private` · `unavailable` · `geo` · `network` · `extractor` · `other`), `FfmpegError(reason, returncode)`. OpenAI는 SDK 예외를 그대로 낸다(`APIConnectionError` · `APIStatusError` · `APITimeoutError`). 어댑터 · 파이프라인이 이것으로 `ErrorKind`를 정한다([[VA-MS-002#pipeline.error_kind]]).
+**예외 클래스** — `infra/errors.py`에 셋: `YtdlpError(reason, kind)`(`kind` ∈ `private` · `unavailable` · `geo` · `network` · `extractor` · `other`), `FfmpegError(reason, returncode)`, `OpenAIOutputError(reason)`. OpenAI는 SDK 예외를 그대로 낸다(`APIConnectionError` · `APIStatusError` · `APITimeoutError`). 셋째는 이 층이 던지지 않는다 — 모델 출력이 형식에 맞지 않을 때 OpenAI 어댑터가 던진다([[VA-MS-006]] 0장 「출력은 JSON 모드」). 어댑터 옆이 아니라 여기 두는 것은 파이프라인이 어댑터 묶음을 import하지 않고 종류를 가르게 하려는 것이다. 어댑터 · 파이프라인이 이것으로 `ErrorKind`를 정한다([[VA-MS-002#pipeline.error_kind]]).
 
 **자식 프로세스** — yt-dlp · ffmpeg는 `asyncio.create_subprocess_exec`로 띄운다(셸 없이, 인자 목록으로 — 경로에 공백 · 특수 문자가 있어도 안전). 표준 입력은 닫는다(`DEVNULL` — ffmpeg가 터미널 입력을 읽지 않게). 표준 오류는 모아서 예외 `reason`에 마지막 3줄을 넣는다. 시간 제한은 `config.PROC_TIMEOUT_SEC`(첫 값 1800 — 3시간 영상 추출도 30분이면 끝난다). **시간 제한을 넘거나 부른 쪽이 취소하면**(작업 취소 · 서버 끄기) 자식 프로세스를 죽이고 끝나기를 기다린다 — 주인 없이 돌며 임시 폴더에 쓰지 않게. 실행 파일을 띄우지 못하거나(없음 · 권한) JSON이어야 할 출력이 JSON이 아니면 그 모듈의 예외(`YtdlpError(kind=other)` · `FfmpegError`)로 낸다.
 
