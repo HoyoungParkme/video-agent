@@ -52,9 +52,10 @@ video-agent/                    저장소 = 프로젝트
 ├── docs/specs/                 명세 원본. 양쪽이 같이 본다
 ├── inbox/                      로컬 영상. 읽기 전용 마운트, 커밋하지 않는다 (INFRA C4)
 ├── data/                       tmp/{video_id}/ · export/. 커밋하지 않는다 (INFRA 6절)
-├── Dockerfile                  backend 이미지 — python + ffmpeg + yt-dlp (INFRA C8)
+├── Dockerfile                  backend 이미지 — python + ffmpeg + yt-dlp + deno(yt-dlp의 YouTube 풀이용) (INFRA C8)
 ├── Dockerfile.web              frontend 이미지. 같은 종류가 둘이라 뒤에 용도를 붙였다
 ├── docker-compose.yml          web · api · db 셋 (INFRA 8절)
+├── docker-compose.dev.yml      개발용 덧씌우기 — db를 127.0.0.1:5432에 연다. 호스트에서 도는 api와 테스트가 붙는다 (INFRA 8절)
 ├── .env.example                필요한 환경 변수의 이름만. 값은 비운다. `.env`는 커밋하지 않는다 (INFRA C6)
 │                               compose가 `.env`를 api 컨테이너에 읽기·쓰기로 마운트한다 — 앱이 키·모델 줄을 고친다 (4.5)
 ├── .gitignore · .dockerignore
@@ -153,7 +154,8 @@ app/
 
 ```
 frontend/
-├── package.json · tsconfig.json · next.config.ts   화면만 설정하므로 여기
+├── package.json · tsconfig.json · next.config.ts   화면만 설정하므로 여기. next.config.ts가 `/api/*`를 api로 넘긴다 — 브라우저는 web 하나만 본다
+├── playwright.config.ts · e2e/   E2E. 와이어프레임 요소 번호(data-el)로 누르고, 가짜 OpenAI 서버(e2e/fake-openai.mjs)를 함께 띄운다
 ├── public/                    그대로 서빙 — favicon
 └── src/
     ├── app/                   Next.js App Router — 라우팅. 기본형의 main.tsx · App.tsx 몫
