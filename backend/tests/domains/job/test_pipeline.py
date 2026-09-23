@@ -9,6 +9,7 @@ import asyncio
 import errno
 import socket
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 import openai as sdk
@@ -326,10 +327,104 @@ async def test_transcribe_keeps_concurrency(db, make, ports, audio_split, stt) -
 # --- resume
 
 
-async def test_resume_is_stub(make) -> None:
+async def _retried(job_id: int) -> None:
+    # 다시 시도 — 같은 행을 queued로(JobService.retry와 같은 결과), 워커 대신 테스트가 resume을 부른다
+    async with SessionLocal() as s:
+        row = await s.get(AnalysisJobRow, job_id)
+        row.status = JobStatus.running
+        row.error_kind = row.error_reason = None
+        row.error_chunk_seq = row.error_attempts = None
+        await s.execute(
+            AudioChunkRow.__table__.update()
+            .where(AudioChunkRow.job_id == job_id, AudioChunkRow.state == ChunkState.failed)
+            .values(state=ChunkState.waiting)
+        )
+        await s.commit()
+
+
+async def test_resume_sends_only_unfinished_chunks(db, make, ports, stt) -> None:
+    stt.fail = {2: 99}
+    video, job = await _stt_job(make, STT_STAGES)
+    await pipeline.run(job.id, video)
+    stt.fail, stt.calls = {}, []
+    await _retried(job.id)
+    await pipeline.resume(job.id, video)
+    row = await _row(job.id)
+    assert (row.status, row.progress_pct) == (JobStatus.done, 100)
+    assert stt.calls == [2]  # 1 · 3번은 다시 보내지 않는다 — 조각 행의 결과를 쓴다
+    assert len(await _segments(db)) == 6
+
+
+async def test_resume_counts_limit_again(db, make, ports, stt) -> None:
+    stt.fail = {2: 99}
+    video, job = await _stt_job(make, STT_STAGES)
+    await pipeline.run(job.id, video)
+    await _retried(job.id)
+    await pipeline.resume(job.id, video)  # 또 실패 — 상한은 이번 실행에서 새로 센다
+    row = await _row(job.id)
+    assert (row.status, row.error_chunk_seq, row.error_attempts) == (JobStatus.failed, 2, 3)
+    assert (await _chunks(job.id))[1].attempts == 6  # 누적
+
+
+async def test_resume_after_summary_skips_transcription(db, make, ports, audio_split, stt) -> None:
+    _, summarizer = ports
+    summarizer.fail["summary"] = OpenAIOutputError("모델 출력을 읽지 못했어요(형식)")
+    video, job = await _stt_job(make, STT_STAGES)
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).stage == JobStage.summarize
+    summarizer.fail, summarizer.calls, stt.calls, audio_split.calls = {}, [], [], []
+    await _retried(job.id)
+    await pipeline.resume(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done
+    assert (stt.calls, audio_split.calls) == ([], [])  # 스크립트가 있다 — 받아쓰기를 다시 안 한다
+    assert [name for name, _ in summarizer.calls] == ["summary", "chapters", "questions"]
+
+
+async def test_resume_without_chunks_or_audio_starts_from_extract(db, make, ports, audio_split):
+    audio_source, _ = ports
+    audio_split.error = FfmpegError("silencedetect failed", 1)
+    video, job = await _stt_job(make, ["extract", *STT_STAGES[1:]], **_local("talk.mp4"))
+    await pipeline.run(job.id, video)  # 나누다 멈췄다 — 조각 행이 없다
+    row = await _row(job.id)
+    assert (row.stage, row.error_kind, row.error_reason) == (
+        JobStage.transcribe,
+        ErrorKind.ffmpeg,
+        "ffmpeg 처리 실패",
+    )
+    tmp = Path(config.DATA_DIR) / "tmp" / str(video.id)
+    (tmp / "audio.mp3").unlink()  # 음성도 없어졌다
+    audio_split.error, audio_source.audio_calls = None, []
+    await _retried(job.id)
+    await pipeline.resume(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done
+    assert [c[0] for c in audio_source.audio_calls] == ["extract"]  # 앞 단계부터
+
+
+async def test_resume_local_audio_converts_again(db, make, ports, audio_split, tmp_path) -> None:
+    audio_source, _ = ports
+    (tmp_path / "inbox" / "call.m4a").write_bytes(b"m4a")
+    audio_split.error = FfmpegError("bad", 1)
+    video, job = await _stt_job(make, STT_STAGES[1:], **_local("call.m4a"))
+    await pipeline.run(job.id, video)
+    audio_split.error, audio_source.audio_calls = None, []
+    await _retried(job.id)
+    await pipeline.resume(job.id, video)  # 반쯤 쓴 mp3일 수 있어 늘 다시 바꾼다
+    assert (await _row(job.id)).status == JobStatus.done
+    assert [c[0] for c in audio_source.audio_calls] == ["extract"]
+
+
+async def test_run_cancelled_writes_nothing(db, make, ports) -> None:
+    _, summarizer = ports
+    summarizer.delay = 5
     video, job = await _running(make)
-    with pytest.raises(NotImplementedYet):
-        await pipeline.resume(job.id, video)
+    task = asyncio.create_task(pipeline.run(job.id, video))
+    while not summarizer.calls:
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):  # 예외가 밖으로
+        await task
+    row = await _row(job.id)
+    assert (row.status, row.stage, row.error_kind) == (JobStatus.running, JobStage.summarize, None)
 
 
 # --- worker

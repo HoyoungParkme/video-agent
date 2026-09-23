@@ -23,7 +23,6 @@ from openai import APIConnectionError, APITimeoutError, OpenAIError
 
 from app.core.config import config
 from app.core.db import SessionLocal
-from app.core.errors import NotImplementedYet
 from app.domains.analysis.models import TranscriptSource
 from app.domains.analysis.ports import SummarizerPort
 from app.domains.analysis.schemas import CaptionLine
@@ -251,32 +250,38 @@ async def run(job_id: int, video: Video) -> None:
         job_id: 작업 id
         video: 영상(load_video가 준 것)
     """
-    await _drive(job_id, video)
+    await _drive(job_id, video, resume=False)
 
 
 async def resume(job_id: int, video: Video) -> None:
     """VA-MS-002#pipeline.resume
 
-    실패한 단계부터 이어서. 스텁 — B2(VA-CODE-001 B1). 다시 시도가 501이라 B1에서는
-    stage가 pending이 아닌 작업이 대기열에 들어오지 않는다.
+    다시 시도한 작업을 행의 단계(실패한 단계)부터. 내려받기 · 추출에서 멈췄으면 처음부터와
+    같다(임시 파일이 지워졌다). 받아쓰기에서 멈췄으면 조각 행이 있을 때 done이 아닌 조각만
+    보낸다. 조각 행이 없으면 음성을 다시 마련한다 — 로컬 음성은 늘 다시 바꾸고(반쯤 쓴 파일일
+    수 있다), 그 밖은 앞 단계가 쓴 음성이 있으면 그것, 없으면 앞 단계부터. 요약 이후는 스크립트가
+    있으므로 그 단계부터. 마무리 · 실패 처리는 run과 같다.
 
-    Raises:
-        NotImplementedYet: 아직 없다
+    Args:
+        job_id: 작업 id
+        video: 영상
     """
-    raise NotImplementedYet("이어서 다시 시도는 아직 지원하지 않아요")
+    await _drive(job_id, video, resume=True)
 
 
-async def _drive(job_id: int, video: Video) -> None:
-    # run의 몸 — 첫 단계부터
+async def _drive(job_id: int, video: Video, resume: bool) -> None:
+    # run과 resume의 몸 — 어디서 시작하는지만 다르다
     tmp = Path(config.DATA_DIR) / "tmp" / str(video.id)
     stage: JobStage | None = None
     try:
         async with SessionLocal() as s:
             row = await crud.by_id(s, job_id)
             stages = [JobStage(name) for name in row.stages]
+            has_chunks = await crud.has_chunks(s, job_id)
+        start = _resume_at(stages, row.stage, has_chunks, tmp) if resume else 0
         tmp.mkdir(parents=True, exist_ok=True)
         audio: str | None = None
-        for stage in stages:
+        for stage in stages[start:]:
             async with SessionLocal() as s:
                 await JobService(s).mark_stage(job_id, stage)
             audio = await _stage(stage, job_id, video, stages, tmp, audio)
@@ -292,6 +297,16 @@ async def _drive(job_id: int, video: Video) -> None:
             await JobService(s).fail(job_id, error)
         if stage in (None, JobStage.download, JobStage.extract):  # 임시 파일이 쓸모없다
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _resume_at(stages: list[JobStage], failed: JobStage, has_chunks: bool, tmp: Path) -> int:
+    # 다시 시도가 시작할 단계의 자리
+    at = stages.index(failed)
+    if failed != JobStage.transcribe or has_chunks or _local_audio(stages):
+        return at
+    if (tmp / AUDIO_NAME).exists():  # 앞 단계가 다 쓴 음성 — 나누다 멈췄다
+        return at
+    return max(i for i, s in enumerate(stages[:at]) if s in (JobStage.download, JobStage.extract))
 
 
 def _local_audio(stages: list[JobStage]) -> bool:
