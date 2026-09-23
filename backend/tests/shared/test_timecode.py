@@ -18,3 +18,23 @@ from app.shared import timecode
 )
 def test_label(sec: float, long: bool, text: str) -> None:
     assert timecode.label(sec, long) == text
+
+
+@pytest.mark.parametrize(
+    ("text", "end", "sec"),
+    [
+        ("12:40", 3000, 760),
+        ("[12:40]", 3000, 760),
+        (" 12:40 ", 3000, 760),
+        ("1:02:03", 9000, 3723),
+        ("65:00", 9000, 3900),
+        ("12:40:00", 3000, 760),  # 60분 미만 스크립트 — 모델이 바꿔 쓴 표기
+        ("12:4a", 3000, None),
+        ("12:75", 3000, None),
+        ("1:75:00", 9000, None),
+        ("12", 3000, None),
+        ("", 3000, None),
+    ],
+)
+def test_parse(text: str, end: float, sec: float | None) -> None:
+    assert timecode.parse(text, end) == sec
