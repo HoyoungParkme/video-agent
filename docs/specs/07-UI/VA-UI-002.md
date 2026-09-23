@@ -14,43 +14,46 @@ upstream: [VA-UI-001, VA-UC-001]
 
 | 이 문서가 정하는 것 | [[VA-UI-001]]이 정하는 것 |
 |---|---|
-| 화면마다 배치 뼈대와 요소 번호 | 화면 7개와 각 화면의 종류·목적·주 유스케이스(2장) |
+| 화면마다 배치(캔버스를 옮긴 html)와 요소 번호 | 화면 7개와 각 화면의 종류·목적·주 유스케이스(2장) |
 | 요소마다 보여 주는 것과 누르면 되는 것 | 화면 사이 이동, 진입·이탈, 주소(5장·6장) |
 | 요소 단위 규칙: 상태별 모습, 나타나는 조건, 문구 | 디자인 토큰: 색·글꼴·간격·모서리·움직임·대비(3장) |
 | 화면별 시나리오 | 공통 틀: 앱 셸·버튼과 칩·다이얼로그·시각 표기·안내와 오류·접근성(4장) |
 | 공통 컴포넌트를 쓰는 곳과 동작(1장) | 보드와 화면 대응(0장) |
 
-- **토큰 값은 여기 없다.** 색·글꼴·간격·모서리·크기는 [[VA-UI-001]] 3장·4장이 원본이다. 이 문서는 값을 옮겨 적지 않고 부품 이름으로만 부른다.
+- **토큰 값의 원본은 [[VA-UI-001]] 3장·4장이다.** 배치 html의 색·글꼴·크기는 캔버스의 인라인 스타일을 그대로 옮긴 것이라 그 값과 같다. 요소 표와 규칙은 값을 옮겨 적지 않고 부품 이름으로만 부른다.
 - 두 문서가 어긋나면 [[VA-UI-001]]을 따른다. 동작이나 값을 바꿀 때는 그 문서를 먼저 고치고 이 문서를 맞춘다. 이 문서가 새로 정하는 것은 [[VA-UI-001]]에 없는 요소 단위 규칙뿐이다.
 
 **화면마다 절 하나.** [[VA-UI-001]] 2장 순서대로 UI-1부터 UI-7까지 둔다. 각 절은 메타 표로 시작하고 아래 네 부분이 이어진다.
 
 | 부분 | 무엇 | 형태 |
 |---|---|---|
-| 배치 | 요소가 어디에, 어떤 순서로 있나 | `html` 코드블록으로 그린 뼈대. 요소마다 `data-el` 번호. 색·크기 스타일은 쓰지 않는다 |
-| 요소 | 요소마다 무엇을 보여 주고, 누르면 무엇이 되나 | 표. 열은 `#` · 이름 · 종류 · 보여주는 것 · 누르면. `#`은 뼈대의 `data-el`과 같은 번호 |
+| 배치 | 화면이 어떻게 생겼고 요소가 어디에 있나 | `html` 코드블록 **하나**. 승인된 디자인 캔버스의 보드를 옮긴 자기 완결 html이고 요소마다 `data-el` 번호. 주 보드 아래에 상태 보드를 잇는다 |
+| 요소 | 요소마다 무엇을 보여 주고, 누르면 무엇이 되나 | 표. 열은 `#` · 이름 · 종류 · 보여주는 것 · 누르면. `#`은 배치의 `data-el`과 같은 번호 |
 | 규칙 | 상태별 모습, 나타나고 사라지는 조건, 숫자·문구 규칙, 막혔을 때 | 목록. 요소는 번호로 부른다 |
 | 시나리오 | 요소들이 이어져 사용자가 무엇을 이루나 | 번호를 매긴 흐름. [[VA-UC-001]]의 유스케이스 흐름을 이 화면에서 누르는 순서로 옮긴 것 |
 
-**사람용 뷰.** 싱크독 웹은 이 문서를 화면별 탭으로 보여 준다. 탭 하나가 화면 하나다. 탭 안 왼쪽에는 배치 뼈대가, 오른쪽에는 요소 표·규칙·시나리오가 놓인다. 요소 번호를 누르면 뼈대의 그 요소와 표의 그 줄이 함께 강조된다. 뷰는 뼈대의 `<script>`와 `on…` 속성을 지운다. 그래서 동작은 뼈대에 쓰지 않고 요소 표의 「누르면」 열에 쓴다.
+**사람용 뷰.** 싱크독 웹은 이 문서를 화면별 탭으로 보여 준다. 탭 하나가 화면 하나다. 탭 안 위에 배치가, 아래에 요소 표·규칙·시나리오가 놓인다. 배치는 iframe에 격리해 그대로 그린다 — 「3. 공통 틀」의 글꼴과 기본 스타일이 모든 화면 앞에 함께 들어간다. 요소 번호를 누르면 배치의 그 요소와 표의 그 줄이 함께 강조된다. 뷰는 배치의 `<script>`와 `on…` 속성을 지운다. 그래서 동작은 배치에 쓰지 않고 요소 표의 「누르면」 열에 쓴다.
 
 **번호 규칙**
 - 요소마다 `data-el`에 번호를 붙인다. 화면 안의 큰 덩어리가 `N`, 그 안의 요소가 `N.M`이다. 읽는 순서대로 매긴다. 위에서 아래로, 한 줄 안에서는 왼쪽에서 오른쪽으로 간다.
 - 번호는 한 화면 안에서만 겹치지 않으면 된다. UI-1의 2.1과 UI-4의 2.1은 다른 요소다. 요소 번호는 항목이 아니므로 다른 문서는 화면(`UI-4`)까지만 참조한다.
-- 뼈대의 번호와 요소 표 `#` 열의 번호는 똑같아야 한다. 한쪽에만 있는 번호가 있으면 안 된다.
-- 반복되는 행(목록 행, 파일 행, 인사이트, 챕터 카드, 스크립트 구간, 대화 턴 등)은 **첫 행에만** 번호를 붙인다. 행 안의 요소도 첫 행에서만 번호를 받는다. 둘째 행부터는 모양만 보이도록 번호 없이 그린다.
-- 페이지 넷이 같이 쓰는 헤더에는 **번호가 없다.** 1.1에서 한 번 정의하고, 화면 뼈대에는 `<div class="topbar">공통 헤더 — 1.1</div>` 한 줄로 자리만 그린다. 키 없음 배너(1.4)는 UI-1에서만 번호(1 · 1.1 · 1.2)를 받고, UI-3·UI-4에서는 `<div class="banner">키 없음 배너 — 1.4</div>` 한 줄로 자리만 그린다.
-- 특정 상태에서만 나타나는 블록(배너, 실패 알림, 빈 상태 상자 등)은 같은 뼈대 안에 그리고 `<!-- 조건: {언제 보이나} -->` 주석을 붙인다. 이런 블록도 번호를 받는다.
+- 배치의 번호와 요소 표 `#` 열의 번호는 똑같다. 한쪽에만 있는 번호는 두지 않는다.
+- 번호는 `div`·`span`·`a`·`button` 같은 보통 요소에 붙인다. 입력칸·select·textarea·표에는 뷰가 배지를 그리지 못하므로 감싸는 요소에 붙인다(3.2 · 10.3 · 2.3 · 3.1 · 3.3 · 5.1).
+- 반복되는 행(목록 행, 파일 행, 인사이트, 챕터 카드, 스크립트 구간, 대화 턴 등)은 **첫 행에만** 번호를 붙인다. 행 안의 요소도 첫 행에서만 번호를 받는다. 둘째 행부터는 번호 없이 그린다. 진행 중 행의 작은 막대(UI-1 6.7)처럼 일부 행에만 있는 요소는 그것이 처음 나오는 행에서 번호를 받는다.
+- 페이지 넷이 같이 쓰는 헤더에는 **번호가 없다.** 배치에는 캔버스의 헤더가 그대로 있고, 정의는 1.1에 한 번 있다. 키 없음 배너(1.4)는 UI-1 배치에만 그리고 거기서 번호(1 · 1.1 · 1.2)를 받는다. UI-3·UI-4 배치에는 배너를 그리지 않는다.
+- **상태 보드.** 특정 상태에서만 나타나는 것(배너, 실패 알림, 빈 상태 상자, 대기 상태 등)은 주 보드 아래에 작은 보드로 잇고, 앞에 회색 주석 한 줄로 어떤 상태인지 적는다. 주석은 화면이 아니라 문서의 말이다. 상태 보드에서는 그 상태에서만 나타나는 요소만 번호를 받는다 — 번호는 상태를 가로질러 한 벌이다. 다이얼로그를 잘라 낸 보드는 덮개 색 바탕 위에 그린다.
 - 1장 공통 컴포넌트가 들어가는 자리도(헤더와 UI-3·UI-4의 키 없음 배너는 빼고) 그 화면의 번호를 받는다. 요소 표에서는 「공통 1.3 시각 칩」처럼 번호와 이름으로 부른다. 1.8의 버튼 종류는 「공통 1.8의 주 버튼」처럼 부른다.
 
 **구현과의 연결.** 프런트엔드는 이 문서를 그대로 옮긴 것이다(싱크독 개발 규약 DEV-17, `SYNC-STD-004`).
 - **화면 항목 하나에 컴포넌트 하나.** 주소가 있는 페이지 넷(UI-1 · UI-3 · UI-4 · UI-5)은 `web/app/` 아래 그 주소에 해당하는 Next.js page 컴포넌트다. 주소가 없는 다이얼로그 셋(UI-2 · UI-6 · UI-7)은 그 다이얼로그를 여는 화면이 불러 쓰는 컴포넌트다. UI-6은 UI-1과 UI-4가 같은 컴포넌트를 쓴다.
-- **요소 번호는 코드의 `data-el`이다.** 뼈대의 번호가 코드에서도 같은 DOM 노드에 그대로 붙는다. 반복 행은 코드에서도 첫 행에만 붙인다.
+- **요소 번호는 코드의 `data-el`이다.** 배치의 번호가 코드에서도 같은 DOM 노드에 그대로 붙는다. 반복 행은 코드에서도 첫 행에만 붙인다.
 - 요소마다 컴포넌트를 따로 만들지 않는다. 컴포넌트로 따로 두는 것은 두 화면 이상이 쓰는 1장의 조각뿐이고, 이 조각은 불러 쓰는 화면에서 번호를 받는다(헤더와 UI-3·UI-4의 키 없음 배너는 빼고). 화면 컴포넌트 안에서 1장의 조각을 다시 만들지 않는다.
 - 번호 검사(DEV-17)는 번호가 빠짐없이 있는지만 확인한다. 번호가 맞는 요소에 붙었는지, 배치가 캔버스와 같은지는 화면을 띄워 눈으로 확인한다.
-- **뼈대의 글은 자리를 보여 주는 대표 글이다.** 버튼 이름·제목·안내 문장 같은 고정 문구는 요소 표와 규칙에 적힌 것이 기준이다. 영상 제목·채널·파일 이름·시각·금액·개수 같은 예시 값은 제품 문구가 아니다. 실제 값은 [[VA-UI-001]]에서 `{ }`로 표시한 자리에 들어간다.
+- **배치의 글은 자리를 보여 주는 보기 글이다.** 버튼 이름·제목·안내 문장 같은 고정 문구는 요소 표와 규칙에 적힌 것이 기준이다. 영상 제목·채널·파일 이름·시각·금액·개수 같은 예시 값은 제품 문구가 아니다. 실제 값은 [[VA-UI-001]]에서 `{ }`로 표시한 자리에 들어간다.
 
-**모양은 캔버스에 있다.** 모양과 자리의 원본은 사용자가 승인한 디자인 캔버스(https://claude.ai/artifact/5vRnv2qFrhTBDjYaNZC1XR)다. 어느 보드가 어느 화면·상태인지는 [[VA-UI-001]] 0장 표에 있다. 뼈대는 캔버스의 자리와 순서를 옮긴 것이므로, 둘이 어긋나면 뼈대를 고친다. 보드에 없는 상태(답변 대기, 시작 불가 등)는 [[VA-UI-001]] 규칙대로 뼈대에 그리고, 모양은 디자인 보강을 기다린다([[VA-UI-001]] 8장).
+**배치는 캔버스를 옮긴 것이다.** 모양의 원본은 사용자가 승인한 디자인 캔버스(https://claude.ai/artifact/5vRnv2qFrhTBDjYaNZC1XR)다([[VA-UI-001]] 0장). 캔버스 보드는 디자인 컴포넌트(`.dc.html`)라서 그대로 붙이지 못하고 정적 html로 펼쳐 옮겼다 — `{{자리}}`는 보드의 예시 값으로, 반복과 조건은 그 판의 값으로 채웠고, 보드 사이 링크(`*.dc.html`)는 `#`로 바꿨다. 인라인 스타일은 그대로 두었다 — 바꾼 것은 번호를 붙이려고 입력칸·select·textarea·표를 감싼 요소와, 내용이 보드보다 긴 설정 보드의 높이(`height` → `min-height`)뿐이다. 홈 목록에는 대기 중 행을 맨 위에 더하고 캔버스의 다섯째 행을 뺐다. 어느 보드가 어느 화면·상태인지는 [[VA-UI-001]] 0장 표와 각 화면 메타 표의 「디자인 보드」 행에 있다. 둘이 어긋나면 캔버스가 기준이고 배치를 고친다.
+
+**캔버스에 없는 상태는 이 문서에서 그렸다.** 승인 뒤에 정해진 상태(대기열 · 연결 확인 못함)와 처음부터 보드가 없던 상태(입력 오류 · 빈 inbox · 시작 불가 · 답 대기와 실패 · 키 없는 질문 · 짧은 알림 · 키 카드 · 삭제와 내보내기 실패)다. 캔버스의 부품과 [[VA-UI-001]] 3장의 색만 써서 그렸고, 상태 보드 주석에 「캔버스에 없음」으로 표시했다. 모양은 디자인 보강 때 사용자 검토를 받아 캔버스에 보드로 더한다([[VA-UI-001]] 8장, 2장 미결).
 
 ---
 
@@ -68,7 +71,7 @@ upstream: [VA-UI-001, VA-UC-001]
 - 현재 위치 표시: UI-1은 '분석한 영상', UI-5는 설정 아이콘이다. UI-3·UI-4에는 표시하지 않는다. 표시하는 메뉴에는 바탕색과 `aria-current="page"`를 함께 준다. 보드는 UI-5에만 `aria-current`를 그렸지만 UI-1에도 붙인다.
 - 창을 스크롤해도 헤더는 위에 남고, 그 아래 내용만 움직인다.
 - 키 없음 배너(1.4)가 뜨면 헤더 바로 위에 붙는다.
-- 헤더에는 번호가 없다. 화면 뼈대에는 `<div class="topbar">공통 헤더 — 1.1</div>` 한 줄로 자리만 그린다.
+- 헤더에는 번호가 없다. 배치에는 캔버스의 헤더가 그대로 있다.
 
 ### 1.2 다이얼로그 틀
 
@@ -108,7 +111,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - UI-5에서 키 확인을 통과하면 배너가 사라진다.
 - 배너 자체는 누를 수 없고, 누를 수 있는 것은 [키 넣으러 가기]뿐이다. 연결 문구일 때는 누를 수 있는 것이 없다.
 - 연결 문구일 때는 아무것도 막지 않는다. 분석 버튼·다시 시도·질문 보내기를 누르면 서버가 그때 키를 다시 확인한다 — 통과하면 배너가 사라지고 하려던 일이 이어지고, 아직 안 되면 배너는 그대로이고 그 화면의 실패 자리에 '연결을 확인하지 못했어요'를 알린다. 막힌 버튼은 눌러도 요청을 보내지 않으므로 문구의 「누를 때 다시 확인」과 맞지 않기 때문이다 (VA-UI-001에 없음, 2장)
-- 뼈대 번호: UI-1은 배너(1)·문구(1.1)·[키 넣으러 가기](1.2)에 번호를 준다. UI-3·UI-4는 자리만 그리므로 코드에서도 data-el을 붙이지 않는다.
+- 번호: UI-1은 배너(1)·문구(1.1)·[키 넣으러 가기](1.2)에 번호를 준다. UI-3·UI-4 배치에는 배너를 그리지 않았고, 코드에서도 data-el을 붙이지 않는다. 세 문구의 모습은 UI-1 배치의 「첫 실행」·「키 확인 실패」·「연결을 확인하지 못함」 보드에 있다.
 
 ### 1.5 짧은 알림
 
@@ -118,7 +121,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - **끝난 일을 알릴 때만 쓴다.** 확인을 받거나 실패를 알릴 때는 쓰지 않는다. 확인은 다이얼로그(1.2)로 받고, 실패는 실패 알림(1.6)이나 문제가 생긴 자리의 한 줄로 알린다.
 - 화면이 바뀌면서 알리는 경우에는 새로 열린 화면에서 보인다. UI-7의 완료 알림은 다이얼로그가 닫힌 뒤 UI-4 위에 뜬다.
 - 스크린 리더가 읽을 수 있게 `role="status"`로 둔다. 초점은 옮기지 않는다.
-- 위치, 모양, 보이는 시간은 보드에 없다. 모양은 [[VA-UI-001]] 8장의 디자인 보강을 기다린다. 보이는 시간과 여러 알림이 겹칠 때의 처리는 2장 미결사항이다.
+- 위치와 보이는 시간은 캔버스에 없다. 모양은 UI-4 배치의 「짧은 알림」 보드(11)에 캔버스 부품으로 그렸고 디자인 보강 때 확정한다([[VA-UI-001]] 8장). 위치, 보이는 시간, 여러 알림이 겹칠 때의 처리는 2장 미결사항이다.
 - 위 두 경우 말고 다른 곳에서 쓰려면 [[VA-UI-001]] 4.5 표에 먼저 추가한다.
 
 ### 1.6 실패 알림
@@ -167,7 +170,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 
 ## 2. 미결사항
 
-와이어프레임 단계에서 정해야 하지만 뼈대만으로는 정할 수 없는 것들이다. 제품 수준의 미결(상위 문서 갱신 요청·사용자 결정·디자인 보강)은 [[VA-UI-001]] 8장에 있다.
+와이어프레임 단계에서 정해야 하지만 배치만으로는 정할 수 없는 것들이다. 제품 수준의 미결(상위 문서 갱신 요청·사용자 결정·디자인 보강)은 [[VA-UI-001]] 8장에 있다.
 
 - [ ] 시각을 눌렀을 때의 스크롤 위치: 고른 스크립트 구간을 패널 맨 위에 둘지 가운데에 둘지, 이미 보이는 구간이면 스크롤하지 않을지(1.3)
 - [ ] 챕터 강조 기준: 인사이트·근거 시각이 어느 챕터의 시작 시각과도 같지 않으면, 지금 규칙으로는 어떤 챕터도 강조되지 않는다. 그 시각이 들어 있는 챕터를 강조할지, 그 챕터가 접힌 파트 안에 있으면 파트를 펼칠지(1.3). 정할 때까지는 UI-4 규칙대로 강조하지 않고 파트도 펴지 않는다
@@ -181,8 +184,38 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - [x] 인터넷이 없어 키를 확인하지 못했을 때 — 결정: 배너 문구를 가르고 [키 넣으러 가기]를 뺀다(VA-UI-001 7장 17). 공통 1.4 · UI-1 · UI-3 · UI-4 10.2에 넣었다
 - [x] UI-5 2.2 저장 위치 캡션 — 결정: '.env에 저장됨' 고정([[VA-INFRA-001#C6]])
 - [ ] **되먹임** 연결 문구일 때는 버튼을 막지 않는다(1.4) — [[VA-UI-001]] UI-1 규칙은 확인 실패를 한데 묶어 「분석 버튼과 질문 입력을 막는다」고 쓴다. 연결 실패만 막지 않는다는 한 문장이 필요하다. MINISPEC(설정 서비스)의 「마지막 결과로 막기」도 마지막 결과가 연결 실패면 그때 한 번 다시 확인해야 다시 시도와 질문에서도 풀린다 — 지금은 분석 버튼(영상 등록)만 다시 확인한다
-- [ ] 대기 상태의 모양 — 보드에 없다. UI-1 대기 중 행의 글자색, UI-3 대기 상태 카드는 정상 상태의 색을 그대로 쓴 임시 규칙이다. 디자인 보강 때 같이 본다
+- [ ] 대기 상태의 모양 — 캔버스에 없다. UI-1 대기 중 행의 글자색, UI-3 대기 상태 카드는 정상 상태의 색을 그대로 써서 배치에 그렸다. 디자인 보강 때 같이 본다
+- [ ] 캔버스에 없는 상태 보드의 검토 — 0장 「캔버스에 없는 상태는 이 문서에서 그렸다」의 보드들(UI-1 넷 · UI-2 둘 · UI-3 하나 · UI-4 다섯 · UI-5 둘 · UI-6 하나 · UI-7 하나, 대기 중 행 포함). 사용자가 보고 확정하면 캔버스에 보드로 더한다([[VA-UI-001]] 8장 디자인 보강)
+- [x] 배치를 싱크독 새 뷰에 맞춘다(2026-09-23) — 싱크독이 배치 html을 iframe에 격리해 그대로 그리게 되면서(카드 Z · AC · AE) 뷰가 주던 클래스 사전이 없어졌다. 클래스로 그린 뼈대가 스타일 없이 보여, 배치를 승인된 캔버스 html로 옮기고 「3. 공통 틀」을 더했다. 요소 번호와 요소 표·규칙·시나리오는 그대로다
 - [ ] 이미 보낸 추천 질문: 두 모양에서 뺄지, 그대로 두고 다시 누르면 같은 질문을 또 보내게 할지(1.8)
+
+---
+
+## 3. 공통 틀
+
+이 절의 첫 html 블록은 뷰가 **이 문서 모든 화면의 배치 앞에** 넣는다([[VA-UI-001]] 4장의 앱 셸과 다르다 — 이것은 문서를 그리는 틀이다). 마크업은 없고 글꼴 `<link>`와 `<style>`뿐이다. 글꼴과 `body` 규칙은 캔버스 보드의 `<helmet>`을 그대로 옮겼고, 값의 원본은 [[VA-UI-001]] 3장이다. 뒤의 네 규칙은 문서의 것이다 — 상태 보드 앞 주석 줄(`.var`), 잘라 낸 작은 보드(`.crop`, 다이얼로그면 덮개 색 `.dim`), 작은 보드를 나란히 두는 줄(`.row`). `body` 바탕만 캔버스와 달리 한 단계 어둡게 했다 — 보드 사이 경계가 보이게.
+
+```html
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* 공통 틀 — 캔버스 보드의 <helmet> 그대로(값의 원본은 VA-UI-001 3장). body 바탕만 보드 경계가 보이게 한 단계 어둡게 */
+body { margin: 0; background: #E4E0D7; color: #1B1A17; font-family: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; word-break: keep-all; -webkit-font-smoothing: antialiased; }
+a { color: #0F6E68; }
+a:hover { color: #0B5752; }
+button, input, select, textarea { font-family: inherit; }
+@keyframes va-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.va-pulse { animation: va-pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .va-pulse { animation: none; } }
+/* 문서의 말 — 상태 보드 앞 주석 줄. 화면이 아니다 */
+.var { box-sizing: border-box; width: 1440px; padding: 32px 4px 10px; font: 500 13px/1.5 'IBM Plex Mono', monospace; color: #5E5A52; }
+.var b { color: #1B1A17; font-weight: 600; }
+/* 잘라 낸 작은 보드 — 페이지 바탕 위에. 다이얼로그는 덮개 색(#F6F4EF 위 rgba(27,26,23,.52)) 위에 */
+.crop { box-sizing: border-box; width: fit-content; padding: 24px; background: #F6F4EF; }
+.crop.dim { padding: 40px; background: #84817D; }
+/* 작은 보드를 나란히 */
+.row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 40px; width: 1440px; }
+</style>
+```
 
 ---
 
@@ -199,149 +232,366 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 ### 배치
 
 ```html
-<!-- 조건: API 키가 없거나 키 확인에 실패했을 때만. 헤더 위 전체 폭 -->
-<div class="banner" data-el="1" style="display:flex;align-items:center;gap:8px">
-  <span class="lbl">(!)</span>
-  <span class="grow" data-el="1.1">OpenAI API 키가 없어서 아직 분석할 수 없어요. 분석해 둔 영상은 키 없이도 읽을 수 있습니다.</span>
-  <span class="btn sm" data-el="1.2">키 넣으러 가기</span>
+<!-- 주 보드: 캔버스 Main. 목록 맨 위에 대기 중 행 하나를 더했다(캔버스에 없음). 아래는 상태 보드 -->
+<div style="width: 1440px; height: 960px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column; overflow: hidden;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
+<span style="width: 30px; height: 30px; border-radius: 8px; background: #1B1A17; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Video Agent</span>
+</a>
+<nav aria-label="주 메뉴" style="display: flex; align-items: center; gap: 4px;">
+<a href="#" aria-current="page" style="height: 44px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; border-radius: 10px; background: #EAE6DD; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">분석한 영상</a>
+<a href="#" aria-label="설정" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+</a>
+</nav>
+</header>
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 44px 160px 0; display: flex; flex-direction: column; gap: 44px;">
+<section aria-labelledby="home-title" style="display: flex; flex-direction: column; gap: 24px;">
+<div data-el="2" style="display: flex; flex-direction: column; gap: 8px;">
+<h1 id="home-title" data-el="2.1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 40px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em;">어떤 영상을 읽어 볼까요?</h1>
+<p data-el="2.2" style="margin: 0; font-size: 16px; line-height: 1.6; color: #5E5A52;">YouTube 링크를 붙여 넣거나 inbox 폴더의 파일을 고르세요. 분석 결과는 이 PC에만 저장됩니다.</p>
 </div>
-<div class="topbar">공통 헤더 — 1.1</div>
-
-<div class="main" style="display:flex;flex-direction:column;gap:14px">
-
-  <div data-el="2" style="display:flex;flex-direction:column;gap:4px;padding:6px">
-    <h2 data-el="2.1">어떤 영상을 읽어 볼까요?</h2>
-    <span class="lbl" data-el="2.2">YouTube 링크를 붙여 넣거나 inbox 폴더의 파일을 고르세요. 분석 결과는 이 PC에만 저장됩니다.</span>
-  </div>
-
-  <!-- 입력 카드 둘. 같은 폭으로 나란히 -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-
-    <div data-el="3" style="display:flex;flex-direction:column;gap:8px;padding:10px">
-      <div data-el="3.1" style="display:flex;align-items:center;gap:6px;padding:4px">
-        <span class="lbl">[링크]</span>
-        <div style="display:flex;flex-direction:column;width:80%">
-          <b>YouTube 링크</b>
-          <span class="lbl">watch · youtu.be · shorts 주소를 받아요</span>
-        </div>
-      </div>
-      <label class="lbl">영상 주소</label>
-      <div style="display:flex;align-items:center;gap:6px">
-        <input data-el="3.2" style="width:70%" placeholder="https://www.youtube.com/watch?v=…">
-        <!-- 키가 없거나 확인 실패면 막힌 모양. 누르면 UI-5 -->
-        <span class="btn" data-el="3.3">분석</span>
-      </div>
-      <!-- 조건: 3.3을 눌렀는데 주소 형식이 틀렸을 때만. 문구는 자리 표시 -->
-      <div class="lbl" data-el="3.4">YouTube 영상 주소가 아니에요 — watch · youtu.be · shorts 형태로 넣어 주세요</div>
-      <span class="lbl" data-el="3.5">자막이 있는 영상은 받아쓰기 없이 1분 안에 끝나요.</span>
-    </div>
-
-    <div data-el="4" style="display:flex;flex-direction:column;gap:6px;padding:10px">
-      <div data-el="4.1" style="display:flex;align-items:center;gap:6px;padding:4px">
-        <span class="lbl">[폴더]</span>
-        <div style="display:flex;flex-direction:column;width:80%">
-          <b>내 파일</b>
-          <span class="lbl">~/video-agent/inbox</span>
-        </div>
-      </div>
-      <div data-el="4.2" style="display:flex;flex-direction:column;gap:4px;padding:4px">
-        <div data-el="4.3" style="display:flex;align-items:center;gap:6px;padding:4px">
-          <span>●</span><span class="grow">workshop_0912.mp4</span><span>2:30:00</span><span class="lbl">1.8 GB</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;padding:4px">
-          <span>○</span><span class="grow">meetup_0901.mp4</span><span>1:58:20</span><span class="lbl">1.4 GB</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;padding:4px">
-          <span>○</span><span class="grow">interview_0903.m4a</span><span>1:04:12</span><span class="lbl">58 MB</span>
-        </div>
-        <!-- 조건: inbox 폴더가 비었을 때만. 파일 행 대신 -->
-        <div class="lbl" data-el="4.4">inbox 폴더에 파일이 없어요</div>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <span class="lbl" data-el="4.5">mp4 · mkv · mov · webm · mp3 · m4a · wav</span>
-        <!-- 키가 없거나 확인 실패면 막힌 모양. 누르면 UI-5 -->
-        <span class="btn" data-el="4.6">선택한 파일 분석</span>
-      </div>
-    </div>
-  </div>
-
-  <div data-el="5" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px">
-    <div style="display:flex;align-items:center;gap:6px">
-      <h2 data-el="5.1">분석한 영상</h2>
-      <span class="lbl" data-el="5.2">6개</span>
-    </div>
-    <span class="lbl" data-el="5.3">최근 순</span>
-  </div>
-
-  <!-- 조건: 분석한 영상이 1개 이상일 때. 최근 순. 진행 중·대기 중·완료·실패 행이 섞인다 -->
-  <div data-el="6" style="display:flex;flex-direction:column;gap:4px;padding:4px">
-    <div style="display:flex;align-items:center;gap:6px">
-      <div data-el="6.1" style="display:flex;align-items:center;gap:8px;width:85%;padding:6px">
-        <span class="lbl" data-el="6.2">[필름]</span>
-        <div style="display:flex;flex-direction:column;width:40%">
-          <b data-el="6.3">workshop_0912.mp4</b>
-          <span class="lbl" data-el="6.4">로컬 파일</span>
-        </div>
-        <span data-el="6.5">2:30:00</span>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;width:34%">
-          <b data-el="6.6">받아쓰기 중 · 12 / 30</b>
-          <!-- 조건: 진행 중 행만 -->
-          <span data-el="6.7" style="display:block;width:96px">▰▰▰▱▱▱</span>
-        </div>
-      </div>
-      <span class="btn sm" data-el="6.8">휴지통</span>
-    </div>
-    <!-- 조건: 대기 중 행. 막대(6.7) 없음 -->
-    <div style="display:flex;align-items:center;gap:6px">
-      <div style="display:flex;align-items:center;gap:8px;width:85%;padding:6px">
-        <span class="lbl">[링크]</span>
-        <div style="display:flex;flex-direction:column;width:40%">
-          <b>벡터 검색 튜닝 실전</b>
-          <span class="lbl">YouTube · {채널}</span>
-        </div>
-        <span>1:12:40</span>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;width:34%">
-          <b class="lbl">대기 중 · 1번째</b>
-        </div>
-      </div>
-      <span class="btn sm">휴지통</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:6px">
-      <div style="display:flex;align-items:center;gap:8px;width:85%;padding:6px">
-        <span class="lbl">[링크]</span>
-        <div style="display:flex;flex-direction:column;width:40%">
-          <b>RAG 서비스 1년 운영기</b>
-          <span class="lbl">YouTube · {채널}</span>
-        </div>
-        <span>50:12</span>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;width:34%">
-          <span class="lbl">오늘 14:08 분석</span>
-        </div>
-      </div>
-      <span class="btn sm">휴지통</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:6px">
-      <div style="display:flex;align-items:center;gap:8px;width:85%;padding:6px">
-        <span class="lbl">[필름]</span>
-        <div style="display:flex;flex-direction:column;width:40%">
-          <b>meetup_0901.mp4</b>
-          <span class="lbl">로컬 파일</span>
-        </div>
-        <span>1:58:20</span>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;width:34%">
-          <b>받아쓰기 16 / 24에서 멈춤</b>
-        </div>
-      </div>
-      <span class="btn sm">휴지통</span>
-    </div>
-  </div>
-
-  <!-- 조건: 분석한 영상이 0개일 때만. 6 자리에 -->
-  <div data-el="7" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px">
-    <b data-el="7.1">아직 분석한 영상이 없어요</b>
-    <span class="lbl" data-el="7.2">설정에서 OpenAI API 키를 넣은 뒤, 위에 링크를 붙여 넣거나 inbox 폴더에 파일을 넣어 보세요.</span>
-  </div>
-
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+<div data-el="3" style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<div data-el="3.1" style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #E1EFEC; color: #0F6E68; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">YouTube 링크</span>
+<span style="font-size: 13px; color: #6B665C;">watch · youtu.be · shorts 주소를 받아요</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="yt-url" style="font-size: 14px; font-weight: 600; color: #4A463F;">영상 주소</label>
+<div style="display: flex; gap: 10px;">
+<span data-el="3.2" style="flex-grow: 1; min-width: 0; display: flex;"><input id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="" style="width: 100%; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;"></span>
+<a data-el="3.3" href="#" aria-disabled="false" style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">분석</a>
+</div>
+</div>
+<p data-el="3.5" style="margin: 0; font-size: 13px; line-height: 1.55; color: #6B665C;">자막이 있는 영상은 받아쓰기 없이 1분 안에 끝나요.</p>
+</div>
+<div data-el="4" style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 14px;">
+<div data-el="4.1" style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">내 파일</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #6B665C;">~/video-agent/inbox</span>
+</div>
+</div>
+<div role="group" aria-label="inbox 파일" data-el="4.2" style="display: flex; flex-direction: column; gap: 6px;">
+<button type="button" data-el="4.3" aria-pressed="true" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #0F6E68; background: #E1EFEC; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: #0F6E68;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">workshop_0912.mp4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">2:30:00</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">1.8 GB</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #E2DDD3; background: #FBFAF7; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: transparent;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">meetup_0901.mp4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">1:58:20</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">1.4 GB</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #E2DDD3; background: #FBFAF7; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: transparent;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">interview_0903.m4a</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">1:04:12</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">58 MB</span>
+</button>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<span data-el="4.5" style="font-size: 13px; color: #6B665C;">mp4 · mkv · mov · webm · mp3 · m4a · wav</span>
+<a data-el="4.6" href="#" aria-disabled="false" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">선택한 파일 분석</a>
+</div>
+</div>
+</div>
+</section>
+<section aria-labelledby="list-title" style="display: flex; flex-direction: column; gap: 12px;">
+<div data-el="5" style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="list-title" data-el="5.1" tabindex="-1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">분석한 영상</h2>
+<span data-el="5.2" style="font-size: 14px; color: #6B665C;">5개</span>
+</div>
+<span data-el="5.3" style="font-size: 13px; color: #6B665C;">최근 순</span>
+</div>
+<div data-el="6" style="border-top: 1px solid #E2DDD3; display: flex; flex-direction: column;">
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a data-el="6.1" href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span data-el="6.2" style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span data-el="6.3" style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">벡터 검색 튜닝 실전</span>
+<span data-el="6.4" style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span data-el="6.5" style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">38:05</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span data-el="6.6" style="font-size: 14px; font-weight: 600; color: #6B665C;">대기 중 · 1번째</span>
+</span>
+</a>
+<a data-el="6.8" href="#" aria-label="벡터 검색 튜닝 실전 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</span>
+<span style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">50:12</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 400; color: #6B665C;">오늘 14:08 분석</span>
+</span>
+</a>
+<a href="#" aria-label="RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">workshop_0912.mp4</span>
+<span style="font-size: 13px; color: #6B665C;">로컬 파일</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">2:30:00</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 600; color: #0F6E68;">받아쓰기 중 · 12 / 30</span>
+<span data-el="6.7" style="width: 160px; height: 4px; border-radius: 2px; background: #E2DDD3; display: block; overflow: hidden;">
+<span style="width: 40%; height: 4px; display: block; background: #0F6E68;"></span>
+</span>
+</span>
+</a>
+<a href="#" aria-label="workshop_0912.mp4 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">meetup_0901.mp4</span>
+<span style="font-size: 13px; color: #6B665C;">로컬 파일</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">1:58:20</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 600; color: #A33A2B;">받아쓰기 16 / 24에서 멈춤</span>
+</span>
+</a>
+<a href="#" aria-label="meetup_0901.mp4 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">LLM 에이전트 설계 패턴 정리</span>
+<span style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">1:12:40</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 400; color: #6B665C;">9월 12일 분석</span>
+</span>
+</a>
+<a href="#" aria-label="LLM 에이전트 설계 패턴 정리 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+</div>
+</section>
+</main>
+</div>
+<div class="var"><b>첫 실행</b> — 키가 없고 분석한 영상이 없을 때. 키 없음 배너(1)와 빈 상태 상자(7), 막힌 분석 버튼 · 캔버스 FirstRun 보드</div>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column; overflow: hidden;">
+<div role="status" data-el="1" style="min-height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 8px 40px; display: flex; align-items: center; gap: 12px; background: #F7E6E2; color: #7A2A1E; font-size: 15px;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+<span data-el="1.1" style="flex-grow: 1;">OpenAI API 키가 없어서 아직 분석할 수 없어요. 분석해 둔 영상은 키 없이도 읽을 수 있습니다.</span>
+<a data-el="1.2" href="#" style="height: 40px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; border-radius: 8px; background: #7A2A1E; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none;">키 넣으러 가기</a>
+</div>
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
+<span style="width: 30px; height: 30px; border-radius: 8px; background: #1B1A17; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Video Agent</span>
+</a>
+<nav aria-label="주 메뉴" style="display: flex; align-items: center; gap: 4px;">
+<a href="#" aria-current="page" style="height: 44px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; border-radius: 10px; background: #EAE6DD; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">분석한 영상</a>
+<a href="#" aria-label="설정" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+</a>
+</nav>
+</header>
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 44px 160px 0; display: flex; flex-direction: column; gap: 44px;">
+<section aria-labelledby="home-title" style="display: flex; flex-direction: column; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 id="home-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 40px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em;">어떤 영상을 읽어 볼까요?</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5E5A52;">YouTube 링크를 붙여 넣거나 inbox 폴더의 파일을 고르세요. 분석 결과는 이 PC에만 저장됩니다.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+<div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #E1EFEC; color: #0F6E68; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">YouTube 링크</span>
+<span style="font-size: 13px; color: #6B665C;">watch · youtu.be · shorts 주소를 받아요</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="yt-url" style="font-size: 14px; font-weight: 600; color: #4A463F;">영상 주소</label>
+<div style="display: flex; gap: 10px;">
+<span style="flex-grow: 1; min-width: 0; display: flex;"><input id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="" style="width: 100%; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;"></span>
+<a href="#" aria-disabled="true" style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #E2DDD3; color: #5E5A52; font-size: 15px; font-weight: 600; text-decoration: none;">분석</a>
+</div>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #6B665C;">자막이 있는 영상은 받아쓰기 없이 1분 안에 끝나요.</p>
+</div>
+<div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">내 파일</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #6B665C;">~/video-agent/inbox</span>
+</div>
+</div>
+<div role="group" aria-label="inbox 파일" style="display: flex; flex-direction: column; gap: 6px;">
+<button type="button" aria-pressed="true" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #0F6E68; background: #E1EFEC; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: #0F6E68;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">workshop_0912.mp4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">2:30:00</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">1.8 GB</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #E2DDD3; background: #FBFAF7; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: transparent;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">meetup_0901.mp4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">1:58:20</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">1.4 GB</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #E2DDD3; background: #FBFAF7; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: transparent;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">interview_0903.m4a</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">1:04:12</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">58 MB</span>
+</button>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 13px; color: #6B665C;">mp4 · mkv · mov · webm · mp3 · m4a · wav</span>
+<a href="#" aria-disabled="true" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; background: #E2DDD3; color: #5E5A52; font-size: 15px; font-weight: 600; text-decoration: none;">선택한 파일 분석</a>
+</div>
+</div>
+</div>
+</section>
+<section aria-labelledby="list-title" style="display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="list-title" tabindex="-1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">분석한 영상</h2>
+<span style="font-size: 14px; color: #6B665C;">0개</span>
+</div>
+<span style="font-size: 13px; color: #6B665C;">최근 순</span>
+</div>
+<div data-el="7" style="box-sizing: border-box; padding: 40px; border-radius: 16px; border: 1px dashed #CFC8BB; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+<span data-el="7.1" style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600;">아직 분석한 영상이 없어요</span>
+<span data-el="7.2" style="font-size: 15px; line-height: 1.6; color: #5E5A52;">설정에서 OpenAI API 키를 넣은 뒤, 위에 링크를 붙여 넣거나 inbox 폴더에 파일을 넣어 보세요.</span>
+</div>
+</section>
+</main>
+</div>
+<div class="var"><b>키 확인 실패</b> — 키는 있는데 확인에 실패했을 때 배너 문구. 분석 버튼은 막힌다 · 캔버스에 없음</div>
+<div class="crop" style="width: 1440px; padding: 0;">
+<div role="status" style="min-height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 8px 40px; display: flex; align-items: center; gap: 12px; background: #F7E6E2; color: #7A2A1E; font-size: 15px;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+<span style="flex-grow: 1;">키를 확인하지 못했어요 — 인증 실패</span>
+<a href="#" style="height: 40px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; border-radius: 8px; background: #7A2A1E; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none;">키 넣으러 가기</a>
+</div>
+</div>
+<div class="var"><b>연결을 확인하지 못함</b> — 인터넷이 없어 키를 확인하지 못했을 때. [키 넣으러 가기]가 없고 분석 버튼은 막지 않는다 · 캔버스에 없음</div>
+<div class="crop" style="width: 1440px; padding: 0;">
+<div role="status" style="min-height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 8px 40px; display: flex; align-items: center; gap: 12px; background: #F7E6E2; color: #7A2A1E; font-size: 15px;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+<span style="flex-grow: 1;">연결을 확인하지 못했어요 — 인터넷이 되면 분석 버튼을 누를 때 다시 확인합니다</span>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 598px;"><b>주소 형식 오류</b> — [분석]을 눌렀는데 주소가 세 형태가 아닐 때(3.4) · 캔버스에 없음</div>
+<div class="crop" style="width: 598px;">
+<div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #E1EFEC; color: #0F6E68; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">YouTube 링크</span>
+<span style="font-size: 13px; color: #6B665C;">watch · youtu.be · shorts 주소를 받아요</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="yt-url" style="font-size: 14px; font-weight: 600; color: #4A463F;">영상 주소</label>
+<div style="display: flex; gap: 10px;">
+<span style="flex-grow: 1; min-width: 0; display: flex;"><input id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="https://vimeo.com/76979871" style="width: 100%; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; border: 1px solid #A33A2B; background: #FBFAF7; color: #1B1A17; font-size: 15px;"></span>
+<a href="#" aria-disabled="false" style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">분석</a>
+</div>
+<p data-el="3.4" role="alert" style="margin: 0; font-size: 13px; line-height: 1.55; color: #A33A2B;">YouTube 영상 주소가 아니에요 — watch · youtu.be · shorts 형태로 넣어 주세요</p>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #6B665C;">자막이 있는 영상은 받아쓰기 없이 1분 안에 끝나요.</p>
+</div>
+</div>
+</div>
+<div>
+<div class="var" style="width: 598px;"><b>inbox가 빔</b> — inbox 폴더에 파일이 없을 때(4.4). 키가 있어도 [선택한 파일 분석]은 막힌 모양 · 캔버스에 없음</div>
+<div class="crop" style="width: 598px;">
+<div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">내 파일</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #6B665C;">~/video-agent/inbox</span>
+</div>
+</div>
+<div role="group" aria-label="inbox 파일" style="display: flex; flex-direction: column; gap: 6px;">
+<p data-el="4.4" id="inbox-empty" style="margin: 0; min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; border-radius: 10px; border: 1px dashed #CFC8BB; font-size: 14px; color: #5E5A52;">inbox 폴더에 파일이 없어요</p>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 13px; color: #6B665C;">mp4 · mkv · mov · webm · mp3 · m4a · wav</span>
+<a href="#" aria-disabled="true" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; background: #E2DDD3; color: #5E5A52; font-size: 15px; font-weight: 600; text-decoration: none;">선택한 파일 분석</a>
+</div>
+</div>
+</div>
+</div>
 </div>
 ```
 
@@ -522,70 +772,388 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 ### 배치
 
 ```html
-<!-- UI-1 홈 위에 뜨는 다이얼로그. 뒤 페이지 전체를 덮개로 덮고, 가로 가운데·위쪽에 붙는다 -->
-<!-- 그림은 자막 있음 판. 받아쓰기 필요 판은 같은 틀에 아이콘·글자와 2.5 칩 색(청록 → 회색)만 바뀐다 -->
-<div class="dialog" style="max-width:560px;margin:12px auto">
-  <div class="dbody" style="display:flex;flex-direction:column;gap:12px">
-
-    <div data-el="1" style="display:flex;align-items:flex-start;gap:8px">
-      <div class="grow">
-        <h2 data-el="1.1">분석을 시작할까요?</h2>
-        <div class="lbl" data-el="1.2">걸릴 시간과 비용을 먼저 확인하세요.</div>
-      </div>
-      <span class="btn sm" data-el="1.3">✕</span>
-    </div>
-
-    <div data-el="2" style="display:flex;gap:10px;padding:8px">
-      <!-- 조건: YouTube면 ▶ 재생 삼각형, 로컬 파일이면 필름 아이콘 -->
-      <span data-el="2.1" style="display:flex;align-items:center;justify-content:center;width:24%;min-height:64px">▶</span>
-      <div class="grow" style="display:flex;flex-direction:column;gap:4px">
-        <b data-el="2.2">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</b>
-        <span class="lbl" data-el="2.3">YouTube · {채널}</span>
-        <div style="display:flex;gap:6px">
-          <span class="st dr" data-el="2.4">길이 50:12</span>
-          <!-- 조건: 자막이 없으면 회색 '자막 없음 · 받아쓰기 필요' -->
-          <span class="st ok" data-el="2.5">자막 있음 · 한국어</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="stats" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0">
-      <div class="stat" data-el="3" style="display:flex;flex-direction:column;gap:4px">
-        <span class="lbl">예상 시간</span>
-        <b data-el="3.1">약 1분</b>
-        <!-- 조건: 받아쓰기 필요 판이면 '음성을 뽑아 {k}개 조각으로 나누고, {c}개씩 동시에 받아씁니다.' 로컬 음성 파일이면 '음성을 뽑아' 없이 -->
-        <span class="lbl" data-el="3.2">받아쓰기 없이 자막을 가져와 바로 요약합니다.</span>
-      </div>
-      <div class="stat" data-el="4" style="display:flex;flex-direction:column;gap:4px">
-        <span class="lbl">예상 비용</span>
-        <b data-el="4.1">약 $0.02</b>
-        <!-- 조건: 받아쓰기 필요 판이면 '받아쓰기 {분}분 × ${단가}' -->
-        <div data-el="4.2" style="display:flex;justify-content:space-between;gap:6px"><span class="lbl">받아쓰기 (자막 사용)</span><span class="lbl">$0.00</span></div>
-        <div data-el="4.3" style="display:flex;justify-content:space-between;gap:6px"><span class="lbl">요약 · 챕터 · 추천 질문</span><span class="lbl">$0.02</span></div>
-      </div>
-    </div>
-
-    <!-- 조건: 받아쓰기 필요 판이면 음성 조각과 스크립트 텍스트가 간다는 문구 -->
-    <div class="banner" data-el="5">ⓘ 요약을 만들려고 스크립트 텍스트가 OpenAI({요약 모델})로 전송됩니다. 영상은 전송되지 않아요.</div>
-
-    <div class="dacts" data-el="6" style="display:flex;align-items:center;gap:8px">
-      <!-- 조건: 다른 영상이 분석 중이거나 대기 중일 때만. 아니면 빈 자리 -->
-      <span class="lbl grow" data-el="6.1">지금 다른 영상을 분석 중이에요. 시작하면 차례를 기다렸다가 저절로 시작돼요.</span>
-      <span class="btn" data-el="6.2">취소</span>
-      <span class="btn" data-el="6.3"><b>분석 시작</b></span>
-    </div>
-
-  </div>
+<!-- 주 보드: 캔버스 Estimate(자막 있음 판). 뒤는 UI-1 홈이 덮개 아래 그대로다. 아래는 상태 보드 -->
+<div style="width: 1440px; height: 960px; position: relative; overflow: hidden; background: #F6F4EF;">
+<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 960px;">
+<div style="width: 1440px; height: 960px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column; overflow: hidden;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
+<span style="width: 30px; height: 30px; border-radius: 8px; background: #1B1A17; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Video Agent</span>
+</a>
+<nav aria-label="주 메뉴" style="display: flex; align-items: center; gap: 4px;">
+<a href="#" aria-current="page" style="height: 44px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; border-radius: 10px; background: #EAE6DD; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">분석한 영상</a>
+<a href="#" aria-label="설정" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+</a>
+</nav>
+</header>
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 44px 160px 0; display: flex; flex-direction: column; gap: 44px;">
+<section aria-labelledby="home-title" style="display: flex; flex-direction: column; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 id="home-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 40px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em;">어떤 영상을 읽어 볼까요?</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5E5A52;">YouTube 링크를 붙여 넣거나 inbox 폴더의 파일을 고르세요. 분석 결과는 이 PC에만 저장됩니다.</p>
 </div>
-
-<!-- 조건: 시작할 수 없는 영상(정보 조회 실패·3시간 초과·음성 트랙 없음·영상·음성 파일이 아님). 위 다이얼로그 대신 같은 자리에 뜬다 -->
-<div class="dialog" data-el="7" style="max-width:560px;margin:12px auto">
-  <div class="dbody" style="display:flex;flex-direction:column;gap:10px">
-    <h2 data-el="7.1">3시간이 넘는 영상은 분석할 수 없어요</h2>
-    <!-- 조건: 길이를 알 때만 -->
-    <div><span class="st dr" data-el="7.2">길이 3:12:40</span></div>
-    <div class="dacts"><span class="btn" data-el="7.3">닫기</span></div>
-  </div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+<div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #E1EFEC; color: #0F6E68; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">YouTube 링크</span>
+<span style="font-size: 13px; color: #6B665C;">watch · youtu.be · shorts 주소를 받아요</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="yt-url" style="font-size: 14px; font-weight: 600; color: #4A463F;">영상 주소</label>
+<div style="display: flex; gap: 10px;">
+<span style="flex-grow: 1; min-width: 0; display: flex;"><input id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="" style="width: 100%; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;"></span>
+<a href="#" aria-disabled="false" style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">분석</a>
+</div>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #6B665C;">자막이 있는 영상은 받아쓰기 없이 1분 안에 끝나요.</p>
+</div>
+<div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">내 파일</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #6B665C;">~/video-agent/inbox</span>
+</div>
+</div>
+<div role="group" aria-label="inbox 파일" style="display: flex; flex-direction: column; gap: 6px;">
+<button type="button" aria-pressed="true" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #0F6E68; background: #E1EFEC; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: #0F6E68;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">workshop_0912.mp4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">2:30:00</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">1.8 GB</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #E2DDD3; background: #FBFAF7; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: transparent;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">meetup_0901.mp4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">1:58:20</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">1.4 GB</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #E2DDD3; background: #FBFAF7; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: transparent;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">interview_0903.m4a</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">1:04:12</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">58 MB</span>
+</button>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 13px; color: #6B665C;">mp4 · mkv · mov · webm · mp3 · m4a · wav</span>
+<a href="#" aria-disabled="false" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">선택한 파일 분석</a>
+</div>
+</div>
+</div>
+</section>
+<section aria-labelledby="list-title" style="display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="list-title" tabindex="-1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">분석한 영상</h2>
+<span style="font-size: 14px; color: #6B665C;">5개</span>
+</div>
+<span style="font-size: 13px; color: #6B665C;">최근 순</span>
+</div>
+<div style="border-top: 1px solid #E2DDD3; display: flex; flex-direction: column;">
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">벡터 검색 튜닝 실전</span>
+<span style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">38:05</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 600; color: #6B665C;">대기 중 · 1번째</span>
+</span>
+</a>
+<a href="#" aria-label="벡터 검색 튜닝 실전 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</span>
+<span style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">50:12</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 400; color: #6B665C;">오늘 14:08 분석</span>
+</span>
+</a>
+<a href="#" aria-label="RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">workshop_0912.mp4</span>
+<span style="font-size: 13px; color: #6B665C;">로컬 파일</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">2:30:00</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 600; color: #0F6E68;">받아쓰기 중 · 12 / 30</span>
+<span style="width: 160px; height: 4px; border-radius: 2px; background: #E2DDD3; display: block; overflow: hidden;">
+<span style="width: 40%; height: 4px; display: block; background: #0F6E68;"></span>
+</span>
+</span>
+</a>
+<a href="#" aria-label="workshop_0912.mp4 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">meetup_0901.mp4</span>
+<span style="font-size: 13px; color: #6B665C;">로컬 파일</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">1:58:20</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 600; color: #A33A2B;">받아쓰기 16 / 24에서 멈춤</span>
+</span>
+</a>
+<a href="#" aria-label="meetup_0901.mp4 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">LLM 에이전트 설계 패턴 정리</span>
+<span style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">1:12:40</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 400; color: #6B665C;">9월 12일 분석</span>
+</span>
+</a>
+<a href="#" aria-label="LLM 에이전트 설계 패턴 정리 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+</div>
+</section>
+</main>
+</div>
+</div>
+<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 960px; box-sizing: border-box; padding-top: 104px; display: flex; justify-content: center; align-items: flex-start; background: rgba(27, 26, 23, 0.52);">
+<div role="dialog" aria-modal="true" aria-labelledby="est-title" style="width: 620px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 22px;">
+<div data-el="1" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<h2 id="est-title" data-el="1.1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">분석을 시작할까요?</h2>
+<span data-el="1.2" style="font-size: 15px; color: #5E5A52;">걸릴 시간과 비용을 먼저 확인하세요.</span>
+</div>
+<a data-el="1.3" href="#" aria-label="닫기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</a>
+</div>
+<div data-el="2" style="box-sizing: border-box; padding: 16px; border-radius: 12px; background: #F6F4EF; display: flex; gap: 16px;">
+<span data-el="2.1" style="width: 144px; height: 81px; flex-shrink: 0; border-radius: 8px; background: #E2DDD3; color: #6B665C; display: flex; align-items: center; justify-content: center;">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+<span data-el="2.2" style="font-size: 17px; line-height: 1.45; font-weight: 600;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</span>
+<span data-el="2.3" style="font-size: 14px; color: #5E5A52;">YouTube · [채널명]</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span data-el="2.4" style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">길이 50:12</span>
+<span data-el="2.5" style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #134E49; font-size: 13px; font-weight: 500;">자막 있음 · 한국어</span>
+</div>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+<div data-el="3" style="box-sizing: border-box; padding: 18px; border-radius: 12px; border: 1px solid #E2DDD3; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #5E5A52;">예상 시간</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em;" data-el="3.1">약 1분</span>
+<span data-el="3.2" style="font-size: 13px; line-height: 1.55; color: #5E5A52;">받아쓰기 없이 자막을 가져와 바로 요약합니다.</span>
+</div>
+<div data-el="4" style="box-sizing: border-box; padding: 18px; border-radius: 12px; border: 1px solid #E2DDD3; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #5E5A52;">예상 비용</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em;" data-el="4.1">약 $0.02</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span data-el="4.2" style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.55; color: #5E5A52;">
+<span>받아쓰기 (자막 사용)</span>
+<span style="font-family: 'IBM Plex Mono', monospace;">$0.00</span>
+</span>
+<span data-el="4.3" style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.55; color: #5E5A52;">
+<span>요약 · 챕터 · 추천 질문</span>
+<span style="font-family: 'IBM Plex Mono', monospace;">$0.02</span>
+</span>
+</div>
+</div>
+</div>
+<div data-el="5" style="box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #E1EFEC; color: #134E49; display: flex; gap: 10px; font-size: 14px; line-height: 1.55;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+<span>요약을 만들려고 스크립트 텍스트가 OpenAI(gpt-5-mini)로 전송됩니다. 영상은 전송되지 않아요.</span>
+</div>
+<div data-el="6" style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+<a data-el="6.2" href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
+<a data-el="6.3" href="#" style="height: 44px; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">분석 시작</a>
+</div>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 700px;"><b>받아쓰기 필요 판</b> — 자막이 없는 영상 · 캔버스 EstimateLocal 보드</div>
+<div class="crop dim">
+<div role="dialog" aria-modal="true" aria-labelledby="est-title" style="width: 620px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 22px;">
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<h2 id="est-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">분석을 시작할까요?</h2>
+<span style="font-size: 15px; color: #5E5A52;">걸릴 시간과 비용을 먼저 확인하세요.</span>
+</div>
+<a href="#" aria-label="닫기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; padding: 16px; border-radius: 12px; background: #F6F4EF; display: flex; gap: 16px;">
+<span style="width: 144px; height: 81px; flex-shrink: 0; border-radius: 8px; background: #E2DDD3; color: #6B665C; display: flex; align-items: center; justify-content: center;">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 17px; line-height: 1.45; font-weight: 600;">workshop_0912.mp4</span>
+<span style="font-size: 14px; color: #5E5A52;">로컬 파일 · inbox</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">길이 2:30:00</span>
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">자막 없음 · 받아쓰기 필요</span>
+</div>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+<div style="box-sizing: border-box; padding: 18px; border-radius: 12px; border: 1px solid #E2DDD3; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #5E5A52;">예상 시간</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em;">약 8분</span>
+<span style="font-size: 13px; line-height: 1.55; color: #5E5A52;">음성을 뽑아 30개 조각으로 나누고, 3개씩 동시에 받아씁니다.</span>
+</div>
+<div style="box-sizing: border-box; padding: 18px; border-radius: 12px; border: 1px solid #E2DDD3; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #5E5A52;">예상 비용</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em;">약 $0.92</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.55; color: #5E5A52;">
+<span>받아쓰기 150분 × $0.006</span>
+<span style="font-family: 'IBM Plex Mono', monospace;">$0.90</span>
+</span>
+<span style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.55; color: #5E5A52;">
+<span>요약 · 챕터 · 추천 질문</span>
+<span style="font-family: 'IBM Plex Mono', monospace;">$0.02</span>
+</span>
+</div>
+</div>
+</div>
+<div style="box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #E1EFEC; color: #134E49; display: flex; gap: 10px; font-size: 14px; line-height: 1.55;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+<span>받아쓰기에는 음성 조각이, 요약에는 스크립트 텍스트가 OpenAI로 전송됩니다. 영상 파일 자체는 이 PC 밖으로 나가지 않아요.</span>
+</div>
+<div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">분석 시작</a>
+</div>
+</div>
+</div>
+</div>
+<div>
+<div class="var" style="width: 700px;"><b>다른 영상이 분석 중</b> — 버튼 줄 왼쪽에 대기 안내(6.1) · 캔버스에 없음</div>
+<div class="crop dim">
+<div role="dialog" aria-modal="true" aria-labelledby="est-title" style="width: 620px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 22px;">
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<h2 id="est-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">분석을 시작할까요?</h2>
+<span style="font-size: 15px; color: #5E5A52;">걸릴 시간과 비용을 먼저 확인하세요.</span>
+</div>
+<a href="#" aria-label="닫기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; padding: 16px; border-radius: 12px; background: #F6F4EF; display: flex; gap: 16px;">
+<span style="width: 144px; height: 81px; flex-shrink: 0; border-radius: 8px; background: #E2DDD3; color: #6B665C; display: flex; align-items: center; justify-content: center;">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 17px; line-height: 1.45; font-weight: 600;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</span>
+<span style="font-size: 14px; color: #5E5A52;">YouTube · [채널명]</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">길이 50:12</span>
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #134E49; font-size: 13px; font-weight: 500;">자막 있음 · 한국어</span>
+</div>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+<div style="box-sizing: border-box; padding: 18px; border-radius: 12px; border: 1px solid #E2DDD3; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #5E5A52;">예상 시간</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em;">약 1분</span>
+<span style="font-size: 13px; line-height: 1.55; color: #5E5A52;">받아쓰기 없이 자막을 가져와 바로 요약합니다.</span>
+</div>
+<div style="box-sizing: border-box; padding: 18px; border-radius: 12px; border: 1px solid #E2DDD3; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #5E5A52;">예상 비용</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em;">약 $0.02</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.55; color: #5E5A52;">
+<span>받아쓰기 (자막 사용)</span>
+<span style="font-family: 'IBM Plex Mono', monospace;">$0.00</span>
+</span>
+<span style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.55; color: #5E5A52;">
+<span>요약 · 챕터 · 추천 질문</span>
+<span style="font-family: 'IBM Plex Mono', monospace;">$0.02</span>
+</span>
+</div>
+</div>
+</div>
+<div style="box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #E1EFEC; color: #134E49; display: flex; gap: 10px; font-size: 14px; line-height: 1.55;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+<span>요약을 만들려고 스크립트 텍스트가 OpenAI(gpt-5-mini)로 전송됩니다. 영상은 전송되지 않아요.</span>
+</div>
+<div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+<span data-el="6.1" style="margin-right: auto; max-width: 300px; font-size: 13px; line-height: 1.55; color: #5E5A52;">지금 다른 영상을 분석 중이에요. 시작하면 차례를 기다렸다가 저절로 시작돼요.</span>
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">분석 시작</a>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="var"><b>시작 불가 판</b> — 시작할 수 없는 영상일 때 1~6 대신 뜬다(7). 이유 · 길이 · [닫기]만 · 캔버스에 없음</div>
+<div class="crop dim">
+<div role="dialog" aria-modal="true" aria-labelledby="blk-title" data-el="7" style="width: 540px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 22px;">
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="blk-title" data-el="7.1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">3시간이 넘는 영상은 분석할 수 없어요</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span data-el="7.2" style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">길이 3:12:40</span>
+</div>
+</div>
+<div style="display: flex; justify-content: flex-end; gap: 10px;">
+<a data-el="7.3" href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">닫기</a>
+</div>
+</div>
 </div>
 ```
 
@@ -656,7 +1224,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - 7.2는 2.4와 같은 '길이 {길이}' 메타 칩이고 길이를 알 때만 보인다. 정보 조회 실패나 파일이 아닐 때처럼 길이를 모르면 뺀다 (VA-UI-001에 없음).
 - 7은 7.3·Esc·덮개 누름으로 닫히고 UI-1로 돌아간다. 아무것도 전송되지 않는다.
 - 7이 열리면 처음 초점은 7.3이다 (VA-UI-001에 없음).
-- 7의 모양은 보드가 없어 디자인 보강을 기다린다(VA-UI-001 8장).
+- 7의 모양은 캔버스에 없어 배치의 「시작 불가 판」 보드에 캔버스 부품으로 그렸다. [닫기]는 보조 버튼이다. 디자인 보강 때 확정한다(VA-UI-001 8장).
 
 ### 시나리오
 
@@ -730,103 +1298,517 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 ### 배치
 
 ```html
-<!-- 받아쓰기 중(ProgressLocal) 판을 그렸다. 요약 중(Progress)은 단계가 넷이고 4.6~4.8이 없다. 실패(ProgressFailed)는 5가 뜬다 -->
-<!-- 조건: API 키가 없거나 확인에 실패했을 때만 -->
-<div class="banner">키 없음 배너 — 1.4</div>
-<div class="topbar">공통 헤더 — 1.1</div>
-<div class="main" style="display:flex;flex-direction:column;gap:12px;padding:12px 40px">
-
-  <span class="ref" data-el="1">← 분석한 영상</span>
-
-  <div data-el="2" style="display:flex;align-items:center;gap:12px;padding:10px 6px">
-    <span data-el="2.1">[필름]</span>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <b data-el="2.2">workshop_0912.mp4</b>
-      <span class="lbl" data-el="2.3">로컬 파일 · 2:30:00 · 자막 없음</span>
-    </div>
-  </div>
-
-  <div class="panel" data-el="3" style="display:flex;flex-direction:column;gap:10px;padding:12px">
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px">
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <!-- 코드에서는 이 페이지의 유일한 h1이다. 뷰어가 본문 안 h1을 숨겨서 h2로 그렸다 -->
-        <h2 data-el="3.1">받아쓰기 중</h2>
-        <span data-el="3.2">조각 12 / 30 · 남은 시간 약 5분</span>
-      </div>
-      <b data-el="3.3">38%</b>
-    </div>
-    <div data-el="3.4" style="padding:2px"><div class="st ok" style="display:block;width:38%">&nbsp;</div></div>
-
-    <ol data-el="4" style="display:flex;flex-direction:column;gap:6px;padding:12px 6px 6px;margin:0">
-      <li data-el="4.1" style="display:grid;grid-template-columns:32px 1fr;gap:10px;padding:16px 2px 6px">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-          <span class="st ok" data-el="4.2">✓</span>
-          <span class="lbl" data-el="4.5">│</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;gap:8px">
-          <span data-el="4.3">음성 추출</span>
-          <span class="lbl" data-el="4.4">18초</span>
-        </div>
-      </li>
-      <li style="display:grid;grid-template-columns:32px 1fr;gap:10px;padding:16px 2px 6px">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-          <span class="st rv">●</span>
-          <span class="lbl">│</span>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;justify-content:space-between;gap:8px">
-            <b>받아쓰기</b>
-            <span class="lbl">12 / 30</span>
-          </div>
-          <!-- 조건: 받아쓰기 단계가 있는 출처만. 받아쓰기 행 아래에만 붙는다 -->
-          <div data-el="4.6" style="display:grid;grid-template-columns:repeat(15,1fr);gap:3px;padding:16px 4px 4px">
-            <span class="st ok" data-el="4.7">&nbsp;</span><span class="st rv">&nbsp;</span><span class="st na">&nbsp;</span>
-            <!-- 칸은 조각 수만큼, 한 줄 15칸. 이 판은 30칸 두 줄: 1~12 완료 · 13~15 받아쓰는 중 · 16~30 대기 -->
-          </div>
-          <div class="lbl" data-el="4.8" style="display:flex;gap:12px">
-            <span><span class="st ok">&nbsp;</span> 완료 12</span>
-            <span><span class="st rv">&nbsp;</span> 받아쓰는 중 3</span>
-            <span><span class="st na">&nbsp;</span> 대기 15</span>
-          </div>
-        </div>
-      </li>
-      <li style="display:grid;grid-template-columns:32px 1fr;gap:10px;padding:16px 2px 6px">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-          <span class="st na">○</span>
-          <span class="lbl">│</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;gap:8px">
-          <span>핵심 요약</span>
-          <span class="lbl">—</span>
-        </div>
-      </li>
-      <!-- 챕터 · 추천 질문 행이 같은 모양으로 이어진다. 마지막 행에는 연결선이 없다 -->
-    </ol>
-
-    <!-- 조건: 대기 상태에서는 3.1 '차례를 기다리는 중', 3.2 '앞 영상 1개가 끝나면 시작해요', 3.3 '0%', 3.4 빈 막대이고 4의 모든 행이 대기(빈 원, '—')다. 4.6·4.8과 5는 없다 -->
-    <!-- 조건: 실패 상태에서만. 이때 3.1·3.3·3.4가 위험 색으로 바뀌고, 3.2가 '조각 16 / 24에서 실패 · 완료한 15개는 저장됨'이 되고, 실패한 단계의 4.2가 X가 된다 -->
-    <!-- 공통 1.6 실패 알림 -->
-    <div class="banner" data-el="5" style="display:flex;flex-direction:column;gap:8px;margin:0">
-      <div style="display:flex;align-items:flex-start;gap:8px">
-        <span>(!)</span>
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <b data-el="5.1">OpenAI API에 연결하지 못했어요</b>
-          <span data-el="5.2">16번째 조각을 3번 다시 보냈지만 네트워크 시간 초과로 실패했습니다. 완료한 15개 조각은 저장돼 있어 …</span>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:8px">
-        <span class="btn" data-el="5.3">목록으로</span>
-        <span class="btn" data-el="5.4">↻ 16번째 조각부터 다시 시도</span>
-      </div>
-    </div>
-  </div>
-
-  <div data-el="6" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 6px 6px">
-    <span class="lbl" data-el="6.1">↗ 음성 조각 → OpenAI whisper-1 · 동시 3개</span>
-    <span class="lbl" data-el="6.2">이 화면을 닫아도 분석은 계속돼요.</span>
-  </div>
-
-  <!-- 분석이 끝나면 이 화면 대신 UI-4가 열린다. 결과로 가는 버튼은 없다 -->
+<!-- 주 보드: 캔버스 ProgressLocal(로컬 영상 · 받아쓰기 12/30). 아래는 상태 보드 -->
+<div style="width: 1440px; height: 1040px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column; overflow: hidden;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
+<span style="width: 30px; height: 30px; border-radius: 8px; background: #1B1A17; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Video Agent</span>
+</a>
+<nav aria-label="주 메뉴" style="display: flex; align-items: center; gap: 4px;">
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; border-radius: 10px; color: #4A463F; font-size: 15px; font-weight: 600; text-decoration: none;">분석한 영상</a>
+<a href="#" aria-label="설정" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+</a>
+</nav>
+</header>
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 28px 260px 0; display: flex; flex-direction: column; gap: 24px;">
+<a data-el="1" href="#" style="align-self: flex-start; height: 44px; display: flex; align-items: center; gap: 6px; color: #4A463F; font-size: 15px; text-decoration: none;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+분석한 영상
+</a>
+<div data-el="2" style="display: flex; align-items: center; gap: 14px;">
+<span data-el="2.1" style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span data-el="2.2" style="font-size: 18px; font-weight: 600;">workshop_0912.mp4</span>
+<span data-el="2.3" style="font-size: 14px; color: #5E5A52;">로컬 파일 · 2:30:00 · 자막 없음</span>
+</div>
+</div>
+<section aria-live="polite" data-el="3" style="box-sizing: border-box; padding: 32px; border-radius: 18px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 26px;">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 data-el="3.1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 34px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em; color: #1B1A17;">받아쓰기 중</h1>
+<span data-el="3.2" style="font-size: 16px; color: #4A463F;">조각 12 / 30 · 남은 시간 약 5분</span>
+</div>
+<span data-el="3.3" style="font-family: 'IBM Plex Mono', monospace; font-size: 40px; line-height: 1; font-weight: 600; color: #0F6E68;">38%</span>
+</div>
+<div data-el="3.4" style="height: 8px; border-radius: 4px; background: #EFECE5; overflow: hidden;">
+<div style="width: 38%; height: 8px; border-radius: 4px; background: #0F6E68;"></div>
+</div>
+<ol data-el="4" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;">
+<li data-el="4.1" style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span data-el="4.2" style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; background: #0F6E68; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" aria-hidden="true" style="stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 6 9 17l-5-5"></path></svg>
+</span>
+<span data-el="4.5" style="width: 2px; flex-grow: 1; min-height: 18px; background: #0F6E68; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span data-el="4.3" style="font-size: 17px; font-weight: 500; color: #1B1A17;">음성 추출</span>
+<span data-el="4.4" style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">18초</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span class="va-pulse" style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+<span style="width: 10px; height: 10px; border-radius: 50%; background: #0F6E68; display: block;"></span>
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 600; color: #1B1A17;">받아쓰기</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #0F6E68;">12 / 30</span>
+</span>
+<span style="display: flex; flex-direction: column; gap: 10px;">
+<span role="img" aria-label="조각 30개 중 12개 완료, 3개 받아쓰는 중" data-el="4.6" style="display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 4px;">
+<span data-el="4.7" style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span class="va-pulse" style="height: 18px; border-radius: 4px; background: #8FC7BE; display: block;"></span>
+<span class="va-pulse" style="height: 18px; border-radius: 4px; background: #8FC7BE; display: block;"></span>
+<span class="va-pulse" style="height: 18px; border-radius: 4px; background: #8FC7BE; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+</span>
+<span data-el="4.8" style="display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: #5E5A52;">
+<span style="display: flex; align-items: center; gap: 6px;">
+<span style="width: 10px; height: 10px; border-radius: 3px; background: #0F6E68; display: block;"></span>
+완료 12
+</span>
+<span style="display: flex; align-items: center; gap: 6px;">
+<span style="width: 10px; height: 10px; border-radius: 3px; background: #8FC7BE; display: block;"></span>
+받아쓰는 중 3
+</span>
+<span style="display: flex; align-items: center; gap: 6px;">
+<span style="width: 10px; height: 10px; border-radius: 3px; background: #E2DDD3; display: block;"></span>
+대기 15
+</span>
+</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">핵심 요약</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">챕터</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">추천 질문</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+</ol>
+</section>
+<div data-el="6" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; color: #5E5A52;">
+<span data-el="6.1" style="display: flex; align-items: center; gap: 8px;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
+음성 조각 → OpenAI whisper-1 · 동시 3개
+</span>
+<span data-el="6.2">이 화면을 닫아도 분석은 계속돼요.</span>
+</div>
+</main>
+</div>
+<div class="var"><b>요약 중</b> — 자막 있는 YouTube, 단계 넷. 조각 격자가 없다 · 캔버스 Progress 보드</div>
+<div class="crop" style="width: 1440px; padding: 0 0 28px;">
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 28px 260px 0; display: flex; flex-direction: column; gap: 24px;">
+<a href="#" style="align-self: flex-start; height: 44px; display: flex; align-items: center; gap: 6px; color: #4A463F; font-size: 15px; text-decoration: none;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+분석한 영상
+</a>
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 18px; font-weight: 600;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</span>
+<span style="font-size: 14px; color: #5E5A52;">YouTube · 50:12 · 자막 있음</span>
+</div>
+</div>
+<section aria-live="polite" style="box-sizing: border-box; padding: 32px; border-radius: 18px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 26px;">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 34px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em; color: #1B1A17;">핵심 요약을 만드는 중</h1>
+<span style="font-size: 16px; color: #4A463F;">4단계 중 2단계 · 남은 시간 약 30초</span>
+</div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 40px; line-height: 1; font-weight: 600; color: #0F6E68;">55%</span>
+</div>
+<div style="height: 8px; border-radius: 4px; background: #EFECE5; overflow: hidden;">
+<div style="width: 55%; height: 8px; border-radius: 4px; background: #0F6E68;"></div>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;">
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; background: #0F6E68; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" aria-hidden="true" style="stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 6 9 17l-5-5"></path></svg>
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #0F6E68; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #1B1A17;">자막 가져오기</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">3초</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span class="va-pulse" style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+<span style="width: 10px; height: 10px; border-radius: 50%; background: #0F6E68; display: block;"></span>
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 600; color: #1B1A17;">핵심 요약</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #0F6E68;">진행 중</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">챕터</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">추천 질문</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+</ol>
+</section>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; color: #5E5A52;">
+<span style="display: flex; align-items: center; gap: 8px;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
+스크립트 텍스트 → OpenAI gpt-5-mini
+</span>
+<span>끝나면 결과 화면이 바로 열려요. 닫아도 분석은 계속됩니다.</span>
+</div>
+</main>
+</div>
+<div class="var"><b>실패</b> — 받아쓰기가 16번째 조각에서 멈췄을 때. 실패 알림(5) · 캔버스 ProgressFailed 보드</div>
+<div class="crop" style="width: 1440px; padding: 0 0 28px;">
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 28px 260px 0; display: flex; flex-direction: column; gap: 24px;">
+<a href="#" style="align-self: flex-start; height: 44px; display: flex; align-items: center; gap: 6px; color: #4A463F; font-size: 15px; text-decoration: none;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+분석한 영상
+</a>
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 18px; font-weight: 600;">meetup_0901.mp4</span>
+<span style="font-size: 14px; color: #5E5A52;">로컬 파일 · 1:58:20 · 자막 없음</span>
+</div>
+</div>
+<section aria-live="polite" style="box-sizing: border-box; padding: 32px; border-radius: 18px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 26px;">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 34px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em; color: #7A2A1E;">받아쓰기가 멈췄어요</h1>
+<span style="font-size: 16px; color: #4A463F;">조각 16 / 24에서 실패 · 완료한 15개는 저장됨</span>
+</div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 40px; line-height: 1; font-weight: 600; color: #A33A2B;">41%</span>
+</div>
+<div style="height: 8px; border-radius: 4px; background: #EFECE5; overflow: hidden;">
+<div style="width: 41%; height: 8px; border-radius: 4px; background: #A33A2B;"></div>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;">
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; background: #0F6E68; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" aria-hidden="true" style="stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 6 9 17l-5-5"></path></svg>
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #0F6E68; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #1B1A17;">음성 추출</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">14초</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #A33A2B; background: #A33A2B; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" aria-hidden="true" style="stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 600; color: #1B1A17;">받아쓰기</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #A33A2B;">16 / 24에서 멈춤</span>
+</span>
+<span style="display: flex; flex-direction: column; gap: 10px;">
+<span role="img" aria-label="조각 24개 중 15개 완료, 1개 실패" style="display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 4px;">
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #0F6E68; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #A33A2B; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+<span style="height: 18px; border-radius: 4px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: #5E5A52;">
+<span style="display: flex; align-items: center; gap: 6px;">
+<span style="width: 10px; height: 10px; border-radius: 3px; background: #0F6E68; display: block;"></span>
+완료 15
+</span>
+<span style="display: flex; align-items: center; gap: 6px;">
+<span style="width: 10px; height: 10px; border-radius: 3px; background: #A33A2B; display: block;"></span>
+실패 1
+</span>
+<span style="display: flex; align-items: center; gap: 6px;">
+<span style="width: 10px; height: 10px; border-radius: 3px; background: #E2DDD3; display: block;"></span>
+대기 8
+</span>
+</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">핵심 요약</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">챕터</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">추천 질문</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+</ol>
+<div role="alert" data-el="5" style="box-sizing: border-box; padding: 20px; border-radius: 14px; background: #F7E6E2; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: flex-start; gap: 12px;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A33A2B" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<span data-el="5.1" style="font-size: 16px; font-weight: 600; color: #7A2A1E;">OpenAI API에 연결하지 못했어요</span>
+<span data-el="5.2" style="font-size: 14px; line-height: 1.6; color: #5C2418;">16번째 조각을 3번 다시 보냈지만 네트워크 시간 초과로 실패했습니다. 완료한 15개 조각은 저장돼 있어 처음부터 다시 받아쓰지 않아요.</span>
+</div>
+</div>
+<div style="display: flex; justify-content: flex-end; gap: 10px;">
+<a data-el="5.3" href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">목록으로</a>
+<a data-el="5.4" href="#" style="height: 44px; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 8px; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>
+16번째 조각부터 다시 시도
+</a>
+</div>
+</div>
+</section>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; color: #5E5A52;">
+<span style="display: flex; align-items: center; gap: 8px;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
+음성 조각 → OpenAI whisper-1
+</span>
+<span>다시 시도하면 16번째 조각부터 이어서 받아씁니다.</span>
+</div>
+</main>
+</div>
+<div class="var"><b>대기 중</b> — 다른 영상이 분석 중이라 차례를 기다릴 때. 단계는 모두 대기, 남은 시간 없음 · 캔버스에 없음</div>
+<div class="crop" style="width: 1440px; padding: 0 0 28px;">
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 28px 260px 0; display: flex; flex-direction: column; gap: 24px;">
+<a href="#" style="align-self: flex-start; height: 44px; display: flex; align-items: center; gap: 6px; color: #4A463F; font-size: 15px; text-decoration: none;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+분석한 영상
+</a>
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 18px; font-weight: 600;">벡터 검색 튜닝 실전</span>
+<span style="font-size: 14px; color: #5E5A52;">YouTube · 38:05 · 자막 있음</span>
+</div>
+</div>
+<section aria-live="polite" style="box-sizing: border-box; padding: 32px; border-radius: 18px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 26px;">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 34px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em; color: #1B1A17;">차례를 기다리는 중</h1>
+<span style="font-size: 16px; color: #4A463F;">앞 영상 1개가 끝나면 시작해요</span>
+</div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 40px; line-height: 1; font-weight: 600; color: #0F6E68;">0%</span>
+</div>
+<div style="height: 8px; border-radius: 4px; background: #EFECE5; overflow: hidden;">
+<div style="width: 0%; height: 8px; border-radius: 4px; background: #0F6E68;"></div>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;">
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">자막 가져오기</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">핵심 요약</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+<span style="width: 2px; flex-grow: 1; min-height: 18px; background: #E2DDD3; display: block;"></span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">챕터</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+<li style="display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 16px;">
+<span style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; background: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+</span>
+</span>
+<span style="box-sizing: border-box; padding: 2px 0 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<span style="font-size: 17px; font-weight: 500; color: #6B665C;">추천 질문</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #6B665C;">—</span>
+</span>
+</span>
+</li>
+</ol>
+</section>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; color: #5E5A52;">
+<span style="display: flex; align-items: center; gap: 8px;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
+아직 OpenAI로 보내는 것이 없어요
+</span>
+<span>이 화면을 닫아도 차례가 되면 시작돼요.</span>
+</div>
+</main>
 </div>
 ```
 
@@ -990,205 +1972,781 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 ### 배치
 
 ```html
-<!-- 조건: API 키가 없거나 키 확인에 실패함. 헤더 위 전체 폭 -->
-<div class="banner">키 없음 배너 — 1.4</div>
-<div class="topbar">공통 헤더 — 1.1</div>
-
-<div class="body2">
-
-  <!-- 왼쪽 본문: 페이지와 함께 스크롤 -->
-  <div class="main" style="display:flex; flex-direction:column; gap:14px;">
-
-    <div data-el="1" style="display:flex; align-items:center; gap:6px;">
-      <span class="ref" data-el="1.1">← 분석한 영상</span>
-      <span class="grow"></span>
-      <span class="btn" data-el="1.2">내보내기</span>
-      <span class="btn" data-el="1.3">휴지통</span>
-    </div>
-
-    <div data-el="2" style="display:flex; flex-direction:column; gap:6px;">
-      <div data-el="2.1">
-        <span class="st dr">YouTube</span> <span class="st dr">50:12</span> <span class="st dr">자막 · 한국어</span>
-      </div>
-      <h2 data-el="2.2">RAG 서비스 1년 운영기</h2>
-      <div>
-        <span class="lbl" data-el="2.3">[채널명] · 오늘 14:08 분석 · 요약 gpt-5-mini</span>
-        <!-- 조건: YouTube 결과에만 -->
-        <span class="ref" data-el="2.4">원본 영상 열기 ↗</span>
-      </div>
-    </div>
-
-    <div data-el="3">
-      <div class="lbl">한 줄 요약</div>
-      <p>RAG 서비스를 1년간 운영하며 겪은 검색 품질 문제와 해결 과정을 공유하는 발표.</p>
-    </div>
-
-    <div data-el="4">
-      <div><b>핵심 인사이트</b> <span class="lbl" data-el="4.1">8개</span></div>
-      <ul style="padding:0; margin:6px 0 0;">
-        <li data-el="4.2" style="display:flex; gap:8px; padding:4px 0;">
-          <span class="lbl">01</span>
-          <span>틀린 답은 생성보다 검색 단계에서 더 많이 생겼다. <span class="btn sm" data-el="4.3">04:30</span></span>
-        </li>
-        <li style="display:flex; gap:8px; padding:4px 0;">
-          <span class="lbl">02</span>
-          <span>실제 질문 로그로 평가 세트부터 만들었다. <span class="btn sm">09:05</span></span>
-        </li>
-        <li style="display:flex; gap:8px; padding:4px 0;">
-          <span class="lbl">05</span>
-          <span>별도 벡터 DB 대신 pgvector를 썼다. <span class="btn sm">13:18</span> <span class="btn sm">24:02</span></span>
-        </li>
-      </ul>
-    </div>
-
-    <div data-el="5">
-      <b>이런 걸 물어볼 수 있어요</b>
-      <div style="margin-top:6px;">
-        <span class="btn" data-el="5.1" style="margin:0 4px 4px 0;">청킹 전략을 바꾼 근거는?</span>
-        <span class="btn" style="margin:0 4px 4px 0;">pgvector 대신 검토한 대안은?</span>
-        <span class="btn" style="margin:0 4px 4px 0;">운영 비용은?</span>
-      </div>
-    </div>
-
-    <div data-el="6">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-        <div><b>챕터</b> <span class="lbl" data-el="6.1">9개</span></div>
-        <span class="lbl" data-el="6.2">누르면 오른쪽 스크립트가 그 위치로 이동해요</span>
-      </div>
-
-      <!-- 조건: 영상이 1시간 이하 — 챕터 카드 목록 -->
-      <div>
-        <div class="item" data-el="6.3">
-          <span class="id">00:00</span><b>발표자 소개와 배경</b>
-          <div>· 1년간 운영한 팀의 경험</div>
-          <div>· 오늘 다룰 주제는 검색 품질</div>
-        </div>
-        <!-- 선택된 카드 -->
-        <div class="item">
-          <span class="id">12:40</span><b>아키텍처 개요</b> <span class="cm">선택</span>
-          <div>· 여섯 단계 파이프라인</div>
-        </div>
-        <div class="item">
-          <span class="id">19:30</span><b>청킹 전략</b>
-        </div>
-      </div>
-
-      <!-- 조건: 영상이 1시간 초과 — 파트로 묶음. 처음에는 첫 파트만 펼침 -->
-      <div style="display:flex; flex-direction:column; gap:6px; margin-top:10px;">
-        <div data-el="6.4">
-          <div class="phead" data-el="6.5" style="gap:6px;">
-            <span>▾</span>
-            <div><b>오전 세션 1</b><div class="lbl">챕터 6개</div></div>
-            <span class="grow"></span>
-            <span class="lbl">0:00:00 – 0:40:10</span>
-          </div>
-          <div class="pbody">
-            <div class="item" data-el="6.6">
-              <span class="id">0:00:00</span><b>워크숍 소개</b>
-              <div>· 도입 범위와 운영 방식을 정한다</div>
-            </div>
-            <div class="item">
-              <span class="id">0:06:20</span><b>데이터를 찾는 데 드는 시간</b> <span class="cm">선택</span>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div class="phead" style="gap:6px;">
-            <span>▸</span>
-            <div><b>오전 세션 2</b><div class="lbl">챕터 6개</div></div>
-            <span class="grow"></span>
-            <span class="lbl">0:40:10 – 1:05:00</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- 오른쪽 패널: 창에 고정. 왼쪽을 스크롤해도 따라온다 -->
-  <div class="panel" data-el="7">
-    <div class="ptabs">
-      <span class="on" data-el="7.1">스크립트</span>
-      <span data-el="7.2">질문하기 <span class="badge" data-el="7.3">3</span></span>
-    </div>
-
-    <!-- 조건: [스크립트] 탭 -->
-    <div class="pbody" data-el="8" style="display:flex; flex-direction:column; gap:4px;">
-      <div style="display:flex; justify-content:space-between; gap:6px;">
-        <span class="lbl" data-el="8.1">자막(수동) · 한국어</span>
-        <b data-el="8.2">12:40</b>
-      </div>
-      <div data-el="8.3" style="display:grid; grid-template-columns:40px 1fr; gap:6px;">
-        <b>12:24</b><span>어디서 틀렸는지 모르면 확신이 없었거든요.</span>
-      </div>
-      <!-- 선택된 구간 -->
-      <div style="display:grid; grid-template-columns:40px 1fr; gap:6px;">
-        <b>12:40</b><span>지금 보시는 게 전체 아키텍처입니다. <span class="cm">선택</span></span>
-      </div>
-      <div style="display:grid; grid-template-columns:40px 1fr; gap:6px;">
-        <b>12:49</b><span>첫 번째가 수집이고요.</span>
-      </div>
-    </div>
-
-    <!-- 조건: [질문하기] 탭 -->
-    <div class="pbody" data-el="9">
-      <!-- 조건: 질문 턴 0개 (답 대기·실패 턴도 턴으로 셈) -->
-      <div data-el="9.1">
-        <b>아직 질문이 없어요</b>
-        <div class="lbl">아래 추천 질문을 누르거나 직접 물어보세요. 답에는 근거가 된 시각이 함께 붙습니다.</div>
-      </div>
-
-      <div data-el="9.2" style="display:flex; flex-direction:column; gap:4px; margin-top:10px;">
-        <div data-el="9.3" style="margin-left:30%;">어떤 DB를 썼어?</div>
-        <!-- 조건: 답이 옴 -->
-        <div data-el="9.4">PostgreSQL에 pgvector 확장으로 검색했다고 합니다.</div>
-        <!-- 조건: 근거 있음 -->
-        <div><span class="lbl">근거</span> <span class="btn sm" data-el="9.5">13:18</span> <span class="btn sm">24:02</span></div>
-        <!-- 조건: 근거 없음 — 9.4 글자가 흐려진다 -->
-        <div><span class="st dr" data-el="9.6">영상에 없는 내용</span></div>
-        <!-- 조건: 마지막 턴의 답을 기다리는 중 — 9.4 자리 -->
-        <div class="lbl" data-el="9.7">대기 표시</div>
-        <!-- 조건: 마지막 턴의 답을 받지 못함 — 9.4 자리 -->
-        <div data-el="9.8">
-          <span class="err">OpenAI API에 연결하지 못했어요 — {이유}</span>
-          <span class="btn sm" data-el="9.9">다시 시도</span>
-        </div>
-      </div>
-
-      <div style="display:flex; flex-direction:column; gap:4px; margin-top:10px;">
-        <div style="margin-left:30%;">그거 성능은 어땠대?</div>
-        <div>인덱스 설정으로 속도와 정확도를 조절했다고 합니다.</div>
-        <div><span class="lbl">근거</span> <span class="btn sm">25:40</span></div>
-      </div>
-
-      <div style="display:flex; flex-direction:column; gap:4px; margin-top:10px;">
-        <div style="margin-left:30%;">발표자 회사 매출은?</div>
-        <div class="lbl">이 영상에서는 다루지 않는 내용입니다.</div>
-        <div><span class="st dr">영상에 없는 내용</span></div>
-      </div>
-    </div>
-
-    <!-- 조건: [질문하기] 탭. 패널 아래에 고정 -->
-    <div class="pbody" data-el="10" style="display:flex; flex-direction:column; gap:6px;">
-      <div style="display:flex; gap:4px;">
-        <span class="btn sm" data-el="10.1">청킹 전략을 바꾼 근거는?</span>
-        <span class="btn sm">pgvector 대신 검토한 대안은?</span>
-        <span class="lbl">…</span>
-      </div>
-      <!-- 조건: API 키가 없거나 키 확인에 실패함 -->
-      <div class="lbl" data-el="10.2">API 키가 없어 질문할 수 없어요. <span class="ref">키 넣으러 가기</span></div>
-      <div style="display:grid; grid-template-columns:1fr 32px; gap:6px; align-items:end;">
-        <textarea data-el="10.3" rows="2" placeholder="이 영상에 대해 물어보세요" style="width:100%;"></textarea>
-        <span class="btn" data-el="10.4">↑</span>
-      </div>
-      <div class="lbl" data-el="10.5">질문, 앞선 대화, 관련 스크립트가 OpenAI로 전송됩니다.</div>
-    </div>
-  </div>
-
+<!-- 주 보드: 캔버스 Result(자막 있는 50분 발표 · [스크립트] 탭 · 12:40 선택). 오른쪽 패널은 창에 고정. 아래는 상태 보드 -->
+<div style="width: 1440px; height: 2900px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
+<span style="width: 30px; height: 30px; border-radius: 8px; background: #1B1A17; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Video Agent</span>
+</a>
+<nav aria-label="주 메뉴" style="display: flex; align-items: center; gap: 4px;">
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; border-radius: 10px; color: #4A463F; font-size: 15px; font-weight: 600; text-decoration: none;">분석한 영상</a>
+<a href="#" aria-label="설정" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+</a>
+</nav>
+</header>
+<div style="flex-grow: 1; display: grid; grid-template-columns: minmax(0, 1fr) 520px;">
+<main style="min-width: 0; box-sizing: border-box; padding: 24px 64px 96px 96px; display: flex; flex-direction: column; gap: 48px;">
+<div style="display: flex; flex-direction: column; gap: 18px;">
+<div data-el="1" style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<a data-el="1.1" href="#" style="height: 44px; display: flex; align-items: center; gap: 6px; color: #4A463F; font-size: 15px; text-decoration: none;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+분석한 영상
+</a>
+<div style="display: flex; align-items: center; gap: 8px;">
+<a data-el="1.2" href="#" style="height: 44px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg>
+내보내기
+</a>
+<a data-el="1.3" href="#" aria-label="분석 결과 삭제" style="width: 44px; height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #A33A2B;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
 </div>
-
-<!-- 조건: 이미 분석한 영상으로 열렸을 때, 또는 UI-7 주 버튼으로 내보내기가 끝났을 때 잠깐. 위치·모양은 디자인 보강 전 자리 표시 -->
-<div class="banner" data-el="11">이미 분석한 영상입니다</div>
+</div>
+<div data-el="2" style="display: flex; flex-direction: column; gap: 12px;">
+<div data-el="2.1" style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">YouTube</span>
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">50:12</span>
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">자막 · 한국어</span>
+</div>
+<h1 data-el="2.2" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 36px; line-height: 1.3; font-weight: 600; letter-spacing: -0.02em;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</h1>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 15px; color: #5E5A52;">
+<span data-el="2.3">[채널명] · 오늘 14:08 분석 · 요약 gpt-5-mini</span>
+<a data-el="2.4" href="https://www.youtube.com/" style="display: flex; align-items: center; gap: 4px; color: #0F6E68; font-weight: 600; text-decoration: none;">
+원본 영상 열기
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+</a>
+</div>
+</div>
+</div>
+<section aria-labelledby="tldr-title" data-el="3" style="display: flex; flex-direction: column; gap: 10px;">
+<h2 id="tldr-title" style="margin: 0; font-size: 14px; font-weight: 600; color: #5E5A52;">한 줄 요약</h2>
+<p style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; line-height: 1.6; font-weight: 500; letter-spacing: -0.01em; color: #1B1A17;">RAG 서비스를 1년간 운영하며 겪은 검색 품질 문제와, 청킹과 pgvector 인덱스를 손봐 해결한 과정을 공유하는 발표.</p>
+</section>
+<section aria-labelledby="insight-title" data-el="4" style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="insight-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">핵심 인사이트</h2>
+<span data-el="4.1" style="font-size: 14px; color: #6B665C;">8개</span>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border-top: 1px solid #E2DDD3;">
+<li data-el="4.2" style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">01</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+틀린 답의 원인을 따라가 보니 생성 모델보다 검색 단계에서 엉뚱한 문서를 가져온 경우가 훨씬 많았다.
+<button type="button" data-el="4.3" aria-label="04:30 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">04:30</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">02</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+평가 데이터 없이 튜닝하면 개선인지 착시인지 알 수 없어, 실제 질문 로그로 평가 세트부터 만들었다.
+<button type="button" aria-label="09:05 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">09:05</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">03</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+파이프라인은 수집 → 청킹 → 임베딩 → 검색 → 재순위 → 생성의 여섯 단계로 단순하게 유지했다.
+<button type="button" aria-label="12:40 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">12:40</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">04</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+청킹 크기를 512에서 256 토큰으로 줄이자 재현율이 12%p 올랐다.
+<button type="button" aria-label="23:15 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">23:15</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">05</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+별도 벡터 DB 대신 PostgreSQL의 pgvector를 써서 원본 데이터와 같은 곳에서 관리했다.
+<button type="button" aria-label="13:18 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">13:18</button>
+<button type="button" aria-label="24:02 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">24:02</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">06</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+재순위 모델은 정확도를 올리지만 지연을 늘려, 재순위에 넘기는 후보 수를 줄여 균형을 맞췄다.
+<button type="button" aria-label="31:48 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">31:48</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">07</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+문서가 바뀌면 바뀐 청크만 다시 임베딩하도록 청크마다 원본 버전을 기록했다.
+<button type="button" aria-label="38:20 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">38:20</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">08</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+가장 효과가 컸던 것은 모델 교체가 아니라, 검색 결과를 사람이 직접 읽는 주간 리뷰였다.
+<button type="button" aria-label="44:10 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">44:10</button>
+</span>
+</li>
+</ol>
+</section>
+<section aria-labelledby="ask-title" data-el="5" style="display: flex; flex-direction: column; gap: 14px;">
+<h2 id="ask-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">이런 걸 물어볼 수 있어요</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+<button type="button" data-el="5.1" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span>청킹 전략을 바꾼 근거는?</span>
+</button>
+<button type="button" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span>pgvector 대신 검토한 대안은?</span>
+</button>
+<button type="button" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span>운영 비용은 어떻게 달라졌나?</span>
+</button>
+</div>
+</section>
+<section aria-labelledby="chapter-title" data-el="6" style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="chapter-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">챕터</h2>
+<span data-el="6.1" style="font-size: 14px; color: #6B665C;">9개</span>
+</div>
+<span data-el="6.2" style="font-size: 13px; color: #6B665C;">누르면 오른쪽 스크립트가 그 위치로 이동해요</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<button type="button" data-el="6.3" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">00:00</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">발표자 소개와 배경</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>사내 문서 검색 챗봇을 1년간 운영한 팀의 경험을 공유한다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>오늘 다룰 주제는 검색 품질이다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">04:30</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">문제 정의 — 검색이 왜 틀리나</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>틀린 답을 나눠 보니 검색 실패가 대부분이었다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>질문과 문서의 표현 차이가 주된 원인이었다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">09:05</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">평가 세트 만들기</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>실제 질문 로그에 정답 문서를 표시해 평가 세트를 만들었다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>바꿀 때마다 같은 세트로 재현율을 비교했다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid #9CCBC3; background: #FFFFFF; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">12:40</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">아키텍처 개요</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>수집부터 생성까지 여섯 단계 파이프라인</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>단계마다 입력과 출력을 로그로 남긴다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">19:30</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">청킹 전략</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>문단 경계를 지키면서 청크를 작게 나눴다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>청크 크기가 재현율에 가장 큰 영향을 줬다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">24:02</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">pgvector로 옮긴 이유</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>원본 데이터와 임베딩을 한 데이터베이스에서 관리한다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>인덱스 설정으로 속도와 정확도를 조절한다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">31:48</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">재순위와 지연</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>재순위로 정확도가 올랐지만 응답이 느려졌다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>후보 수를 줄여 지연을 되돌렸다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">38:20</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">운영 — 갱신과 모니터링</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>문서가 바뀌면 바뀐 청크만 다시 임베딩한다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>매주 검색 결과를 사람이 직접 읽는다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">46:30</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">질의응답</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>운영 비용, 다국어 문서, 권한 처리에 대한 질문이 이어졌다</span>
+</span>
+</span>
+</button>
+</div>
+</section>
+</main>
+<aside aria-label="스크립트와 질문" data-el="7" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
+<div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
+<div style="height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid #E2DDD3;">
+<button type="button" data-el="7.1" aria-pressed="true" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid #1B1A17; background: transparent; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+스크립트
+</button>
+<button type="button" data-el="7.2" aria-pressed="false" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6B665C; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+질문하기
+<span data-el="7.3" style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 7px; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: #EFECE5; color: #4A463F; font-size: 12px; font-weight: 600;">3</span>
+</button>
+</div>
+<div data-el="8" style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+<div style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: #5E5A52;">
+<span data-el="8.1">자막(수동) · 한국어</span>
+<span data-el="8.2" style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #0F6E68;">12:40</span>
+</div>
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 0 12px 16px; display: flex; flex-direction: column; gap: 2px;">
+<button type="button" data-el="8.3" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">12:11</span>
+<span style="font-size: 15px; line-height: 1.75;">그래서 그 분류 결과를 들고 구조를 처음부터 다시 봤습니다.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">12:24</span>
+<span style="font-size: 15px; line-height: 1.75;">어디서 틀렸는지 모르는 상태로는 뭘 고쳐도 확신이 없었거든요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: #F8EDC4; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #7A5A00;">12:40</span>
+<span style="font-size: 15px; line-height: 1.75;">지금 보시는 게 저희 전체 아키텍처입니다. 단계는 여섯 개로 단순하게 가져갔어요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">12:49</span>
+<span style="font-size: 15px; line-height: 1.75;">첫 번째가 수집이고요, 사내 위키랑 드라이브 문서를 매일 새벽에 가져옵니다.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">12:58</span>
+<span style="font-size: 15px; line-height: 1.75;">두 번째가 청킹인데, 이 부분은 뒤에서 따로 자세히 말씀드릴게요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:07</span>
+<span style="font-size: 15px; line-height: 1.75;">세 번째 임베딩은 처음엔 외부 API를 쓰다가 나중에 모델을 바꿨고요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:18</span>
+<span style="font-size: 15px; line-height: 1.75;">네 번째 검색은 PostgreSQL에 pgvector 확장을 올려서 하고 있습니다.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:29</span>
+<span style="font-size: 15px; line-height: 1.75;">다섯 번째가 재순위인데, 여기서 지연 문제가 좀 있었습니다.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:41</span>
+<span style="font-size: 15px; line-height: 1.75;">마지막이 생성이고, 검색된 청크 중 상위 다섯 개만 넣어요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:52</span>
+<span style="font-size: 15px; line-height: 1.75;">중요한 건 단계마다 입력과 출력을 전부 로그로 남긴다는 거예요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">14:03</span>
+<span style="font-size: 15px; line-height: 1.75;">그래야 답이 틀렸을 때 어느 단계에서 틀렸는지 거꾸로 따라갈 수 있거든요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">14:15</span>
+<span style="font-size: 15px; line-height: 1.75;">실제로 이 로그 덕분에 앞에서 말씀드린 분류를 할 수 있었습니다.</span>
+</button>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>[질문하기] 탭</b> — 질문 턴 셋. 셋째는 영상에 없는 내용 · 캔버스 ResultChat 보드</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<aside aria-label="스크립트와 질문" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
+<div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
+<div style="height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid #E2DDD3;">
+<button type="button" aria-pressed="false" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6B665C; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+스크립트
+</button>
+<button type="button" aria-pressed="true" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid #1B1A17; background: transparent; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+질문하기
+<span style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 7px; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: #EFECE5; color: #4A463F; font-size: 12px; font-weight: 600;">3</span>
+</button>
+</div>
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+<div data-el="9" style="flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; gap: 26px;">
+<div data-el="9.2" style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div data-el="9.3" style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">어떤 DB를 썼어?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span data-el="9.4" style="font-size: 15px; line-height: 1.75; color: #1B1A17;">PostgreSQL을 썼고, 벡터 검색은 pgvector 확장으로 처리했다고 합니다. 별도 벡터 DB를 두지 않은 이유로 원본 데이터와 임베딩을 한곳에서 관리할 수 있다는 점을 들었습니다.</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+<span style="font-size: 13px; color: #6B665C;">근거</span>
+<button type="button" data-el="9.5" aria-label="13:18 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">13:18</button>
+<button type="button" aria-label="24:02 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">24:02</button>
+</span>
+</div>
+</div>
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">그거 성능은 어땠대?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 15px; line-height: 1.75; color: #1B1A17;">pgvector 인덱스 설정을 바꿔 속도와 정확도 사이를 조절했다고 설명합니다. 구체적인 응답 시간 수치는 발표에서 말하지 않았습니다.</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+<span style="font-size: 13px; color: #6B665C;">근거</span>
+<button type="button" aria-label="25:40 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">25:40</button>
+</span>
+</div>
+</div>
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">발표자 회사 매출은?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 15px; line-height: 1.75; color: #4A463F;">이 영상에서는 다루지 않는 내용입니다.</span>
+<span data-el="9.6" style="align-self: flex-start; height: 24px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 12px; font-weight: 600;">영상에 없는 내용</span>
+</div>
+</div>
+</div>
+<div data-el="10" style="flex-shrink: 0; box-sizing: border-box; padding: 14px 20px 20px; border-top: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; gap: 6px; overflow: hidden;">
+<button type="button" data-el="10.1" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">청킹 전략을 바꾼 근거는?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">pgvector 대신 검토한 대안은?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">운영 비용은 어떻게 달라졌나?</button>
+</div>
+<div style="position: relative; box-sizing: border-box; padding: 8px 8px 8px 14px; display: flex; align-items: flex-end; gap: 8px; border-radius: 14px; border: 1px solid #CFC8BB; background: #FFFFFF;">
+<label for="ask-box" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">이 영상에 질문하기</label>
+<span data-el="10.3" style="flex-grow: 1; min-width: 0; display: flex;"><textarea id="ask-box" rows="2" placeholder="이 영상에 대해 물어보세요" style="width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 0; border: 0; resize: none; background: transparent; color: #1B1A17; font-size: 15px; line-height: 1.6;"></textarea></span>
+<button type="button" aria-label="보내기" data-el="10.4" aria-disabled="false" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: #1B1A17; color: #F6F4EF; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
+</button>
+</div>
+<span data-el="10.5" style="font-size: 12px; color: #6B665C;">질문, 앞선 대화, 관련 스크립트가 OpenAI로 전송됩니다.</span>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+<div>
+<div class="var" style="width: 520px;"><b>질문이 아직 없음</b> — 빈 상태 상자(9.1) · 캔버스에 없음</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<aside aria-label="스크립트와 질문" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
+<div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
+<div style="height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid #E2DDD3;">
+<button type="button" aria-pressed="false" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6B665C; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+스크립트
+</button>
+<button type="button" aria-pressed="true" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid #1B1A17; background: transparent; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+질문하기
+<span style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 7px; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: #EFECE5; color: #4A463F; font-size: 12px; font-weight: 600;">0</span>
+</button>
+</div>
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; gap: 26px;">
+<div data-el="9.1" style="box-sizing: border-box; padding: 24px; border-radius: 14px; border: 1px dashed #CFC8BB; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 16px; font-weight: 600;">아직 질문이 없어요</span>
+<span style="font-size: 14px; line-height: 1.6; color: #5E5A52;">아래 추천 질문을 누르거나 직접 물어보세요. 답에는 근거가 된 시각이 함께 붙습니다.</span>
+</div>
+</div>
+<div style="flex-shrink: 0; box-sizing: border-box; padding: 14px 20px 20px; border-top: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; gap: 6px; overflow: hidden;">
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">청킹 전략을 바꾼 근거는?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">pgvector 대신 검토한 대안은?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">운영 비용은 어떻게 달라졌나?</button>
+</div>
+<div style="position: relative; box-sizing: border-box; padding: 8px 8px 8px 14px; display: flex; align-items: flex-end; gap: 8px; border-radius: 14px; border: 1px solid #CFC8BB; background: #FFFFFF;">
+<label for="ask-box" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">이 영상에 질문하기</label>
+<span style="flex-grow: 1; min-width: 0; display: flex;"><textarea id="ask-box" rows="2" placeholder="이 영상에 대해 물어보세요" style="width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 0; border: 0; resize: none; background: transparent; color: #1B1A17; font-size: 15px; line-height: 1.6;"></textarea></span>
+<button type="button" aria-label="보내기" aria-disabled="false" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: #1B1A17; color: #F6F4EF; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
+</button>
+</div>
+<span style="font-size: 12px; color: #6B665C;">질문, 앞선 대화, 관련 스크립트가 OpenAI로 전송됩니다.</span>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>답을 기다리는 중</b> — 마지막 턴의 답 자리에 대기 표시(9.7) · 캔버스에 없음</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<aside aria-label="스크립트와 질문" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
+<div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
+<div style="height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid #E2DDD3;">
+<button type="button" aria-pressed="false" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6B665C; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+스크립트
+</button>
+<button type="button" aria-pressed="true" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid #1B1A17; background: transparent; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+질문하기
+<span style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 7px; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: #EFECE5; color: #4A463F; font-size: 12px; font-weight: 600;">3</span>
+</button>
+</div>
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; gap: 26px;">
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">어떤 DB를 썼어?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 15px; line-height: 1.75; color: #1B1A17;">PostgreSQL을 썼고, 벡터 검색은 pgvector 확장으로 처리했다고 합니다. 별도 벡터 DB를 두지 않은 이유로 원본 데이터와 임베딩을 한곳에서 관리할 수 있다는 점을 들었습니다.</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+<span style="font-size: 13px; color: #6B665C;">근거</span>
+<button type="button" aria-label="13:18 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">13:18</button>
+<button type="button" aria-label="24:02 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">24:02</button>
+</span>
+</div>
+</div>
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">그거 성능은 어땠대?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 15px; line-height: 1.75; color: #1B1A17;">pgvector 인덱스 설정을 바꿔 속도와 정확도 사이를 조절했다고 설명합니다. 구체적인 응답 시간 수치는 발표에서 말하지 않았습니다.</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+<span style="font-size: 13px; color: #6B665C;">근거</span>
+<button type="button" aria-label="25:40 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">25:40</button>
+</span>
+</div>
+</div>
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">재순위 모델은 뭘 썼어?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span data-el="9.7" role="status" style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #6B665C;">
+<span class="va-pulse" aria-hidden="true" style="display: flex; gap: 4px;">
+<span style="width: 6px; height: 6px; border-radius: 50%; background: #948D80; display: block;"></span>
+<span style="width: 6px; height: 6px; border-radius: 50%; background: #948D80; display: block;"></span>
+<span style="width: 6px; height: 6px; border-radius: 50%; background: #948D80; display: block;"></span>
+</span>
+답을 만드는 중이에요
+</span>
+</div>
+</div>
+</div>
+<div style="flex-shrink: 0; box-sizing: border-box; padding: 14px 20px 20px; border-top: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; gap: 6px; overflow: hidden;">
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">청킹 전략을 바꾼 근거는?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">pgvector 대신 검토한 대안은?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">운영 비용은 어떻게 달라졌나?</button>
+</div>
+<div style="position: relative; box-sizing: border-box; padding: 8px 8px 8px 14px; display: flex; align-items: flex-end; gap: 8px; border-radius: 14px; border: 1px solid #CFC8BB; background: #FFFFFF;">
+<label for="ask-box" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">이 영상에 질문하기</label>
+<span style="flex-grow: 1; min-width: 0; display: flex;"><textarea id="ask-box" rows="2" placeholder="이 영상에 대해 물어보세요" style="width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 0; border: 0; resize: none; background: transparent; color: #1B1A17; font-size: 15px; line-height: 1.6;"></textarea></span>
+<button type="button" aria-label="보내기" aria-disabled="false" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: #1B1A17; color: #F6F4EF; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
+</button>
+</div>
+<span style="font-size: 12px; color: #6B665C;">질문, 앞선 대화, 관련 스크립트가 OpenAI로 전송됩니다.</span>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+<div>
+<div class="var" style="width: 520px;"><b>답을 받지 못함</b> — 마지막 턴의 답 자리에 실패 한 줄과 [다시 시도](9.8 · 9.9) · 캔버스에 없음</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<aside aria-label="스크립트와 질문" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
+<div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
+<div style="height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid #E2DDD3;">
+<button type="button" aria-pressed="false" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6B665C; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+스크립트
+</button>
+<button type="button" aria-pressed="true" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid #1B1A17; background: transparent; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+질문하기
+<span style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 7px; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: #EFECE5; color: #4A463F; font-size: 12px; font-weight: 600;">3</span>
+</button>
+</div>
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; gap: 26px;">
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">어떤 DB를 썼어?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 15px; line-height: 1.75; color: #1B1A17;">PostgreSQL을 썼고, 벡터 검색은 pgvector 확장으로 처리했다고 합니다. 별도 벡터 DB를 두지 않은 이유로 원본 데이터와 임베딩을 한곳에서 관리할 수 있다는 점을 들었습니다.</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+<span style="font-size: 13px; color: #6B665C;">근거</span>
+<button type="button" aria-label="13:18 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">13:18</button>
+<button type="button" aria-label="24:02 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">24:02</button>
+</span>
+</div>
+</div>
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">그거 성능은 어땠대?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 15px; line-height: 1.75; color: #1B1A17;">pgvector 인덱스 설정을 바꿔 속도와 정확도 사이를 조절했다고 설명합니다. 구체적인 응답 시간 수치는 발표에서 말하지 않았습니다.</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+<span style="font-size: 13px; color: #6B665C;">근거</span>
+<button type="button" aria-label="25:40 위치의 스크립트로 이동" style="height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer;">25:40</button>
+</span>
+</div>
+</div>
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+<div style="align-self: flex-end; max-width: 84%; box-sizing: border-box; padding: 10px 14px; border-radius: 14px 14px 4px 14px; background: #1B1A17; color: #F6F4EF; font-size: 15px; line-height: 1.6;">재순위 모델은 뭘 썼어?</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+<span data-el="9.8" role="alert" style="font-size: 14px; line-height: 1.6; color: #A33A2B;">OpenAI API에 연결하지 못했어요 — 응답 시간 초과</span>
+<button data-el="9.9" type="button" style="height: 32px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 13px; font-weight: 600; cursor: pointer;">다시 시도</button>
+</span>
+</div>
+</div>
+</div>
+<div style="flex-shrink: 0; box-sizing: border-box; padding: 14px 20px 20px; border-top: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; gap: 6px; overflow: hidden;">
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">청킹 전략을 바꾼 근거는?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">pgvector 대신 검토한 대안은?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">운영 비용은 어떻게 달라졌나?</button>
+</div>
+<div style="position: relative; box-sizing: border-box; padding: 8px 8px 8px 14px; display: flex; align-items: flex-end; gap: 8px; border-radius: 14px; border: 1px solid #CFC8BB; background: #FFFFFF;">
+<label for="ask-box" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">이 영상에 질문하기</label>
+<span style="flex-grow: 1; min-width: 0; display: flex;"><textarea id="ask-box" rows="2" placeholder="이 영상에 대해 물어보세요" style="width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 0; border: 0; resize: none; background: transparent; color: #1B1A17; font-size: 15px; line-height: 1.6;"></textarea></span>
+<button type="button" aria-label="보내기" aria-disabled="false" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: #1B1A17; color: #F6F4EF; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
+</button>
+</div>
+<span style="font-size: 12px; color: #6B665C;">질문, 앞선 대화, 관련 스크립트가 OpenAI로 전송됩니다.</span>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>키 없이 질문하기</b> — 입력 영역에 키 없음 안내(10.2), [보내기]는 막힌 모양 · 캔버스에 없음</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div style="flex-shrink: 0; box-sizing: border-box; padding: 14px 20px 20px; border-top: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; gap: 6px; overflow: hidden;">
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">청킹 전략을 바꾼 근거는?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">pgvector 대신 검토한 대안은?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">운영 비용은 어떻게 달라졌나?</button>
+</div>
+<p data-el="10.2" style="margin: 0; font-size: 13px; line-height: 1.55; color: #7A2A1E;">API 키가 없어 질문할 수 없어요. <a href="#" style="color: #7A2A1E; font-weight: 600;">키 넣으러 가기</a></p>
+<div style="position: relative; box-sizing: border-box; padding: 8px 8px 8px 14px; display: flex; align-items: flex-end; gap: 8px; border-radius: 14px; border: 1px solid #CFC8BB; background: #FFFFFF;">
+<label for="ask-box" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">이 영상에 질문하기</label>
+<span style="flex-grow: 1; min-width: 0; display: flex;"><textarea id="ask-box" rows="2" placeholder="이 영상에 대해 물어보세요" style="width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 0; border: 0; resize: none; background: transparent; color: #1B1A17; font-size: 15px; line-height: 1.6;"></textarea></span>
+<button type="button" aria-label="보내기" aria-disabled="true" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: #E2DDD3; color: #5E5A52; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
+</button>
+</div>
+<span style="font-size: 12px; color: #6B665C;">질문, 앞선 대화, 관련 스크립트가 OpenAI로 전송됩니다.</span>
+</div>
+</div>
+</div>
+<div>
+<div class="var" style="width: 420px;"><b>짧은 알림</b> — 이미 분석한 영상으로 열렸을 때(11). 위치는 정하지 않았다 · 캔버스에 없음</div>
+<div class="crop">
+<div role="status" data-el="11" style="display: inline-flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 48px; padding: 12px 18px; border-radius: 12px; background: #1B1A17; color: #F6F4EF; font-size: 15px; box-shadow: 0 12px 32px rgba(27, 26, 23, 0.24);">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8FC7BE" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 6 9 17l-5-5"></path></svg>
+이미 분석한 영상입니다
+</div>
+</div>
+</div>
+</div>
+<div class="var"><b>긴 영상 — 파트</b> — 1시간이 넘는 영상은 챕터를 파트로 묶고 첫 파트만 펼친다(6.4 ~ 6.6) · 캔버스 ResultLong 보드</div>
+<div class="crop" style="width: 808px;">
+<section aria-labelledby="chapter-title" style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="chapter-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">챕터</h2>
+<span style="font-size: 14px; color: #6B665C;">25개 · 파트 4개</span>
+</div>
+<span style="font-size: 13px; color: #6B665C;">누르면 오른쪽 스크립트가 그 위치로 이동해요</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<div data-el="6.4" style="border-radius: 14px; border: 1px solid #E2DDD3; background: #FBFAF7; overflow: hidden;">
+<button type="button" data-el="6.5" aria-expanded="true" style="width: 100%; min-height: 64px; box-sizing: border-box; padding: 12px 18px; display: flex; align-items: center; gap: 14px; border: 0; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #4A463F; transform: rotate(90deg);">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m9 18 6-6-6-6"></path></svg>
+</span>
+<span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">오전 세션 1 — 현황과 문제</span>
+<span style="font-size: 13px; color: #6B665C;">챕터 6개</span>
+</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4A463F;">0:00:00 – 0:40:10</span>
+</button>
+<div style="box-sizing: border-box; padding: 0 10px 10px; display: flex; flex-direction: column; gap: 4px;">
+<button type="button" data-el="6.6" style="width: 100%; box-sizing: border-box; padding: 12px 14px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">0:00:00</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 16px; line-height: 1.5; font-weight: 600;">워크숍 소개와 진행 방식</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>오늘 목표는 도입 범위와 운영 방식을 정하는 것</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>오전엔 논의, 오후엔 실습으로 나눈다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 12px 14px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 10px; border: 1px solid #9CCBC3; background: #FFFFFF; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">0:06:20</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 16px; line-height: 1.5; font-weight: 600;">데이터를 찾는 데 드는 시간</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>분석가들이 데이터 위치를 묻고 기다리는 시간이 길다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>같은 질문이 채널에 반복해서 올라온다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 12px 14px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">0:12:05</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 16px; line-height: 1.5; font-weight: 600;">지금 쓰는 위키 문서의 한계</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>문서가 실제 테이블과 금방 어긋난다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>누가 고쳐야 하는지 정해져 있지 않다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 12px 14px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">0:18:45</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 16px; line-height: 1.5; font-weight: 600;">같은 지표, 다른 정의</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>팀마다 활성 회원의 기준이 달랐다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>용어 합의를 카탈로그보다 먼저 한다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 12px 14px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">0:26:30</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 16px; line-height: 1.5; font-weight: 600;">다른 조직의 도입 사례</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>작게 시작해 넓힌 경우가 오래 유지됐다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 12px 14px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">0:31:10</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 16px; line-height: 1.5; font-weight: 600;">도구 선정 기준</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>웨어하우스 연동과 운영 부담을 먼저 본다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>기능 목록 비교는 마지막에 한다</span>
+</span>
+</span>
+</button>
+</div>
+</div>
+<div style="border-radius: 14px; border: 1px solid #E2DDD3; background: #FBFAF7; overflow: hidden;">
+<button type="button" aria-expanded="false" style="width: 100%; min-height: 64px; box-sizing: border-box; padding: 12px 18px; display: flex; align-items: center; gap: 14px; border: 0; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #4A463F; transform: rotate(0deg);">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m9 18 6-6-6-6"></path></svg>
+</span>
+<span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">오전 세션 2 — 범위와 용어</span>
+<span style="font-size: 13px; color: #6B665C;">챕터 6개</span>
+</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4A463F;">0:40:10 – 1:05:00</span>
+</button>
+</div>
+<div style="border-radius: 14px; border: 1px solid #E2DDD3; background: #FBFAF7; overflow: hidden;">
+<button type="button" aria-expanded="false" style="width: 100%; min-height: 64px; box-sizing: border-box; padding: 12px 18px; display: flex; align-items: center; gap: 14px; border: 0; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #4A463F; transform: rotate(0deg);">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m9 18 6-6-6-6"></path></svg>
+</span>
+<span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">오후 세션 1 — 수집 실습</span>
+<span style="font-size: 13px; color: #6B665C;">챕터 7개</span>
+</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4A463F;">1:05:00 – 1:50:20</span>
+</button>
+</div>
+<div style="border-radius: 14px; border: 1px solid #E2DDD3; background: #FBFAF7; overflow: hidden;">
+<button type="button" aria-expanded="false" style="width: 100%; min-height: 64px; box-sizing: border-box; padding: 12px 18px; display: flex; align-items: center; gap: 14px; border: 0; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #4A463F; transform: rotate(0deg);">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m9 18 6-6-6-6"></path></svg>
+</span>
+<span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">오후 세션 2 — 운영과 다음 단계</span>
+<span style="font-size: 13px; color: #6B665C;">챕터 6개</span>
+</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4A463F;">1:50:20 – 2:30:00</span>
+</button>
+</div>
+</div>
+</section>
+</div>
 ```
 
 ### 요소
@@ -1394,78 +2952,183 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 ### 배치
 
 ```html
-<div class="topbar">공통 헤더 — 1.1</div>
-<!-- 공통 1.4 키 없음 배너는 이 화면에 두지 않는다. 키 상태는 2.1·2.5가 보인다 -->
-<div class="main" style="padding:16px 19% 24px; display:flex; flex-direction:column; gap:12px">
-
-  <div data-el="1">
-    <h2>설정</h2>
-    <p class="lbl">키와 모델 설정은 이 PC에만 저장됩니다.</p>
-  </div>
-
-  <div class="panel" data-el="2" style="padding:10px; display:flex; flex-direction:column; gap:8px">
-    <div style="display:flex; align-items:center; gap:6px">
-      <b>OpenAI API 키</b>
-      <span class="grow"></span>
-      <!-- 2.1 다른 모습: 키 없음 · 확인 실패 -->
-      <span class="st ok" data-el="2.1">✓ 확인됨 · 오늘 14:02</span>
-    </div>
-    <!-- 조건: 저장된 키가 있을 때만 -->
-    <div style="display:flex; flex-direction:column; gap:4px">
-      <span class="lbl">지금 쓰는 키</span>
-      <div class="code" data-el="2.2" style="display:flex; justify-content:space-between; align-items:center"><span>sk-proj-••••••••3Fq2</span><span class="lbl">.env에 저장됨</span></div>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:4px">
-      <label class="lbl">새 키로 바꾸기</label>
-      <div style="display:flex; gap:6px; align-items:center">
-        <input type="password" data-el="2.3" placeholder="sk-로 시작하는 키를 붙여 넣으세요" style="width:68%">
-        <span class="btn" data-el="2.4">확인하고 저장</span>
-      </div>
-      <!-- 조건: 키 확인에 실패했을 때만 -->
-      <div class="err" data-el="2.5">키를 확인하지 못했어요 — 인증 실패</div>
-      <span class="lbl" data-el="2.6">붙여 넣으면 가벼운 요청으로 먼저 확인한 뒤 저장합니다. 키는 저장소에 커밋되지 않아요.</span>
-    </div>
-  </div>
-
-  <div class="panel" data-el="3" style="padding:10px; display:flex; flex-direction:column; gap:8px">
-    <b>모델</b>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
-      <div style="display:flex; flex-direction:column; gap:4px">
-        <label class="lbl">받아쓰기</label>
-        <select data-el="3.1"><option>whisper-1</option></select>
-        <span class="lbl" data-el="3.2">분당 $0.006 · 구간 시각을 주는 모델만 고를 수 있어요</span>
-      </div>
-      <div style="display:flex; flex-direction:column; gap:4px">
-        <label class="lbl">요약 · 챕터 · 질문</label>
-        <select data-el="3.3"><option>gpt-5-mini</option><option>gpt-5.4-mini</option><option>gpt-5.4</option></select>
-        <span class="lbl" data-el="3.4">100만 토큰당 입력 $0.25 · 출력 $2.00</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel" data-el="4" style="padding:10px; display:flex; flex-direction:column; gap:6px">
-    <b>로컬 파일 폴더</b>
-    <div class="code" data-el="4.1" style="display:flex; justify-content:space-between; align-items:center"><span>~/video-agent/inbox</span><span class="lbl">읽기 전용</span></div>
-    <span class="lbl">이 폴더의 파일을 읽기만 하고 고치거나 지우지 않아요. 위치는 docker-compose.yml에서 바꿀 수 있습니다.</span>
-  </div>
-
-  <div class="panel" data-el="5" style="padding:10px; display:flex; flex-direction:column; gap:6px">
-    <b>밖으로 나가는 데이터</b>
-    <div data-el="5.1" style="display:grid; grid-template-columns:16% 1fr 1fr; gap:4px 8px; padding:6px">
-      <span class="lbl">어디로</span><span class="lbl">무엇이</span><span class="lbl">언제</span>
-      <b>OpenAI</b><span>음성 조각</span><span>자막 없는 영상을 받아쓸 때</span>
-      <b>OpenAI</b><span>스크립트 텍스트</span><span>요약 · 챕터 · 추천 질문을 만들 때</span>
-      <b>OpenAI</b><span>질문, 앞선 대화, 관련 스크립트</span><span>질문할 때</span>
-      <b>YouTube</b><span>영상 주소</span><span>정보 · 자막 · 음성을 받을 때</span>
-    </div>
-    <span class="lbl" data-el="5.2">원본 영상 파일, 분석 결과, API 키는 이 PC 밖으로 나가지 않습니다.</span>
-  </div>
-
-  <div data-el="6" style="display:flex; justify-content:flex-end; gap:6px; padding:4px">
-    <span class="btn" data-el="6.1">취소</span>
-    <span class="btn" data-el="6.2"><b>저장</b></span>
-  </div>
-
+<!-- 주 보드: 캔버스 Settings(키 확인됨). 아래는 키 카드의 다른 상태 -->
+<div style="width: 1440px; min-height: 1400px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
+<span style="width: 30px; height: 30px; border-radius: 8px; background: #1B1A17; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Video Agent</span>
+</a>
+<nav aria-label="주 메뉴" style="display: flex; align-items: center; gap: 4px;">
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; border-radius: 10px; color: #4A463F; font-size: 15px; font-weight: 600; text-decoration: none;">분석한 영상</a>
+<a href="#" aria-label="설정" aria-current="page" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: #EAE6DD; color: #1B1A17;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+</a>
+</nav>
+</header>
+<main style="flex-grow: 1; box-sizing: border-box; padding: 40px 280px 64px; display: flex; flex-direction: column; gap: 28px;">
+<div data-el="1" style="display: flex; flex-direction: column; gap: 8px;">
+<h1 style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 40px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em;">설정</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5E5A52;">키와 모델 설정은 이 PC에만 저장됩니다.</p>
+</div>
+<section aria-labelledby="key-title" data-el="2" style="box-sizing: border-box; padding: 28px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4A463F" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path></svg>
+<h2 id="key-title" style="margin: 0; font-size: 19px; font-weight: 600;">OpenAI API 키</h2>
+</div>
+<span data-el="2.1" style="height: 28px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; gap: 6px; border-radius: 14px; background: #E1EFEC; color: #134E49; font-size: 13px; font-weight: 600;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 6 9 17l-5-5"></path></svg>
+확인됨 · 오늘 14:02
+</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 14px; font-weight: 600; color: #4A463F;">지금 쓰는 키</span>
+<div data-el="2.2" style="height: 48px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-radius: 10px; background: #F6F4EF;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; color: #1B1A17;">sk-proj-••••••••••••••••3Fq2</span>
+<span style="font-size: 13px; color: #6B665C;">.env에 저장됨</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="new-key" style="font-size: 14px; font-weight: 600; color: #4A463F;">새 키로 바꾸기</label>
+<div style="display: flex; gap: 10px;">
+<span data-el="2.3" style="flex-grow: 1; min-width: 0; display: flex;"><input id="new-key" type="password" placeholder="sk-로 시작하는 키를 붙여 넣으세요" value="" style="width: 100%; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;">
+</span>
+<button data-el="2.4" type="button" style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">확인하고 저장</button>
+</div>
+<span data-el="2.6" style="font-size: 13px; line-height: 1.55; color: #6B665C;">붙여 넣으면 가벼운 요청으로 먼저 확인한 뒤 저장합니다. 키는 저장소에 커밋되지 않아요.</span>
+</div>
+</section>
+<section aria-labelledby="model-title" data-el="3" style="box-sizing: border-box; padding: 28px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<h2 id="model-title" style="margin: 0; font-size: 19px; font-weight: 600;">모델</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="stt-model" style="font-size: 14px; font-weight: 600; color: #4A463F;">받아쓰기</label>
+<span data-el="3.1" style="display: flex;"><select id="stt-model" style="flex-grow: 1; height: 48px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;">
+<option>whisper-1</option>
+</select></span>
+<span data-el="3.2" style="font-size: 13px; line-height: 1.55; color: #6B665C;">분당 $0.006 · 구간 시각을 주는 모델만 고를 수 있어요</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="llm-model" style="font-size: 14px; font-weight: 600; color: #4A463F;">요약 · 챕터 · 질문</label>
+<span data-el="3.3" style="display: flex;"><select id="llm-model" style="flex-grow: 1; height: 48px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;">
+<option>gpt-5-mini</option>
+<option>gpt-5.4-mini</option>
+<option>gpt-5.4</option>
+</select></span>
+<span data-el="3.4" style="font-size: 13px; line-height: 1.55; color: #6B665C;">100만 토큰당 입력 $0.25 · 출력 $2.00</span>
+</div>
+</div>
+</section>
+<section aria-labelledby="inbox-title" data-el="4" style="box-sizing: border-box; padding: 28px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 14px;">
+<h2 id="inbox-title" style="margin: 0; font-size: 19px; font-weight: 600;">로컬 파일 폴더</h2>
+<div data-el="4.1" style="height: 48px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 10px; border-radius: 10px; background: #F6F4EF;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A463F" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px;">~/video-agent/inbox</span>
+<span style="margin-left: auto; font-size: 13px; color: #6B665C;">읽기 전용</span>
+</div>
+<span style="font-size: 13px; line-height: 1.55; color: #6B665C;">이 폴더의 파일을 읽기만 하고 고치거나 지우지 않아요. 위치는 docker-compose.yml에서 바꿀 수 있습니다.</span>
+</section>
+<section aria-labelledby="data-title" data-el="5" style="box-sizing: border-box; padding: 28px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 14px;">
+<h2 id="data-title" style="margin: 0; font-size: 19px; font-weight: 600;">밖으로 나가는 데이터</h2>
+<div data-el="5.1"><table style="width: 100%; border-collapse: collapse; font-size: 15px;">
+<thead>
+<tr>
+<th scope="col" style="width: 120px; padding: 10px 12px 10px 0; border-bottom: 1px solid #E2DDD3; text-align: left; font-size: 13px; font-weight: 600; color: #5E5A52;">어디로</th>
+<th scope="col" style="padding: 10px 12px; border-bottom: 1px solid #E2DDD3; text-align: left; font-size: 13px; font-weight: 600; color: #5E5A52;">무엇이</th>
+<th scope="col" style="padding: 10px 0 10px 12px; border-bottom: 1px solid #E2DDD3; text-align: left; font-size: 13px; font-weight: 600; color: #5E5A52;">언제</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="padding: 12px 12px 12px 0; border-bottom: 1px solid #EFECE5; font-weight: 600;">OpenAI</td>
+<td style="padding: 12px; border-bottom: 1px solid #EFECE5;">음성 조각</td>
+<td style="padding: 12px 0 12px 12px; border-bottom: 1px solid #EFECE5; color: #4A463F;">자막 없는 영상을 받아쓸 때</td>
+</tr>
+<tr>
+<td style="padding: 12px 12px 12px 0; border-bottom: 1px solid #EFECE5; font-weight: 600;">OpenAI</td>
+<td style="padding: 12px; border-bottom: 1px solid #EFECE5;">스크립트 텍스트</td>
+<td style="padding: 12px 0 12px 12px; border-bottom: 1px solid #EFECE5; color: #4A463F;">요약 · 챕터 · 추천 질문을 만들 때</td>
+</tr>
+<tr>
+<td style="padding: 12px 12px 12px 0; border-bottom: 1px solid #EFECE5; font-weight: 600;">OpenAI</td>
+<td style="padding: 12px; border-bottom: 1px solid #EFECE5;">질문, 앞선 대화, 관련 스크립트</td>
+<td style="padding: 12px 0 12px 12px; border-bottom: 1px solid #EFECE5; color: #4A463F;">질문할 때</td>
+</tr>
+<tr>
+<td style="padding: 12px 12px 12px 0; font-weight: 600;">YouTube</td>
+<td style="padding: 12px;">영상 주소</td>
+<td style="padding: 12px 0 12px 12px; color: #4A463F;">정보 · 자막 · 음성을 받을 때</td>
+</tr>
+</tbody>
+</table></div>
+<span data-el="5.2" style="font-size: 13px; line-height: 1.55; color: #6B665C;">원본 영상 파일, 분석 결과, API 키는 이 PC 밖으로 나가지 않습니다.</span>
+</section>
+<div data-el="6" style="display: flex; justify-content: flex-end; gap: 10px;">
+<a data-el="6.1" href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
+<a data-el="6.2" href="#" style="height: 44px; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">저장</a>
+</div>
+</main>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 928px;"><b>키 확인 실패</b> — 새 키가 확인을 통과하지 못했을 때(2.5). 전에 쓰던 키는 그대로 · 캔버스에 없음</div>
+<div class="crop" style="width: 928px;">
+<section aria-labelledby="key-title" style="box-sizing: border-box; padding: 28px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4A463F" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path></svg>
+<h2 id="key-title" style="margin: 0; font-size: 19px; font-weight: 600;">OpenAI API 키</h2>
+</div>
+<span style="height: 28px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 14px; background: #F7E6E2; color: #7A2A1E; font-size: 13px; font-weight: 600;">확인 실패</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 14px; font-weight: 600; color: #4A463F;">지금 쓰는 키</span>
+<div style="height: 48px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-radius: 10px; background: #F6F4EF;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; color: #1B1A17;">sk-proj-••••••••••••••••3Fq2</span>
+<span style="font-size: 13px; color: #6B665C;">.env에 저장됨</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="new-key" style="font-size: 14px; font-weight: 600; color: #4A463F;">새 키로 바꾸기</label>
+<div style="display: flex; gap: 10px;">
+<span style="flex-grow: 1; min-width: 0; display: flex;"><input id="new-key" type="password" placeholder="sk-로 시작하는 키를 붙여 넣으세요" value="sk-proj-wrongkey000000000000" style="width: 100%; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; border: 1px solid #A33A2B; background: #FBFAF7; color: #1B1A17; font-size: 15px;">
+</span>
+<button type="button" style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">확인하고 저장</button>
+</div>
+<span data-el="2.5" role="alert" style="font-size: 13px; line-height: 1.55; color: #A33A2B;">키를 확인하지 못했어요 — 인증 실패</span>
+<span style="font-size: 13px; line-height: 1.55; color: #6B665C;">붙여 넣으면 가벼운 요청으로 먼저 확인한 뒤 저장합니다. 키는 저장소에 커밋되지 않아요.</span>
+</div>
+</section>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 928px;"><b>키 없음</b> — 저장된 키가 없을 때. 지금 쓰는 키(2.2)가 없고 라벨이 '키 넣기' · 캔버스에 없음</div>
+<div class="crop" style="width: 928px;">
+<section aria-labelledby="key-title" style="box-sizing: border-box; padding: 28px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4A463F" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path></svg>
+<h2 id="key-title" style="margin: 0; font-size: 19px; font-weight: 600;">OpenAI API 키</h2>
+</div>
+<span style="height: 28px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 14px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 600;">키 없음</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="new-key" style="font-size: 14px; font-weight: 600; color: #4A463F;">키 넣기</label>
+<div style="display: flex; gap: 10px;">
+<span style="flex-grow: 1; min-width: 0; display: flex;"><input id="new-key" type="password" placeholder="sk-로 시작하는 키를 붙여 넣으세요" value="" style="width: 100%; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;">
+</span>
+<button type="button" style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">확인하고 저장</button>
+</div>
+<span style="font-size: 13px; line-height: 1.55; color: #6B665C;">붙여 넣으면 가벼운 요청으로 먼저 확인한 뒤 저장합니다. 키는 저장소에 커밋되지 않아요.</span>
+</div>
+</section>
+</div>
+</div>
 </div>
 ```
 
@@ -1585,35 +3248,252 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 ### 배치
 
 ```html
-<!-- UI-1 홈 위에 뜬다. UI-4 결과 머리 휴지통에서 열면 UI-4 위에 뜬다. 덮개가 뒤 페이지 전체를 덮고, 다이얼로그는 가로 가운데·위쪽에 붙는다 -->
-<div class="dialog" data-el="1" style="max-width: 460px; margin: 40px auto">
-  <div class="dbody" style="display: flex; flex-direction: column; gap: 14px">
-    <span data-el="1.1" style="width: 56px; min-height: 40px; display: flex; align-items: center; justify-content: center">휴지통</span>
-    <div style="display: flex; flex-direction: column; gap: 4px">
-      <h2 data-el="1.2" style="margin: 0">분석 결과를 지울까요?</h2>
-      <p data-el="1.3" style="margin: 0">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</p>
-    </div>
-    <div data-el="2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
-      <div data-el="2.1" style="padding: 8px; display: flex; flex-direction: column; gap: 4px">
-        <b>지워지는 것</b>
-        <span>스크립트, 핵심 요약, 챕터, 추천 질문, 질문 기록 3개<!-- 조건: 진행 중·실패 영상이면 더한다 --><span class="lbl">, 임시 음성 파일</span></span>
-      </div>
-      <div data-el="2.2" style="padding: 8px; display: flex; flex-direction: column; gap: 4px">
-        <b>남는 것</b>
-        <!-- 조건: YouTube 영상 -->
-        <span>YouTube 원본 영상. 다시 넣으면 처음부터 분석합니다.</span>
-        <!-- 조건: 로컬 파일 -->
-        <span class="lbl">inbox 원본 파일. 다시 넣으면 처음부터 분석합니다.</span>
-      </div>
-    </div>
-    <div class="dacts" data-el="3" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin: 0">
-      <!-- 조건: 지우기에 실패했을 때만 (VA-UI-001에 없음) -->
-      <span class="err" data-el="3.1" role="alert">분석 결과를 지우지 못했어요 — {이유}</span>
-      <span class="grow"></span>
-      <span class="btn" data-el="3.2">취소</span>
-      <span class="btn" data-el="3.3"><b>삭제</b></span>
-    </div>
-  </div>
+<!-- 주 보드: 캔버스 Delete(UI-1 홈 위). 아래는 상태 보드 -->
+<div style="width: 1440px; height: 960px; position: relative; overflow: hidden; background: #F6F4EF;">
+<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 960px;">
+<div style="width: 1440px; height: 960px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column; overflow: hidden;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
+<span style="width: 30px; height: 30px; border-radius: 8px; background: #1B1A17; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Video Agent</span>
+</a>
+<nav aria-label="주 메뉴" style="display: flex; align-items: center; gap: 4px;">
+<a href="#" aria-current="page" style="height: 44px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; border-radius: 10px; background: #EAE6DD; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">분석한 영상</a>
+<a href="#" aria-label="설정" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+</a>
+</nav>
+</header>
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 44px 160px 0; display: flex; flex-direction: column; gap: 44px;">
+<section aria-labelledby="home-title" style="display: flex; flex-direction: column; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 id="home-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 40px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em;">어떤 영상을 읽어 볼까요?</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #5E5A52;">YouTube 링크를 붙여 넣거나 inbox 폴더의 파일을 고르세요. 분석 결과는 이 PC에만 저장됩니다.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+<div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #E1EFEC; color: #0F6E68; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">YouTube 링크</span>
+<span style="font-size: 13px; color: #6B665C;">watch · youtu.be · shorts 주소를 받아요</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label for="yt-url" style="font-size: 14px; font-weight: 600; color: #4A463F;">영상 주소</label>
+<div style="display: flex; gap: 10px;">
+<span style="flex-grow: 1; min-width: 0; display: flex;"><input id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=…" value="" style="width: 100%; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;"></span>
+<a href="#" aria-disabled="false" style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">분석</a>
+</div>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #6B665C;">자막이 있는 영상은 받아쓰기 없이 1분 안에 끝나요.</p>
+</div>
+<div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 17px; font-weight: 600;">내 파일</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #6B665C;">~/video-agent/inbox</span>
+</div>
+</div>
+<div role="group" aria-label="inbox 파일" style="display: flex; flex-direction: column; gap: 6px;">
+<button type="button" aria-pressed="true" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #0F6E68; background: #E1EFEC; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #0F6E68; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: #0F6E68;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">workshop_0912.mp4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">2:30:00</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">1.8 GB</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #E2DDD3; background: #FBFAF7; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: transparent;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">meetup_0901.mp4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">1:58:20</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">1.4 GB</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; border: 1px solid #E2DDD3; background: #FBFAF7; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid #948D80; display: flex; align-items: center; justify-content: center;">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: transparent;"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">interview_0903.m4a</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E5A52;">1:04:12</span>
+<span style="width: 60px; font-size: 13px; color: #6B665C; text-align: right;">58 MB</span>
+</button>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 13px; color: #6B665C;">mp4 · mkv · mov · webm · mp3 · m4a · wav</span>
+<a href="#" aria-disabled="false" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">선택한 파일 분석</a>
+</div>
+</div>
+</div>
+</section>
+<section aria-labelledby="list-title" style="display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="list-title" tabindex="-1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">분석한 영상</h2>
+<span style="font-size: 14px; color: #6B665C;">5개</span>
+</div>
+<span style="font-size: 13px; color: #6B665C;">최근 순</span>
+</div>
+<div style="border-top: 1px solid #E2DDD3; display: flex; flex-direction: column;">
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">벡터 검색 튜닝 실전</span>
+<span style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">38:05</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 600; color: #6B665C;">대기 중 · 1번째</span>
+</span>
+</a>
+<a href="#" aria-label="벡터 검색 튜닝 실전 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</span>
+<span style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">50:12</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 400; color: #6B665C;">오늘 14:08 분석</span>
+</span>
+</a>
+<a href="#" aria-label="RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">workshop_0912.mp4</span>
+<span style="font-size: 13px; color: #6B665C;">로컬 파일</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">2:30:00</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 600; color: #0F6E68;">받아쓰기 중 · 12 / 30</span>
+<span style="width: 160px; height: 4px; border-radius: 2px; background: #E2DDD3; display: block; overflow: hidden;">
+<span style="width: 40%; height: 4px; display: block; background: #0F6E68;"></span>
+</span>
+</span>
+</a>
+<a href="#" aria-label="workshop_0912.mp4 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 3v18"></path><path d="M17 3v18"></path><path d="M3 7.5h4"></path><path d="M3 12h18"></path><path d="M3 16.5h4"></path><path d="M17 7.5h4"></path><path d="M17 16.5h4"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">meetup_0901.mp4</span>
+<span style="font-size: 13px; color: #6B665C;">로컬 파일</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">1:58:20</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 600; color: #A33A2B;">받아쓰기 16 / 24에서 멈춤</span>
+</span>
+</a>
+<a href="#" aria-label="meetup_0901.mp4 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+<div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2DDD3;">
+<a href="#" style="flex-grow: 1; min-width: 0; min-height: 64px; box-sizing: border-box; padding: 10px 0; display: flex; align-items: center; gap: 16px; color: #1B1A17; text-decoration: none;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">LLM 에이전트 설계 패턴 정리</span>
+<span style="font-size: 13px; color: #6B665C;">YouTube · [채널명]</span>
+</span>
+<span style="width: 88px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F; text-align: right;">1:12:40</span>
+<span style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+<span style="font-size: 14px; font-weight: 400; color: #6B665C;">9월 12일 분석</span>
+</span>
+</a>
+<a href="#" aria-label="LLM 에이전트 설계 패턴 정리 분석 결과 삭제" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #6B665C;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+</div>
+</section>
+</main>
+</div>
+</div>
+<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 960px; box-sizing: border-box; padding-top: 180px; display: flex; justify-content: center; align-items: flex-start; background: rgba(27, 26, 23, 0.52);">
+<div role="alertdialog" aria-modal="true" aria-labelledby="del-title" aria-describedby="del-desc" data-el="1" style="width: 540px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 20px;">
+<span data-el="1.1" style="width: 48px; height: 48px; border-radius: 12px; background: #F7E6E2; color: #A33A2B; display: flex; align-items: center; justify-content: center;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h2 id="del-title" data-el="1.2" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 26px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">분석 결과를 지울까요?</h2>
+<p id="del-desc" data-el="1.3" style="margin: 0; font-size: 16px; line-height: 1.6; color: #4A463F;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</p>
+</div>
+<div data-el="2" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+<div data-el="2.1" style="box-sizing: border-box; padding: 16px; border-radius: 12px; background: #F7E6E2; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #7A2A1E;">지워지는 것</span>
+<span style="font-size: 14px; line-height: 1.6; color: #5C2418;">스크립트, 핵심 요약, 챕터, 추천 질문, 질문 기록 3개</span>
+</div>
+<div data-el="2.2" style="box-sizing: border-box; padding: 16px; border-radius: 12px; background: #F6F4EF; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #4A463F;">남는 것</span>
+<span style="font-size: 14px; line-height: 1.6; color: #4A463F;">YouTube 원본 영상. 다시 넣으면 처음부터 분석합니다.</span>
+</div>
+</div>
+<div data-el="3" style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+<a data-el="3.2" href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
+<a data-el="3.3" href="#" style="height: 44px; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #A33A2B; color: #FFFFFF; font-size: 15px; font-weight: 600; text-decoration: none;">삭제</a>
+</div>
+</div>
+</div>
+</div>
+<div class="var"><b>지우지 못함</b> — 지우기에 실패했을 때 버튼 줄 왼쪽에 실패 한 줄(3.1) · 캔버스에 없음</div>
+<div class="crop dim">
+<div role="alertdialog" aria-modal="true" aria-labelledby="del-title" aria-describedby="del-desc" style="width: 540px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 20px;">
+<span style="width: 48px; height: 48px; border-radius: 12px; background: #F7E6E2; color: #A33A2B; display: flex; align-items: center; justify-content: center;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</span>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h2 id="del-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 26px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">분석 결과를 지울까요?</h2>
+<p id="del-desc" style="margin: 0; font-size: 16px; line-height: 1.6; color: #4A463F;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+<div style="box-sizing: border-box; padding: 16px; border-radius: 12px; background: #F7E6E2; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #7A2A1E;">지워지는 것</span>
+<span style="font-size: 14px; line-height: 1.6; color: #5C2418;">스크립트, 핵심 요약, 챕터, 추천 질문, 질문 기록 3개</span>
+</div>
+<div style="box-sizing: border-box; padding: 16px; border-radius: 12px; background: #F6F4EF; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; font-weight: 600; color: #4A463F;">남는 것</span>
+<span style="font-size: 14px; line-height: 1.6; color: #4A463F;">YouTube 원본 영상. 다시 넣으면 처음부터 분석합니다.</span>
+</div>
+</div>
+<div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+<span data-el="3.1" role="alert" style="margin-right: auto; font-size: 14px; line-height: 1.5; color: #A33A2B;">분석 결과를 지우지 못했어요 — 권한 없음</span>
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #A33A2B; color: #FFFFFF; font-size: 15px; font-weight: 600; text-decoration: none;">삭제</a>
+</div>
+</div>
 </div>
 ```
 
@@ -1705,54 +3585,366 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 ### 배치
 
 ```html
-<!-- UI-4 결과 위에 뜨는 다이얼로그. 뒤의 UI-4는 덮개 아래 그대로 남는다 -->
-<div class="dialog" data-el="1" style="max-width:560px;margin:16px auto">
-  <div style="display:flex;align-items:flex-start;gap:10px;padding:18px 12px 0">
-    <div style="display:flex;flex-direction:column;gap:12px">
-      <h2 data-el="1.1" style="margin:0">마크다운으로 내보내기</h2>
-      <span class="lbl" data-el="1.2">시각은 [12:40] 형태로 남고, YouTube 영상이면 그 시점 링크가 걸려요.</span>
-    </div>
-    <span class="grow"></span>
-    <span class="btn" data-el="1.3" aria-label="닫기" style="padding:4px 12px">✕</span>
-  </div>
-  <div class="dbody" style="display:flex;flex-direction:column;gap:16px;padding:16px 12px 12px">
-    <div data-el="2" role="group" aria-label="내보내는 방법" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <!-- 둘 중 하나만 aria-pressed="true". 열 때는 파일로 저장 -->
-      <div class="btn" data-el="2.1" aria-pressed="true" style="display:flex;flex-direction:column;gap:4px;padding:8px">
-        <b>파일로 저장</b>
-        <span class="lbl">data/export/{파일 이름}.md</span>
-      </div>
-      <div class="btn" data-el="2.2" aria-pressed="false" style="display:flex;flex-direction:column;gap:4px;padding:8px">
-        <b>클립보드에 복사</b>
-        <span class="lbl">노트 앱에 바로 붙여 넣기</span>
-      </div>
-    </div>
-    <!-- 조건: 질문 기록이 1개 이상일 때만 (VA-UI-001에 없음 — 8장 디자인 보강 항목) -->
-    <label data-el="3" style="display:flex;align-items:center;gap:8px">
-      <input type="checkbox"> 질문 기록 3개도 넣기
-    </label>
-    <div data-el="4" style="display:flex;flex-direction:column;gap:12px;padding:12px 0 0">
-      <span class="lbl">미리 보기</span>
-      <!-- 내보낼 마크다운의 앞부분. 최대 높이에서 잘리고 스크롤하지 않는다 -->
-      <div class="code" data-el="4.1"><span># {제목}</span>
-원본: https://youtu.be/{영상ID} · {길이}
-&gt; {한 줄 요약}
-<span>## 핵심 인사이트</span>
-1. {문장} [04:30](https://youtu.be/{영상ID}?t=270)
-2. {문장} [09:05](https://youtu.be/{영상ID}?t=545)
-<span>## 챕터</span>
-<span>### [00:00](https://youtu.be/{영상ID}?t=0) {챕터 제목}</span>
-- {요점}</div>
-    </div>
-  </div>
-  <div class="dacts" data-el="5" style="display:flex;align-items:center;gap:8px;padding:14px 12px 12px">
-    <!-- 조건: 저장이나 복사에 실패했을 때만 (VA-UI-001에 없음) -->
-    <span class="err" data-el="5.1" role="alert">파일을 저장하지 못했어요 — {이유}</span>
-    <span class="grow"></span>
-    <span class="btn" data-el="5.2">취소</span>
-    <!-- 글자는 고른 방법을 따른다: 파일로 저장 / 복사하기 -->
-    <span class="btn" data-el="5.3"><b>파일로 저장</b></span>
-  </div>
+<!-- 주 보드: 캔버스 Export(UI-4 결과 위, 파일로 저장 선택). 아래는 상태 보드 -->
+<div style="width: 1440px; height: 960px; position: relative; overflow: hidden; background: #F6F4EF;">
+<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 2900px;">
+<div style="width: 1440px; height: 2900px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
+<span style="width: 30px; height: 30px; border-radius: 8px; background: #1B1A17; display: flex; align-items: center; justify-content: center;">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Video Agent</span>
+</a>
+<nav aria-label="주 메뉴" style="display: flex; align-items: center; gap: 4px;">
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; border-radius: 10px; color: #4A463F; font-size: 15px; font-weight: 600; text-decoration: none;">분석한 영상</a>
+<a href="#" aria-label="설정" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+</a>
+</nav>
+</header>
+<div style="flex-grow: 1; display: grid; grid-template-columns: minmax(0, 1fr) 520px;">
+<main style="min-width: 0; box-sizing: border-box; padding: 24px 64px 96px 96px; display: flex; flex-direction: column; gap: 48px;">
+<div style="display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<a href="#" style="height: 44px; display: flex; align-items: center; gap: 6px; color: #4A463F; font-size: 15px; text-decoration: none;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+분석한 영상
+</a>
+<div style="display: flex; align-items: center; gap: 8px;">
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg>
+내보내기
+</a>
+<a href="#" aria-label="분석 결과 삭제" style="width: 44px; height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #A33A2B;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+</a>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">YouTube</span>
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">50:12</span>
+<span style="height: 26px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; border-radius: 6px; background: #EFECE5; color: #4A463F; font-size: 13px; font-weight: 500;">자막 · 한국어</span>
+</div>
+<h1 style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 36px; line-height: 1.3; font-weight: 600; letter-spacing: -0.02em;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</h1>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 15px; color: #5E5A52;">
+<span>[채널명] · 오늘 14:08 분석 · 요약 gpt-5-mini</span>
+<a href="https://www.youtube.com/" style="display: flex; align-items: center; gap: 4px; color: #0F6E68; font-weight: 600; text-decoration: none;">
+원본 영상 열기
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+</a>
+</div>
+</div>
+</div>
+<section aria-labelledby="tldr-title" style="display: flex; flex-direction: column; gap: 10px;">
+<h2 id="tldr-title" style="margin: 0; font-size: 14px; font-weight: 600; color: #5E5A52;">한 줄 요약</h2>
+<p style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; line-height: 1.6; font-weight: 500; letter-spacing: -0.01em; color: #1B1A17;">RAG 서비스를 1년간 운영하며 겪은 검색 품질 문제와, 청킹과 pgvector 인덱스를 손봐 해결한 과정을 공유하는 발표.</p>
+</section>
+<section aria-labelledby="insight-title" style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="insight-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">핵심 인사이트</h2>
+<span style="font-size: 14px; color: #6B665C;">8개</span>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border-top: 1px solid #E2DDD3;">
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">01</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+틀린 답의 원인을 따라가 보니 생성 모델보다 검색 단계에서 엉뚱한 문서를 가져온 경우가 훨씬 많았다.
+<button type="button" aria-label="04:30 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">04:30</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">02</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+평가 데이터 없이 튜닝하면 개선인지 착시인지 알 수 없어, 실제 질문 로그로 평가 세트부터 만들었다.
+<button type="button" aria-label="09:05 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">09:05</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">03</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+파이프라인은 수집 → 청킹 → 임베딩 → 검색 → 재순위 → 생성의 여섯 단계로 단순하게 유지했다.
+<button type="button" aria-label="12:40 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">12:40</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">04</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+청킹 크기를 512에서 256 토큰으로 줄이자 재현율이 12%p 올랐다.
+<button type="button" aria-label="23:15 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">23:15</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">05</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+별도 벡터 DB 대신 PostgreSQL의 pgvector를 써서 원본 데이터와 같은 곳에서 관리했다.
+<button type="button" aria-label="13:18 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">13:18</button>
+<button type="button" aria-label="24:02 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">24:02</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">06</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+재순위 모델은 정확도를 올리지만 지연을 늘려, 재순위에 넘기는 후보 수를 줄여 균형을 맞췄다.
+<button type="button" aria-label="31:48 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">31:48</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">07</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+문서가 바뀌면 바뀐 청크만 다시 임베딩하도록 청크마다 원본 버전을 기록했다.
+<button type="button" aria-label="38:20 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">38:20</button>
+</span>
+</li>
+<li style="box-sizing: border-box; padding: 14px 0; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; border-bottom: 1px solid #E2DDD3;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.8; font-weight: 600; color: #6B665C;">08</span>
+<span style="font-size: 16px; line-height: 1.8; color: #1B1A17;">
+가장 효과가 컸던 것은 모델 교체가 아니라, 검색 결과를 사람이 직접 읽는 주간 리뷰였다.
+<button type="button" aria-label="44:10 위치의 스크립트로 이동" style="margin-left: 6px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; cursor: pointer; vertical-align: 1px;">44:10</button>
+</span>
+</li>
+</ol>
+</section>
+<section aria-labelledby="ask-title" style="display: flex; flex-direction: column; gap: 14px;">
+<h2 id="ask-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">이런 걸 물어볼 수 있어요</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+<button type="button" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span>청킹 전략을 바꾼 근거는?</span>
+</button>
+<button type="button" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span>pgvector 대신 검토한 대안은?</span>
+</button>
+<button type="button" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span>운영 비용은 어떻게 달라졌나?</span>
+</button>
+</div>
+</section>
+<section aria-labelledby="chapter-title" style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<h2 id="chapter-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">챕터</h2>
+<span style="font-size: 14px; color: #6B665C;">9개</span>
+</div>
+<span style="font-size: 13px; color: #6B665C;">누르면 오른쪽 스크립트가 그 위치로 이동해요</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">00:00</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">발표자 소개와 배경</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>사내 문서 검색 챗봇을 1년간 운영한 팀의 경험을 공유한다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>오늘 다룰 주제는 검색 품질이다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">04:30</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">문제 정의 — 검색이 왜 틀리나</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>틀린 답을 나눠 보니 검색 실패가 대부분이었다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>질문과 문서의 표현 차이가 주된 원인이었다</span>
+</span>
+</span>
+</button>
+<button type="button" style="width: 100%; box-sizing: border-box; padding: 14px 16px; display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="align-self: start; justify-self: start; height: 26px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border-radius: 6px; background: #E1EFEC; color: #0F6E68; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;">09:05</span>
+<span style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 17px; line-height: 1.5; font-weight: 600;">평가 세트 만들기</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>실제 질문 로그에 정답 문서를 표시해 평가 세트를 만들었다</span>
+</span>
+<span style="display: flex; gap: 8px; font-size: 15px; line-height: 1.65; color: #4A463F;">
+<span aria-hidden="true" style="color: #948D80;">·</span>
+<span>바꿀 때마다 같은 세트로 재현율을 비교했다</span>
+</span>
+</span>
+</button>
+</div>
+</section>
+</main>
+<aside aria-label="스크립트와 질문" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
+<div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
+<div style="height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid #E2DDD3;">
+<button type="button" aria-pressed="true" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid #1B1A17; background: transparent; color: #1B1A17; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+스크립트
+</button>
+<button type="button" aria-pressed="false" style="height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6B665C; font-size: 15px; font-weight: 600; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+질문하기
+<span style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 7px; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: #EFECE5; color: #4A463F; font-size: 12px; font-weight: 600;">3</span>
+</button>
+</div>
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+<div style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: #5E5A52;">
+<span>자막(수동) · 한국어</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #0F6E68;">12:40</span>
+</div>
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 0 12px 16px; display: flex; flex-direction: column; gap: 2px;">
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">12:11</span>
+<span style="font-size: 15px; line-height: 1.75;">그래서 그 분류 결과를 들고 구조를 처음부터 다시 봤습니다.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">12:24</span>
+<span style="font-size: 15px; line-height: 1.75;">어디서 틀렸는지 모르는 상태로는 뭘 고쳐도 확신이 없었거든요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: #F8EDC4; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #7A5A00;">12:40</span>
+<span style="font-size: 15px; line-height: 1.75;">지금 보시는 게 저희 전체 아키텍처입니다. 단계는 여섯 개로 단순하게 가져갔어요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">12:49</span>
+<span style="font-size: 15px; line-height: 1.75;">첫 번째가 수집이고요, 사내 위키랑 드라이브 문서를 매일 새벽에 가져옵니다.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">12:58</span>
+<span style="font-size: 15px; line-height: 1.75;">두 번째가 청킹인데, 이 부분은 뒤에서 따로 자세히 말씀드릴게요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:07</span>
+<span style="font-size: 15px; line-height: 1.75;">세 번째 임베딩은 처음엔 외부 API를 쓰다가 나중에 모델을 바꿨고요.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:18</span>
+<span style="font-size: 15px; line-height: 1.75;">네 번째 검색은 PostgreSQL에 pgvector 확장을 올려서 하고 있습니다.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:29</span>
+<span style="font-size: 15px; line-height: 1.75;">다섯 번째가 재순위인데, 여기서 지연 문제가 좀 있었습니다.</span>
+</button>
+<button type="button" style="width: 100%; flex-shrink: 0; box-sizing: border-box; padding: 10px 12px; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; border: 0; border-radius: 10px; background: transparent; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; font-weight: 600; color: #6B665C;">13:41</span>
+<span style="font-size: 15px; line-height: 1.75;">마지막이 생성이고, 검색된 청크 중 상위 다섯 개만 넣어요.</span>
+</button>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+</div>
+<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 960px; box-sizing: border-box; padding-top: 80px; display: flex; justify-content: center; align-items: flex-start; background: rgba(27, 26, 23, 0.52);">
+<div role="dialog" aria-modal="true" aria-labelledby="exp-title" data-el="1" style="width: 660px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 20px;">
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<h2 id="exp-title" data-el="1.1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">마크다운으로 내보내기</h2>
+<span data-el="1.2" style="font-size: 15px; color: #5E5A52;">시각은 [12:40] 형태로 남고, YouTube 영상이면 그 시점 링크가 걸려요.</span>
+</div>
+<a data-el="1.3" href="#" aria-label="닫기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</a>
+</div>
+<div role="group" aria-label="내보내는 방법" data-el="2" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+<button type="button" data-el="2.1" aria-pressed="true" style="min-height: 84px; box-sizing: border-box; padding: 14px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; border-radius: 12px; border: 2px solid #0F6E68; background: #E1EFEC; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg>
+파일로 저장
+</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5E5A52;">data/export/rag-서비스-1년-운영기.md</span>
+</button>
+<button type="button" data-el="2.2" aria-pressed="false" style="min-height: 84px; box-sizing: border-box; padding: 14px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; border-radius: 12px; border: 2px solid #E2DDD3; background: #FFFFFF; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+클립보드에 복사
+</span>
+<span style="font-size: 13px; color: #5E5A52;">노트 앱에 바로 붙여 넣기</span>
+</button>
+</div>
+<label data-el="3" style="min-height: 44px; display: flex; align-items: center; gap: 10px; font-size: 15px; cursor: pointer;">
+<input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #0F6E68;">
+<span>질문 기록 3개도 넣기</span>
+</label>
+<div data-el="4" style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 13px; font-weight: 600; color: #5E5A52;">미리 보기</span>
+<pre data-el="4.1" style="margin: 0; max-height: 220px; overflow: hidden; box-sizing: border-box; padding: 16px 18px; border-radius: 12px; background: #1B1A17; color: #EDEAE3; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.7; white-space: pre-wrap;"># RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나
+원본: https://youtu.be/[영상ID] · 50:12
+
+&gt; RAG 서비스를 1년간 운영하며 겪은 검색 품질 문제와, 청킹과 pgvector 인덱스를 손봐 해결한 과정을 공유하는 발표.
+
+## 핵심 인사이트
+1. 틀린 답의 원인을 따라가 보니 생성 모델보다 검색 단계에서 … [04:30](https://youtu.be/[영상ID]?t=270)
+2. 평가 데이터 없이 튜닝하면 개선인지 착시인지 알 수 없어 … [09:05](https://youtu.be/[영상ID]?t=545)
+
+## 챕터
+### [00:00](https://youtu.be/[영상ID]?t=0) 발표자 소개와 배경
+- 사내 문서 검색 챗봇을 1년간 운영한 팀의 경험을 공유한다</pre>
+</div>
+<div data-el="5" style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+<a data-el="5.2" href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
+<a data-el="5.3" href="#" style="height: 44px; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">파일로 저장</a>
+</div>
+</div>
+</div>
+</div>
+<div class="var"><b>저장하지 못함</b> — 파일 쓰기나 클립보드 복사가 실패했을 때 버튼 줄 왼쪽에 실패 한 줄(5.1) · 캔버스에 없음</div>
+<div class="crop dim">
+<div role="dialog" aria-modal="true" aria-labelledby="exp-title" style="width: 660px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 20px;">
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<h2 id="exp-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">마크다운으로 내보내기</h2>
+<span style="font-size: 15px; color: #5E5A52;">시각은 [12:40] 형태로 남고, YouTube 영상이면 그 시점 링크가 걸려요.</span>
+</div>
+<a href="#" aria-label="닫기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4A463F;">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</a>
+</div>
+<div role="group" aria-label="내보내는 방법" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+<button type="button" aria-pressed="true" style="min-height: 84px; box-sizing: border-box; padding: 14px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; border-radius: 12px; border: 2px solid #0F6E68; background: #E1EFEC; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg>
+파일로 저장
+</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5E5A52;">data/export/rag-서비스-1년-운영기.md</span>
+</button>
+<button type="button" aria-pressed="false" style="min-height: 84px; box-sizing: border-box; padding: 14px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; border-radius: 12px; border: 2px solid #E2DDD3; background: #FFFFFF; color: #1B1A17; text-align: left; cursor: pointer;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+클립보드에 복사
+</span>
+<span style="font-size: 13px; color: #5E5A52;">노트 앱에 바로 붙여 넣기</span>
+</button>
+</div>
+<label style="min-height: 44px; display: flex; align-items: center; gap: 10px; font-size: 15px; cursor: pointer;">
+<input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #0F6E68;">
+<span>질문 기록 3개도 넣기</span>
+</label>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 13px; font-weight: 600; color: #5E5A52;">미리 보기</span>
+<pre style="margin: 0; max-height: 220px; overflow: hidden; box-sizing: border-box; padding: 16px 18px; border-radius: 12px; background: #1B1A17; color: #EDEAE3; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.7; white-space: pre-wrap;"># RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나
+원본: https://youtu.be/[영상ID] · 50:12
+
+&gt; RAG 서비스를 1년간 운영하며 겪은 검색 품질 문제와, 청킹과 pgvector 인덱스를 손봐 해결한 과정을 공유하는 발표.
+
+## 핵심 인사이트
+1. 틀린 답의 원인을 따라가 보니 생성 모델보다 검색 단계에서 … [04:30](https://youtu.be/[영상ID]?t=270)
+2. 평가 데이터 없이 튜닝하면 개선인지 착시인지 알 수 없어 … [09:05](https://youtu.be/[영상ID]?t=545)
+
+## 챕터
+### [00:00](https://youtu.be/[영상ID]?t=0) 발표자 소개와 배경
+- 사내 문서 검색 챗봇을 1년간 운영한 팀의 경험을 공유한다</pre>
+</div>
+<div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+<span data-el="5.1" role="alert" style="margin-right: auto; font-size: 14px; line-height: 1.5; color: #A33A2B;">파일을 저장하지 못했어요 — 디스크 공간 부족</span>
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
+<a href="#" style="height: 44px; box-sizing: border-box; padding: 0 22px; display: flex; align-items: center; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600; text-decoration: none;">파일로 저장</a>
+</div>
+</div>
 </div>
 ```
 
