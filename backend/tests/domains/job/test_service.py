@@ -427,3 +427,32 @@ async def test_fail_keeps_stage_and_progress(db, make) -> None:
     assert got.status == JobStatus.failed
     assert got.error == error
     assert (got.stage, got.progress_pct) == (JobStage.summarize, 25)
+
+
+# --- fail_orphans · claim_next
+
+
+async def test_fail_orphans(db, make) -> None:
+    running = await make.job(
+        (await make.video()).id, JobStatus.running, stage="transcribe", stages=STT_STAGES
+    )
+    await make.chunks(running.id, [ChunkState.done, ChunkState.in_flight, ChunkState.in_flight])
+    queued = await make.job((await make.video()).id, JobStatus.queued)
+    assert await JobService(db).fail_orphans() == 1
+    row = await _job_row(db, running.id)
+    assert (row.status, row.error_kind, row.error_reason) == (
+        JobStatus.failed,
+        ErrorKind.unknown,
+        "서버가 다시 시작됨",
+    )
+    assert (row.error_chunk_seq, row.error_attempts) == (None, 1)
+    states = list(
+        await db.scalars(
+            select(AudioChunkRow.state)
+            .where(AudioChunkRow.job_id == running.id)
+            .order_by(AudioChunkRow.seq)
+        )
+    )
+    assert states == [ChunkState.done, ChunkState.waiting, ChunkState.waiting]
+    assert (await _job_row(db, queued.id)).status == JobStatus.queued  # 기다리던 것은 그대로
+    assert await JobService(db).fail_orphans() == 0

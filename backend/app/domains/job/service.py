@@ -456,3 +456,24 @@ class JobService:
         row.error_chunk_seq = error.chunk_seq
         row.error_attempts = error.attempts
         await self.session.commit()
+
+    async def fail_orphans(self) -> int:
+        """VA-MS-002#JobService.fail_orphans
+
+        서버가 죽어 running인 채 남은 작업을 failed로 되돌린다 — 다시 시도할 수 있게.
+        queued는 건드리지 않는다. main.py가 워커를 띄우기 **전에** 부른다(SEQ-13).
+
+        Returns:
+            되돌린 작업 수
+        """
+        rows = await crud.running_all(self.session)
+        for row in rows:
+            row.status = JobStatus.failed
+            row.error_kind = ErrorKind.unknown
+            row.error_reason = ORPHAN_REASON
+            row.error_chunk_seq = None
+            row.error_attempts = 1
+        if rows:
+            await crud.in_flight_to_waiting(self.session, [r.id for r in rows])
+        await self.session.commit()
+        return len(rows)
