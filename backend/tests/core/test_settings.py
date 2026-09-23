@@ -103,3 +103,18 @@ def test_write_env_read_only(svc, env_file) -> None:
     env_file.chmod(0o444)
     with pytest.raises(OSError):
         svc.write_env({"OPENAI_API_KEY": NEW})
+
+
+# current_models · api_key
+
+
+def test_current_models_defaults_and_prices(svc, env_file) -> None:
+    _write(env_file)
+    m = svc.current_models()
+    assert (m.stt.id, m.text.id) == ("whisper-1", "gpt-5-mini")
+    assert m.stt.price.per_min_usd == 0.006
+    assert m.text.price.input_per_mtok_usd == 0.25
+    env_file.write_text("STT_MODEL=whisper-9\nTEXT_MODEL=gpt-5.4\n")
+    m = svc.current_models()
+    assert (m.stt.id, m.text.id) == ("whisper-1", "gpt-5.4")  # 목록에 없으면 기본값
+    assert m.text.price.output_per_mtok_usd == 15.00

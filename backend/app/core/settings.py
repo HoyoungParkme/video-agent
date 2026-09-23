@@ -158,5 +158,23 @@ class SettingsService:
                 f.flush()
                 os.fsync(f.fileno())
 
+    def current_models(self) -> ChosenModels:
+        """VA-MS-005#SettingsService.current_models
+
+        지금 고른 두 모델과 단가. 파일에 없거나 목록에 없는 값이면 기본값.
+
+        Returns:
+            받아쓰기 · 텍스트 모델의 ModelOption 둘
+        """
+        return self._models(self.read_env())
+
+    def _models(self, env: dict[str, str]) -> ChosenModels:
+        return ChosenModels(
+            stt=_pick(config.MODEL_OPTIONS.stt, env.get("STT_MODEL"), config.DEFAULT_MODELS["stt"]),
+            text=_pick(
+                config.MODEL_OPTIONS.text, env.get("TEXT_MODEL"), config.DEFAULT_MODELS["text"]
+            ),
+        )
+
 
 settings = SettingsService()
