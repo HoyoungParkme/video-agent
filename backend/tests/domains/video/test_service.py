@@ -318,6 +318,22 @@ async def test_register_local_renamed_is_same_video(db, youtube, probe, key, tmp
     assert again.origin == "workshop_0912.mp4"  # 작업이 없던 영상이라 새 이름으로 덮어쓴다
 
 
+async def test_register_local_renamed_after_failure_updates_origin(
+    db, youtube, probe, key, make, tmp_path, monkeypatch
+) -> None:
+    # 작업이 실패한 파일을 이름만 바꿔 다시 넣는다 — 다시 시도가 지금 이름을 읽게 origin만 고친다
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "talk.mp4").write_bytes(b"recording")
+    svc = VideoService(db, youtube, probe)
+    first = await svc.register(local("talk.mp4"))
+    await make.job(first.id, JobStatus.failed)
+    (tmp_path / "talk.mp4").rename(tmp_path / "talk2.mp4")
+    again = await svc.register(local("talk2.mp4"))
+    assert again.id == first.id
+    assert (again.origin, again.title, again.status) == ("talk2.mp4", "talk.mp4", "failed")
+    assert (await db.get(VideoRow, first.id)).origin == "talk2.mp4"
+
+
 async def test_register_local_too_long(db, youtube, probe, key, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
     (tmp_path / "all_day.mp4").write_bytes(b"x")

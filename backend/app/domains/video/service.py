@@ -96,7 +96,7 @@ def _check_inbox_name(name: str) -> None:
     # inbox 바로 아래 파일 이름만 — 하위 폴더 · 절대 경로 · 숨김 · ..는 막는다
     if "/" in name or "\\" in name or name.startswith(".") or ".." in name:
         raise PathOutsideInbox()
-    if Path(name).suffix.lower().lstrip(".") not in config.VIDEO_EXTS + config.AUDIO_EXTS:
+    if _ext(name) not in accepted():
         raise UnsupportedFile(reason="받지 않는 형식이에요", accepted=accepted())
     if not (Path(config.INBOX_DIR) / name).is_file():
         raise NotFound(resource="inbox_file", id=name)
@@ -243,6 +243,8 @@ class VideoService:
 
         영상을 등록한다 — 사전 안내 전까지. 걸리는 곳에서 멈추고, 순서가 규칙이다.
         같은 영상(출처 식별자)이 있으면 그것을 돌려주고, 작업이 없던 것이면 새 정보로 덮어쓴다.
+        로컬 파일은 작업이 있어도 이름(origin)만 지금 것으로 고친다 — 이름을 바꾼 뒤 다시 시도해도
+        파이프라인이 파일을 찾게.
 
         Args:
             req: YouTube 주소 또는 inbox 파일 이름
@@ -272,6 +274,9 @@ class VideoService:
             job = await self.jobs.latest(row.id)
             if job is None:  # 사전 안내에서 취소했던 영상 — 처음 넣은 것과 같게
                 crud.overwrite(row, info)
+                await self.session.commit()
+            elif info.source_kind == SourceKind.local and row.origin != info.origin:
+                crud.rename(row, info.origin)  # 제목은 그대로
                 await self.session.commit()
         else:
             row = await self._insert(info)

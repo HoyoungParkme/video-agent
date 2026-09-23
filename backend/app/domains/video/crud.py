@@ -49,3 +49,8 @@ def overwrite(row: VideoRow, info: SourceInfo) -> None:
     """작업이 없는 영상을 새로 읽은 정보로 덮어쓴다."""
     for name in _OVERWRITE:
         setattr(row, name, getattr(info, name))
+
+
+def rename(row: VideoRow, origin: str) -> None:
+    """로컬 파일의 지금 이름 — 작업이 있어도 origin만 고친다(다시 시도가 이 경로를 읽는다)."""
+    row.origin = origin
