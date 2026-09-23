@@ -352,3 +352,27 @@ async def test_latest(db, make) -> None:
     await make.job(queued.id, JobStatus.queued)
     assert (await JobService(db).latest(queued.id)).queue_position == 1
     assert await JobService(db).latest((await make.video()).id) is None
+
+
+async def test_latest_by_videos_constant_queries(db, make, queries) -> None:
+    videos = [await make.video() for _ in range(50)]
+    for i, v in enumerate(videos):
+        await make.job(v.id, JobStatus.done, at=T0 + timedelta(minutes=i))
+    newer = await make.job(videos[0].id, JobStatus.done, at=T0 + timedelta(days=1))
+    queries.clear()
+    got = await JobService(db).latest_by_videos([v.id for v in videos])
+    assert len(queries) == 2  # 영상 50개에 작업 · 조각 두 쿼리
+    assert len(got) == 50
+    assert got[videos[0].id].id == newer.id  # 영상마다 최근 것 하나만
+    await make.job((await make.video()).id, JobStatus.running)
+    waiting = await make.video()
+    await make.job(waiting.id, JobStatus.queued)
+    queries.clear()
+    got = await JobService(db).latest_by_videos([waiting.id])
+    assert len(queries) == 3  # 기다리는 작업이 있으면 차례를 한 번 읽는다
+    assert got[waiting.id].queue_position == 1
+
+
+async def test_latest_by_videos_empty(db, queries) -> None:
+    assert await JobService(db).latest_by_videos([]) == {}
+    assert queries == []

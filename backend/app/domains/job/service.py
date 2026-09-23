@@ -374,3 +374,30 @@ class JobService:
             started_at=row.started_at,
             finished_at=row.finished_at,
         )
+
+    async def latest_by_videos(self, video_ids: list[int]) -> dict[int, JobSummary]:
+        """VA-MS-002#JobService.latest_by_videos
+
+        여러 영상의 최근 작업 요약. 영상 수와 상관없이 쿼리 둘(기다리는 작업이 있으면 셋).
+
+        Args:
+            video_ids: 영상 id들
+
+        Returns:
+            {영상 id: 작업 요약}. 작업 없는 영상은 키가 없다
+        """
+        if not video_ids:
+            return {}
+        rows = await crud.latest_many(self.session, video_ids)
+        if not rows:
+            return {}
+        counts = await crud.chunk_counts(self.session, [r.id for r in rows])
+        positions: dict[int, int] = {}
+        if any(r.status == JobStatus.queued for r in rows):  # 차례는 한 번 읽어 매긴다
+            positions = {
+                job_id: i + 1 for i, job_id in enumerate(await crud.queued_ids(self.session))
+            }
+        return {
+            r.video_id: self._summary(r, *counts.get(r.id, (None, None)), positions.get(r.id))
+            for r in rows
+        }
