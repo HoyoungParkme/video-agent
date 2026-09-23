@@ -190,13 +190,13 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 근거: [[VA-DOM-002#Video]] (status · analyzed_at은 컬럼이 아니다) · [[VA-API-001]] 1장 갈 곳 표 · [[VA-DOM-002]] 5장 4
 
 **처리**
-1. `status` = if `job is None` → `registered` · elif `job.status == running` → `in_progress` · elif `failed` → `failed` · else → `analyzed`
+1. `status` = if `job is None` → `registered` · elif `job.status ∈ {queued, running}` → `in_progress`(대기 중도 진행 중이다 — [[VA-API-001]] 4장 `VideoStatus`) · elif `failed` → `failed` · else(`done`) → `analyzed`
 2. `analyzed_at` = if `status == analyzed` → `job.finished_at` · else → `None`
 3. `→ Video(row의 컬럼 전부, status, analyzed_at, chat_turn_count=chat_count)`
 
 **출력** `Video`
 
-**테스트 관점** 작업 없음 → `registered` · `running` → `in_progress` · `done` → `analyzed`이고 `analyzed_at == job.finished_at` · `failed` → `analyzed_at=None` · **이 함수 말고 `status`를 만드는 곳이 없다**(grep으로 확인)
+**테스트 관점** 작업 없음 → `registered` · `running` → `in_progress` · `queued` → `in_progress` · `done` → `analyzed`이고 `analyzed_at == job.finished_at` · `failed` → `analyzed_at=None` · **이 함수 말고 `status`를 만드는 곳이 없다**(grep으로 확인)
 
 ---
 
@@ -204,4 +204,4 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 - [ ] `list_inbox`의 길이 재기 캐시 — 파일 수십 개면 ffprobe 수십 번. 수정 시각 + 크기를 키로 메모리에 둘지. 첫 버전은 캐시 없음, 동시 4개([[VA-DOM-002]] 7장과 같은 항목)
 - [ ] `info_of`의 SHA-256이 수 GB 파일에서 몇 초 걸린다 — 화면 대기 표시로 충분한지, 앞 64MB만 해시할지. 앞부분만 하면 같은 앞부분을 가진 다른 파일이 같은 영상으로 판정될 수 있어 첫 버전은 전체
-- [ ] UI-1이 열려 있는 동안 `list`를 다시 부르는 주기 — [[VA-SEQ-001]] 3장과 같은 항목. 진행 중 행이 있을 때만 3초로 시작
+- [x] UI-1이 열려 있는 동안 `list`를 다시 부르는 주기 — [[VA-SEQ-001]] 3장과 같은 항목. 결정(카드 B1): 진행 중 · 대기 중 행이 있는 동안 3초, 없으면 부르지 않는다([[VA-UI-002#UI-1]] 규칙)

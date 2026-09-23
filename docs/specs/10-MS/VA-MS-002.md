@@ -425,7 +425,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 **처리** — 워커([[#pipeline.worker]])가 띄운 백그라운드 태스크 안. 서비스 호출마다 세션 하나
 1. `stages = DB: analysis_jobs where id`의 `stages`(짧은 세션) · `tmp = config.DATA_DIR / "tmp" / str(video.id)` · `FS: mkdir`
 2. `for stage in stages:` `JobService.mark_stage(job_id, stage)` 뒤 단계 실행 —
-   - `download` · if `video.has_captions` → `(lines, lang, kind) = AudioSourcePort.captions(video.source_id)` · `AnalysisService.save_transcript(video.id, caption_manual if kind == manual else caption_auto, lang, None, lines)` · else → `audio = AudioSourcePort.download_audio(video.source_id, tmp)`
+   - `download` · if `video.has_captions` → `(lines, lang, kind) = AudioSourcePort.captions(video.source_id)` · if `None`(등록 뒤 자막이 사라짐 — 단계 목록에 받아쓰기가 없다) → `! YtdlpError('자막을 찾지 못했습니다', kind=unavailable)`, `youtube`로 접힌다 · `AnalysisService.save_transcript(video.id, caption_manual if kind == manual else caption_auto, lang, None, lines)` · else → `audio = AudioSourcePort.download_audio(video.source_id, tmp)`
    - `extract` → `audio = AudioSourcePort.extract_audio(config.INBOX_DIR / video.origin, tmp)`
    - `transcribe` → if `audio` 없음(로컬 음성) → `audio = config.INBOX_DIR / video.origin` · `transcribe_stage(job_id, video, audio, tmp)`
    - `summarize` → `AnalysisService.generate_summary(video)`
@@ -438,7 +438,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** [[#JobService.mark_stage]] · [[#JobService.finish]] · [[#JobService.fail]] · [[#pipeline.transcribe_stage]] · [[#pipeline.error_kind]] · `AudioSourcePort.captions` · `download_audio` · `extract_audio` · `AnalysisService.save_transcript` · `generate_summary` · `generate_chapters` · `generate_questions`
 
-**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다
+**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다 · 자막이 사라져 `captions`가 None → `failed`, `error.kind=youtube`
 
 ---
 
@@ -493,9 +493,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 근거: [[VA-DOM-002]] 4.2 파이프라인 문단 · [[VA-UI-002#UI-3]] 5.1 제목 재료
 
-**처리** if `isinstance(e, (TimeoutError, OSError의 네트워크 계열, openai.APIConnectionError))` → `network`(`APITimeoutError`는 `APIConnectionError`의 하위라 함께 걸린다) · elif OpenAI SDK 예외 → `openai` · elif 어댑터의 `YtdlpError` → `youtube` · elif 어댑터의 `FfmpegError` → `ffmpeg` · elif `OSError(ENOSPC)` → `disk` · else → `unknown`
+**처리** if `isinstance(e, (TimeoutError, OSError의 네트워크 계열, openai.APIConnectionError))` → `network`(`APITimeoutError`는 `APIConnectionError`의 하위라 함께 걸린다) · elif OpenAI SDK 예외 또는 `OpenAIOutputError`(모델 출력이 형식에 맞지 않아 어댑터가 던진 것 — [[VA-MS-007]] 0장) → `openai` · elif 어댑터의 `YtdlpError` → `youtube` · elif 어댑터의 `FfmpegError` → `ffmpeg` · elif `OSError(ENOSPC)` → `disk` · else → `unknown`
 
-**테스트 관점** 여섯 종류 각각 · OpenAI SDK의 연결 오류는 `openai`가 아니라 `network`(SDK가 `APIConnectionError`로 감싼다 — 먼저 검사)
+**테스트 관점** 여섯 종류 각각 · `OpenAIOutputError` → `openai` · OpenAI SDK의 연결 오류는 `openai`가 아니라 `network`(SDK가 `APIConnectionError`로 감싼다 — 먼저 검사)
 
 ---
 
