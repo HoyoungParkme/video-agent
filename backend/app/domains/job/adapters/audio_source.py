@@ -115,3 +115,21 @@ class AudioSourceAdapter:
         finally:
             with contextlib.suppress(FileNotFoundError):
                 os.remove(src)
+
+    async def extract_audio(self, src: str, dest: str) -> str:
+        """VA-MS-006#audio_source.extract_audio
+
+        영상에서 음성을 뽑거나 음성 파일을 바꿔 mp3 64kbps 모노 16kHz로 쓴다. src는 읽기만 한다.
+        로컬 음성은 추출 단계가 없어 받아쓰기 단계가 조각을 나누기 전에 부른다.
+
+        Args:
+            src: inbox 안 영상 · 음성 파일
+            dest: 임시 폴더
+
+        Returns:
+            dest 안 mp3 경로
+
+        Raises:
+            FfmpegError: 그대로
+        """
+        return await ffmpeg.extract_audio(src, dest)

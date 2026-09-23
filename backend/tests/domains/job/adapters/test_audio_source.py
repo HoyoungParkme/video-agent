@@ -1,11 +1,17 @@
-"""job/adapters/audio_source — 자막 · 음성 확보(VA-MS-006 audio_source). infra는 가짜로."""
+"""job/adapters/audio_source — 자막 · 음성 확보(VA-MS-006 audio_source). infra는 가짜로.
+
+진짜 ffmpeg가 있어야 하는 형식 확인 하나는 호스트에 ffmpeg가 없으면 건너뛴다(이미지에는 있다).
+"""
 
 from __future__ import annotations
 
+import asyncio
+import shutil
 from pathlib import Path
 
 import pytest
 
+from app.core.config import config
 from app.domains.job.adapters.audio_source import AudioSourceAdapter
 from app.infra import ffmpeg, ytdlp
 from app.infra.errors import FfmpegError, YtdlpError
@@ -173,3 +179,36 @@ async def test_convert_failure_removes_download(fake_media, tmp_path: Path) -> N
     with pytest.raises(FfmpegError):
         await AudioSourceAdapter().download_audio("abcdefghijk", str(tmp_path))
     assert list(tmp_path.iterdir()) == []
+
+
+async def test_extract_audio_reads_src_only(fake_media, tmp_path: Path) -> None:
+    src = tmp_path / "inbox" / "talk.wav"
+    src.parent.mkdir()
+    src.write_bytes(b"wav")
+    before = (src.stat().st_mtime_ns, src.stat().st_size)
+    out = await AudioSourceAdapter().extract_audio(str(src), str(tmp_path))
+    assert out == str(tmp_path / "audio.mp3")
+    assert (src.stat().st_mtime_ns, src.stat().st_size) == before
+
+
+real = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg가 없다")
+
+
+@real
+async def test_real_extract_audio_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("FFMPEG_BIN", "FFPROBE_BIN"):
+        monkeypatch.setattr(config, name, name.split("_")[0].lower())
+    src = tmp_path / "talk.wav"  # 스테레오 44.1kHz wav
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=5",
+        "-ac", "2", "-ar", "44100", str(src),
+    )  # fmt: skip
+    assert await proc.wait() == 0
+    before = (src.stat().st_mtime_ns, src.stat().st_size)
+    out = await AudioSourceAdapter().extract_audio(str(src), str(tmp_path))
+    streams = (await ffmpeg.probe(out))["streams"]
+    assert [(s["codec_name"], s["channels"], s["sample_rate"]) for s in streams] == [
+        ("mp3", 1, "16000")
+    ]
+    assert int(streams[0]["bit_rate"]) == 64000
+    assert (src.stat().st_mtime_ns, src.stat().st_size) == before
