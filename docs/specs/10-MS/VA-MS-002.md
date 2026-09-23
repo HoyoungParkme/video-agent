@@ -27,6 +27,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 | `config.CHUNK_SEC` | 600 | 64kbps 모노 10분 ≈ 4.8MB. 25MB 상한([[VA-INFRA-001#C2]])의 1/5라 무음 경계로 조금 늘어나도 안전 |
 | `config.STT_CONCURRENCY` | 3 | 시간당 3분 목표([[VA-PRD-001#N1]])와 OpenAI 요청 제한 사이. 측정 뒤 조정 |
 | `config.CHUNK_MAX_ATTEMPTS` | 3 | 화면 문구 '3번 다시 보냈지만'([[VA-UI-002#UI-3]]) |
+| `config.CHUNK_RETRY_WAIT_SEC` | 2 | 조각을 다시 보내기 전에 기다리는 첫 시간. 다음은 두 배(2초 · 4초). SDK 재시도를 꺼서([[VA-MS-007]] `OPENAI_MAX_RETRIES`) 요청 한도 · 일시 오류에 바로 다시 보내면 세 번이 1초 안에 끝난다 |
 | `config.CHUNK_EST_SEC` | 45 | 조각 하나(10분)의 받아쓰기 예상 시간. 예상치 계산용. 측정 뒤 조정 |
 | `config.TEXT_EST_SEC` | 60 | 요약 · 챕터 · 추천 질문 세 단계 합. 자막 있음의 '약 1분' |
 | `config.TOKENS_PER_MIN` | 200 | 한국어 말하기 분당 토큰 추정. 텍스트 비용 계산용 |
@@ -435,7 +436,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
    - `chapter` → `AnalysisService.generate_chapters(video)`
    - `suggest` → `AnalysisService.generate_questions(video)`
 3. `JobService.finish(job_id)` · `FS: rmtree(tmp, ignore_errors=True)`
-4. 예외 처리 — `except CancelledError → raise`(아무것도 쓰지 않는다. 조각 파일도 둔다) · `except Exception as e → JobService.fail(job_id, JobError(error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1))` · 내려받기 · 추출 실패면 `FS: rmtree(tmp)`([[VA-UC-001#UC-S2]] 1d). 받아쓰기 실패는 `transcribe_stage`가 `chunk_seq` · `attempts`를 채운 `JobError`로 던진다
+4. 예외 처리 — `except CancelledError → raise`(아무것도 쓰지 않는다. 조각 파일도 둔다) · `except Exception as e → JobService.fail(job_id, JobError(error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1))` · 내려받기 · 추출 실패면 `FS: rmtree(tmp)`([[VA-UC-001#UC-S2]] 1d) · 첫 단계에 들어가기 전에 실패하면(작업 행 읽기 · 임시 폴더 만들기) 처음부터(`run`)는 지우고 이어하기(`resume`)는 그대로 둔다 — 받아쓰기에서 멈춘 작업의 조각 파일이 그 안에 있다. 지우면 조각 행만 남아 다시 시도가 매번 실패한다. 받아쓰기 실패는 `transcribe_stage`가 `chunk_seq` · `attempts`를 채운 `JobError`로 던진다
 
 **출력** 없음. 결과는 행에
 
@@ -461,7 +462,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** [[#pipeline.run]]의 것 전부 · [[#pipeline.transcribe_stage]]
 
-**테스트 관점** 조각 하나가 실패한 상태에서 재개 → 완료한 조각은 OpenAI에 안 보낸다(가짜 포트 호출 기록) · 요약 실패에서 재개 → 받아쓰기를 안 한다 · 조각도 음성 파일도 없이 받아쓰기 재개 → 추출부터 다시 · 로컬 음성을 바꾸다 멈춘 채 재개 → 음성 파일이 남아 있어도 다시 바꾼다
+**테스트 관점** 조각 하나가 실패한 상태에서 재개 → 완료한 조각은 OpenAI에 안 보낸다(가짜 포트 호출 기록) · 요약 실패에서 재개 → 받아쓰기를 안 한다 · 조각도 음성 파일도 없이 받아쓰기 재개 → 추출부터 다시 · 로컬 음성을 바꾸다 멈춘 채 재개 → 음성 파일이 남아 있어도 다시 바꾼다 · 이어하기가 첫 단계에 들어가기 전에 실패해도 조각 파일은 남고, 다음 다시 시도에서 이어 간다
 
 ---
 
@@ -476,8 +477,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 **처리**
 1. `chunks = DB: audio_chunks where job_id` · if 비어 있음 → `plans = AudioSplitPort.split(audio, tmp)` · `JobService.plan_chunks(job_id, plans)` · 다시 읽는다
 2. `todo = [c for c in chunks if c.state != done]` · `sem = Semaphore(row.concurrency)` · `models = row.stt_model` · 조각마다 `base = c.attempts`(이번 실행을 시작할 때의 누적 횟수)
-3. 조각마다 태스크 — `async def one(c):` `async with sem:` `loop:` `JobService.mark_chunk(job_id, c.seq, in_flight)` · `try: segs = SttPort.transcribe(c.path, model)` · `JobService.mark_chunk(job_id, c.seq, done, segs)` · `FS: remove(c.path)` · `return` · `except Exception as e:` `sent = attempts(방금 올린 값) − base`(**이번 실행에서 보낸 횟수** — 다시 시도하면 상한을 새로 센다) · if `sent < config.CHUNK_MAX_ATTEMPTS` → `mark_chunk(waiting)` · 계속(같은 조각을 다시) · else → `mark_chunk(failed)` · `raise ChunkFailed(seq=c.seq, sent, cause=e)`
-4. `results = gather(one(c) for c in todo, return_exceptions=True)` — **하나가 실패해도 나머지를 끝까지 기다린다.** 그래야 완료 수(j)와 다음 조각(r)이 맞다
+3. 조각마다 태스크 — `async def one(c):` `async with sem:` if `stop` → `return`(보내지 않는다 — 조각은 `waiting` 그대로) · `loop:` `JobService.mark_chunk(job_id, c.seq, in_flight)` · `try: segs = SttPort.transcribe(c.path, model)` · `JobService.mark_chunk(job_id, c.seq, done, segs)` · `FS: remove(c.path)` · `return` · `except Exception as e:` `sent = attempts(방금 올린 값) − base`(**이번 실행에서 보낸 횟수** — 다시 시도하면 상한을 새로 센다) · if `sent < config.CHUNK_MAX_ATTEMPTS` → `mark_chunk(waiting)` · `sleep(config.CHUNK_RETRY_WAIT_SEC × 2^(sent−1))` · 계속(같은 조각을 다시) · else → `mark_chunk(failed)` · `stop = True` · `raise ChunkFailed(seq=c.seq, sent, cause=e)`
+4. `results = gather(one(c) for c in todo, return_exceptions=True)` — 한 조각이 상한을 넘으면 **새 조각은 시작하지 않고, 돌던 조각은 끝까지 기다린다**([[VA-UC-001#UC-S3]] 3a2). 그래야 완료 수(j)와 다음 조각(r)이 맞고, 키가 막혔거나 잔액이 없을 때 남은 조각을 모두 보내 보며 헛돌지 않는다
 5. if `ChunkFailed`가 하나라도 있음 → 가장 작은 `seq`의 것으로 `raise JobFailure(JobError(kind=error_kind(cause), reason=reason_of(cause), chunk_seq=seq, attempts=sent))` — `run`이 받아 그 `JobError` 그대로 `fail`. `attempts`는 이번 실행에서 보낸 횟수라 화면 문구 '{n}번 보냈지만'이 상한과 같다
 6. `all = DB: audio_chunks where job_id order by seq`(이번엔 `result` 포함) · `lines = []` · 조각마다 `result`의 `SttSegment`에 `offset_sec`을 더해 `CaptionLine(start_sec, end_sec, text)`으로 · `language`는 첫 조각의 `language`
 7. `AnalysisService.save_transcript(video.id, stt, language, row.stt_model, lines)`
@@ -488,7 +489,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** [[#JobService.plan_chunks]] · [[#JobService.mark_chunk]] · [[#pipeline.error_kind]] · [[#pipeline.reason_of]] · `AudioSplitPort.split` · `SttPort.transcribe` · `AnalysisService.save_transcript`
 
-**테스트 관점** 가짜 STT가 16번을 세 번 실패시키면 → `failed` 조각 하나, `attempts=3`, 나머지는 끝까지 돌아 `done` · `JobError.chunk_seq=16` · 재개 시 `done` 조각은 호출 안 됨 · 동시에 도는 태스크가 `concurrency`를 넘지 않는다(가짜 STT가 동시 수를 센다) · 이어 붙인 구간의 시각이 오프셋만큼 밀린다(2번째 조각 0초 → 600초) · `done` 조각의 파일은 지워지고 `waiting` 조각의 파일은 남는다 · 다시 시도 뒤 `attempts=3`인 실패 조각도 다시 3번까지 보내고, 또 실패하면 `JobError.attempts=3`(누적 6)
+**테스트 관점** 가짜 STT가 한 조각을 세 번 실패시키면 → `failed` 조각 하나, `attempts=3`, 돌던 조각은 끝까지 돌아 `done`, 아직 시작하지 않은 조각은 보내지 않고 `waiting` · `JobError.chunk_seq`가 그 조각 · 다시 보내기 전에 설정값만큼(2초 · 4초) 기다린다 · 재개 시 `done` 조각은 호출 안 됨 · 동시에 도는 태스크가 `concurrency`를 넘지 않는다(가짜 STT가 동시 수를 센다) · 이어 붙인 구간의 시각이 오프셋만큼 밀린다(2번째 조각 0초 → 600초) · `done` 조각의 파일은 지워지고 `waiting` 조각의 파일은 남는다 · 다시 시도 뒤 `attempts=3`인 실패 조각도 다시 3번까지 보내고, 또 실패하면 `JobError.attempts=3`(누적 6)
 
 ---
 
