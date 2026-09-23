@@ -111,3 +111,26 @@ async def verify_key(key: str) -> KeyCheck:
 
 def _first_line(message: str) -> str:
     return message.strip().splitlines()[0] if message.strip() else ""
+
+
+async def transcribe(client: AsyncOpenAI, path: str, model: str) -> dict:
+    """VA-MS-007#openai.transcribe
+
+    음성 파일 하나를 받아쓴다 — verbose_json, 구간 단위 시각. 언어는 자동 감지.
+
+    Args:
+        client: `client(key)`가 준 클라이언트
+        path: 음성 파일(25MB 이하)
+        model: 받아쓰기 모델
+
+    Returns:
+        응답 dict — language · duration · segments[{start, end, text}]
+    """
+    with open(path, "rb") as f:
+        resp = await client.audio.transcriptions.create(
+            model=model,
+            file=f,
+            response_format="verbose_json",
+            timestamp_granularities=["segment"],
+        )
+    return resp.model_dump()

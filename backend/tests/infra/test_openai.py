@@ -121,3 +121,31 @@ async def test_key_not_logged(server: FakeServer, caplog: pytest.LogCaptureFixtu
     server.reply = _error(401, "invalid_api_key")
     await openai.verify_key(KEY)
     assert KEY not in caplog.text
+
+
+class _Recorder:
+    """가짜 SDK 메서드 — 받은 인자를 적고 정한 값을 돌려준다."""
+
+    def __init__(self, result: Any = None, error: Exception | None = None) -> None:
+        self.kwargs: dict[str, Any] = {}
+        self.result, self.error = result, error
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.kwargs = kwargs
+        if self.error:
+            raise self.error
+        return self.result
+
+
+async def test_transcribe(tmp_path: Path) -> None:
+    audio = tmp_path / "1.mp3"
+    audio.write_bytes(b"mp3")
+    body = {"language": "korean", "duration": 600.0, "segments": [{"start": 0.0, "end": 4.2}]}
+    rec = _Recorder(SimpleNamespace(model_dump=lambda: body))
+    fake = SimpleNamespace(audio=SimpleNamespace(transcriptions=rec))
+    assert await openai.transcribe(fake, str(audio), "whisper-1") == body
+    assert rec.kwargs["response_format"] == "verbose_json"
+    assert rec.kwargs["timestamp_granularities"] == ["segment"]
+    assert rec.kwargs["model"] == "whisper-1"
+    assert "language" not in rec.kwargs
+    assert rec.kwargs["file"].closed
