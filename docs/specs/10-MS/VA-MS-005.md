@@ -29,7 +29,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 | 이름 | 값 | 이유 |
 |---|---|---|
 | `config.ENV_PATH` | `/app/.env` | compose가 호스트 `.env`를 마운트하는 컨테이너 안 경로. 환경 변수 `ENV_PATH`로 바꿀 수 있다(테스트) |
-| `config.MODEL_OPTIONS` | 받아쓰기 `whisper-1`(분당 $0.006) · 텍스트 `gpt-5-mini`(입력 $0.25 · 출력 $2.00 / 100만 토큰), `gpt-5.4-mini`, `gpt-5.4` — 단가는 카드 A를 시작할 때 당시 값으로 채운다 | [[VA-INFRA-001]] 3절, [[VA-UI-002#UI-5]] 3.1 · 3.3. 받아쓰기 목록은 구간 시각을 주는 모델만([[VA-INFRA-001#C3]]) |
+| `config.MODEL_OPTIONS` | 받아쓰기 `whisper-1`(분당 $0.006) · 텍스트 `gpt-5-mini`(입력 $0.25 · 출력 $2.00), `gpt-5.4-mini`(입력 $0.75 · 출력 $4.50), `gpt-5.4`(입력 $2.50 · 출력 $15.00) — 텍스트는 100만 토큰당, 표준 요금. 2026-09-23 OpenAI 가격표 값 | [[VA-INFRA-001]] 3절, [[VA-UI-002#UI-5]] 3.1 · 3.3. 받아쓰기 목록은 구간 시각을 주는 모델만([[VA-INFRA-001#C3]]) |
 | `config.DEFAULT_MODELS` | `whisper-1` · `gpt-5-mini` | 파일에 선택이 없을 때 |
 | `config.KEY_CHECK_TIMEOUT_SEC` | 10 | 키 확인 요청 시간 제한 |
 
@@ -237,7 +237,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 - [x] 키 저장 위치 — 결정: `.env` 파일 하나, 앱이 그 줄을 고친다. `data/settings.json`과 「파일 → 환경 변수」 우선순위는 없앴다(사용자 결정 2026-09-21)
 - [x] 키 확인이 네트워크로 실패했을 때의 배너 문구 — 결정: 문구를 가르고 버튼을 막지 않는다. 그래서 `require_key`가 마지막 결과가 `network`면 한 번 다시 확인한다([[VA-API-001]] 5장 11 · [[VA-UI-002]] 2장 되먹임 반영)
 - [x] 화면에서 모델을 바꾸는 유스케이스 — 반영: [[VA-UC-001#UC-H8]] 5번
-- [ ] 텍스트 모델 `gpt-5.4-mini` · `gpt-5.4`의 단가 — 카드 A를 시작할 때 당시 값을 `config.MODEL_OPTIONS`에 채운다([[VA-INFRA-001]] 9절 버전 고정과 같은 때, 사용자 결정 2026-09-21)
+- [x] 텍스트 모델 `gpt-5.4-mini` · `gpt-5.4`의 단가 — 채움: 0장 설정값(2026-09-23 가격표)
+- [ ] 새 모델 `gpt-5.6-sol` · `gpt-5.6-terra` · `gpt-5.6-luna`가 가격표에 있다. 선택지에 더할지 사용자 결정 — 더하려면 [[VA-UI-002#UI-5]] 3.3 선택지부터
 - [x] (반영: 클래스 명세 v12 · 시퀀스 v3 SEQ-12) **되먹임** — `.env`를 rename으로 바꿔치기할 수 없다(0장). [[VA-DOM-002#SettingsService]] 규칙과 [[VA-SEQ-001#SEQ-12]]의 「임시 파일 → rename」을 「제자리 쓰기」로 고친다. 폴더를 마운트하면 rename이 되지만 저장소 뿌리 전체를 api 컨테이너에 쓰기로 여는 것이라 택하지 않았다
 - [x] (반영: 클래스 명세 v12) **되먹임** — `require_key`가 `async`가 됐다(OpenAI를 부를 수 있다). 부르는 네 곳(`VideoService.register` · `JobService.start` · `retry` · `ChatService.ask`)은 이미 `async`라 `await`만 붙는다. `read_env` · `write_env` 둘을 [[VA-DOM-002#SettingsService]]에 private 메서드로 더한다
 - [ ] compose의 `env_file: .env` — api 서비스에 걸면 같은 이름의 환경 변수가 컨테이너에 옛 값으로 남는다. 이 서비스는 읽지 않으므로 해는 없지만, OpenAI SDK가 `OPENAI_API_KEY` 환경 변수를 스스로 읽지 않게 `infra/openai`가 키를 늘 인자로 넘긴다 — 카드 A에서 확인
