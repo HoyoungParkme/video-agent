@@ -285,9 +285,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 근거: [[VA-SEQ-001#SEQ-13]] · [[VA-DOM-002]] 5장 8 · 시퀀스 되먹임 #3
 
-**처리** **트랜잭션**: `rows = DB: analysis_jobs where status = running` · 행마다 `status=failed` · `error_kind=unknown` · `error_reason='서버가 다시 시작됨'` · `error_chunk_seq=None` · `error_attempts=None` · `DB: audio_chunks where job_id and state = in_flight → waiting` · `→ len(rows)`. `queued`는 건드리지 않는다 — 기다리던 것이라 워커가 뜨면 이어서 돈다. `main.py` lifespan이 **워커를 띄우기 전에** 부른다 — 거꾸로면 죽은 `running` 행 때문에 워커가 아무것도 꺼내지 못한다([[VA-SEQ-001#SEQ-13]])
+**처리** **트랜잭션**: `rows = DB: analysis_jobs where status = running` · 행마다 `status=failed` · `error_kind=unknown` · `error_reason='서버가 다시 시작됨'` · `error_chunk_seq=None` · `error_attempts=1`(돌던 단계를 한 번 보낸 것 — 응답의 `JobError.attempts`는 비지 않는 정수다, [[VA-API-001]] 4장) · `DB: audio_chunks where job_id and state = in_flight → waiting` · `→ len(rows)`. `queued`는 건드리지 않는다 — 기다리던 것이라 워커가 뜨면 이어서 돈다. `main.py` lifespan이 **워커를 띄우기 전에** 부른다 — 거꾸로면 죽은 `running` 행 때문에 워커가 아무것도 꺼내지 못한다([[VA-SEQ-001#SEQ-13]])
 
-**테스트 관점** `running` 둘(있을 수 없지만 데이터로) → 둘 다 `failed`, 반환 2 · `in_flight` 조각이 `waiting` · `done` 조각은 그대로 · `queued` 작업은 그대로 · 없으면 0
+**테스트 관점** `running` 하나 → `failed`, `error_attempts=1`, 반환 1(둘은 부분 unique 인덱스가 막아 데이터로도 만들 수 없다) · `in_flight` 조각이 `waiting` · `done` 조각은 그대로 · `queued` 작업은 그대로 · 없으면 0
 
 ---
 
@@ -402,17 +402,17 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **처리** — `main.py` lifespan이 태스크 하나로 띄운다. 끝없이 돈다
 1. `JobService.work_event.clear()`
-2. `row = JobService.claim_next()`(짧은 세션) · if `None` → `JobService.wait_for_work()` · 1로
-3. `video = load_video(row.video_id)` · if `None`(그 사이 지워짐 — 행도 cascade로 없다) → 1로
+2. `row = JobService.claim_next()`(짧은 세션) · if `None` → `JobService.wait_for_work()` · 1로. `claim_next`가 예외면(DB가 잠깐 안 됨 등) 로그를 남기고 `None`과 같게 — 워커는 죽지 않는다
+3. `video = load_video(row.video_id)` · if `None`(그 사이 지워짐 — 행도 cascade로 없다) → 1로 · if 예외 → 그 작업을 `fail`(`error_kind(e)`)로 접고 1로 — `running`으로 꺼낸 채 두면 대기열이 막힌다
 4. `coro = run(row.id, video) if row.stage == pending else resume(row.id, video)` · `task = asyncio.create_task(coro)` · `JobService.tasks[video.id] = task`
-5. `await task`를 `CancelledError`(삭제가 취소한 것) · `Exception`을 삼키며 기다린다 · `JobService.tasks.pop(video.id, None)` · 1로
+5. `await task`를 `CancelledError`(삭제가 취소한 것) · `Exception`을 삼키며 기다린다 · `JobService.tasks.pop(video.id, None)` · 태스크가 예외로 끝났으면(`run`이 `fail`로 접지 못한 경우) 그 작업을 `fail`(`error_kind(e)`)로 접는다 — `running`으로 남으면 대기열이 막힌다 · 1로
 6. **워커 자신이** 취소되면(서버 종료) 돌던 `task`도 취소하고 끝난다. 그 작업은 `running`인 채 남고 다음 시작 때 `fail_orphans`가 되돌린다
 
 **출력** 없음. 끝나지 않는다
 
 **호출하는 것** [[#JobService.claim_next]] · [[#JobService.wait_for_work]] · [[#pipeline.run]] · [[#pipeline.resume]]
 
-**테스트 관점** 가짜 `run`으로: `queued` 둘을 넣으면 차례로 하나씩만 돈다(동시에 `running` 둘이 없다) · 첫 작업이 예외로 끝나도 둘째가 시작된다 · `stage != pending`인 행은 `resume`으로 · `load_video`가 `None`이면 건너뛴다 · 워커를 취소하면 돌던 태스크도 취소된다 · 5에서 구분할 것 — 삼키는 `CancelledError`는 `task`의 것이고, 워커 자신의 취소는 다시 던진다(`task.cancelled()`로 가른다)
+**테스트 관점** 가짜 `run`으로: `queued` 둘을 넣으면 차례로 하나씩만 돈다(동시에 `running` 둘이 없다) · 첫 작업이 예외로 끝나도 둘째가 시작된다(첫 작업은 `failed`) · `stage != pending`인 행은 `resume`으로 · `load_video`가 `None`이면 건너뛴다 · 워커를 취소하면 돌던 태스크도 취소된다 · 5에서 구분할 것 — 삼키는 `CancelledError`는 `task`의 것이고, 워커 자신의 취소는 다시 던진다(`task.cancelled()`로 가른다)
 
 ---
 
