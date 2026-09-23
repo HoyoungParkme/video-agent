@@ -20,12 +20,27 @@ export interface FakeState {
   chatDelayMs: number;
   chats: number;
   transcriptions: number;
+  sttDelayMs: number;
+  sttFail: { seq: number; times: number; drop?: boolean } | null;
+  chatFail: number;
+  /** 받아쓴 조각 번호(성공한 것), 받은 차례대로 */
+  transcribed: number[];
 }
 
-/** 가짜 OpenAI의 채팅 지연을 바꾸거나(reset이면 부른 수도 0으로) 지금 값을 읽는다. */
+/**
+ * 가짜 OpenAI를 조절하거나 지금 값을 읽는다 — 채팅 · 받아쓰기 지연, 조각 하나를 몇 번 실패시킬지
+ * (drop이면 500 대신 연결을 끊는다 — 인터넷 끊김), 다음 채팅 몇 번을 실패시킬지.
+ * reset이면 부른 수 · 받은 조각 기록 · 남은 실패를 비운다(같은 요청의 설정값은 그 뒤에 들어간다).
+ */
 export async function fakeOpenAI(
   request: APIRequestContext,
-  body: { chat_delay_ms?: number; reset?: boolean } = {},
+  body: {
+    chat_delay_ms?: number;
+    stt_delay_ms?: number;
+    stt_fail?: { seq: number; times: number; drop?: boolean } | null;
+    chat_fail?: number;
+    reset?: boolean;
+  } = {},
 ): Promise<FakeState> {
   const res = await request.post(`${FAKE}/control`, { data: body });
   return (await res.json()) as FakeState;

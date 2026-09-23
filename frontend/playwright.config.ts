@@ -1,7 +1,8 @@
 /**
  * E2E — 가짜 OpenAI · api · web을 따로 띄우고 와이어프레임 요소 번호(data-el)로 누른다(VA-CODE-001 A · B1).
  * 포트는 개발 서버와 겹치지 않게 8190 · 8100 · 3100. web은 E2E 전용으로 빌드한다(넘길 api 주소가 다르다).
- * yt-dlp도 가짜다(e2e/fake-ytdlp.mjs). 테스트 DB(va_test)를 시작 때 비운다 — pytest와 함께 돌리지 않는다.
+ * yt-dlp · ffmpeg도 가짜다(e2e/fake-ytdlp.mjs · fake-ffmpeg.mjs). inbox는 시작 때 만드는 임시 폴더다.
+ * 테스트 DB(va_test)를 시작 때 비운다 — pytest와 함께 돌리지 않는다.
  */
 import path from "node:path";
 
@@ -27,6 +28,7 @@ export default defineConfig({
       // 경로는 따옴표로 — 저장소 경로에 공백이 있어도 엉뚱한 폴더를 지우지 않게
       command: [
         `rm -rf ${q(TMP)} && mkdir -p ${q(TMP)}`,
+        `node e2e/fake-ffmpeg.mjs --make-inbox ${q(path.join(TMP, "inbox"))}`,
         "cd ../backend",
         "uv run alembic downgrade base",
         "uv run alembic upgrade head",
@@ -39,6 +41,10 @@ export default defineConfig({
         OPENAI_BASE_URL: `http://127.0.0.1:${FAKE}/v1`,
         // YouTube에 닿지 않게 — 정해 둔 정보와 자막을 주는 가짜
         YTDLP_BIN: path.join(__dirname, "e2e", "fake-ytdlp.mjs"),
+        // 음성 추출 · 무음 · 자르기도 가짜 — inbox 파일과 조각은 길이를 담은 JSON이다
+        FFMPEG_BIN: path.join(__dirname, "e2e", "fake-ffmpeg.mjs"),
+        FFPROBE_BIN: path.join(__dirname, "e2e", "fake-ffmpeg.mjs"),
+        INBOX_DIR: path.join(TMP, "inbox"),
         DATABASE_URL: "postgresql+asyncpg://va:va@127.0.0.1:5433/va_test",
         INBOX_DISPLAY_PATH: "~/video-agent/inbox",
       },
