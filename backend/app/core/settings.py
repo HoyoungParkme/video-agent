@@ -214,5 +214,27 @@ class SettingsService:
             inbox_path=config.INBOX_DISPLAY_PATH,
         )
 
+    async def check_stored_key(self) -> KeyStatus:
+        """VA-MS-005#SettingsService.check_stored_key
+
+        저장된 키를 확인해 마지막 결과로 둔다. 던지지 않는다 — 서버 시작이 멈추면 안 된다.
+
+        Returns:
+            새 키 상태. 키가 없으면 missing이고 OpenAI를 부르지 않는다
+        """
+        key = self.read_env().get("OPENAI_API_KEY")
+        if not key:
+            self.last_check = KeyCheck(KeyState.missing, None, None, datetime.now(UTC))
+            return self.get().key
+        try:
+            check = await openai.verify_key(key)
+        except Exception as e:  # verify_key는 던지지 않지만, 무엇이 와도 연결 실패로 접는다
+            log.warning("키 확인이 예외로 끝났다: %s", type(e).__name__)
+            check = KeyCheck(
+                KeyState.invalid, ReasonKind.network, "연결하지 못했습니다", datetime.now(UTC)
+            )
+        self.last_check = check
+        return self.get().key
+
 
 settings = SettingsService()

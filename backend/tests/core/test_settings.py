@@ -163,3 +163,34 @@ def test_get_shows_last_failure(svc, env_file) -> None:
         ReasonKind.quota,
         "잔액이 없습니다",
     )
+
+
+# check_stored_key
+
+
+async def test_check_without_key(svc, env_file, verify) -> None:
+    assert (await svc.check_stored_key()).state == KeyState.missing
+    assert verify.calls == []
+
+
+async def test_check_ok_and_time_moves(svc, env_file, verify) -> None:
+    _write(env_file)
+    first = await svc.check_stored_key()
+    second = await svc.check_stored_key()
+    assert first.state == second.state == KeyState.ok
+    assert second.checked_at > first.checked_at
+
+
+async def test_check_folds_exceptions(svc, env_file, verify) -> None:
+    _write(env_file)
+    verify.error = RuntimeError("뜻밖의 오류")
+    k = await svc.check_stored_key()
+    assert (k.state, k.reason_kind) == (KeyState.invalid, ReasonKind.network)
+
+
+async def test_check_reads_hand_edited_file(svc, env_file, verify) -> None:
+    _write(env_file)
+    await svc.check_stored_key()
+    _write(env_file, NEW)
+    await svc.check_stored_key()
+    assert verify.calls == [KEY, NEW]
