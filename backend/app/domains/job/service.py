@@ -288,12 +288,13 @@ class JobService:
 
         Raises:
             KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다
-            JobExists: 이 영상에 이미 작업이 있다(실패한 작업은 다시 시도로)
+            JobExists: 이 영상에 이미 작업이 있다(실패한 작업은 다시 시도로). 같은 영상에
+                동시에 두 번 오면 둘째는 영상 하나에 작업 하나인 부분 unique에 걸려 이것이 된다
         """
         await settings.require_key()
         existing = await crud.latest(self.session, video.id)
         if existing is not None:
-            raise JobExists(job_id=existing.id, job_status=existing.status.value)
+            raise self._exists(existing)
         est = self._estimate(video)
         models = settings.current_models()
         now = datetime.now(UTC)
@@ -314,11 +315,22 @@ class JobService:
             stage_started_at=now,
         )
         self.session.add(row)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError:  # 확인과 넣기 사이에 같은 영상의 [분석 시작]이 먼저 들어갔다
+            await self.session.rollback()
+            existing = await crud.latest(self.session, video.id)
+            if existing is None:
+                raise
+            raise self._exists(existing) from None
         self.wake()
         await asyncio.sleep(0)  # 워커에게 한 번 양보한다 — 도는 작업이 없으면 곧 꺼낸다
         await self.session.refresh(row)
         return self.to_job(row, [], await self.queue_position(row))
+
+    @staticmethod
+    def _exists(row: AnalysisJobRow) -> JobExists:
+        return JobExists(job_id=row.id, job_status=row.status.value)
 
     async def progress(self, video_id: int) -> Job:
         """VA-MS-002#JobService.progress

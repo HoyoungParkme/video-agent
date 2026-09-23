@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.core.config import config
 from app.core.errors import JobExists, KeyMissing, NotFound, NotImplementedYet
+from app.domains.job import crud
 from app.domains.job.models import (
     AnalysisJobRow,
     AudioChunkRow,
@@ -273,6 +274,23 @@ async def test_start_twice_is_job_exists(db, make, key) -> None:
     with pytest.raises(JobExists) as e:
         await JobService(db).start(_video(row))
     assert e.value.extra == {"job_id": first.id, "job_status": "queued"}
+
+
+async def test_start_race_is_job_exists(db, make, key, monkeypatch) -> None:
+    # 확인과 넣기 사이에 같은 영상의 [분석 시작]이 먼저 들어간 경우(탭 둘) — 확인이 못 보게 한다
+    row = await make.video()
+    first = await JobService(db).start(_video(row))
+    real, calls = crud.latest, []
+
+    async def stale(session, video_id):
+        calls.append(video_id)
+        return None if len(calls) == 1 else await real(session, video_id)
+
+    monkeypatch.setattr(crud, "latest", stale)
+    with pytest.raises(JobExists) as e:
+        await JobService(db).start(_video(row))
+    assert e.value.extra == {"job_id": first.id, "job_status": "queued"}  # 먼저 들어간 것
+    assert (await db.scalars(select(AnalysisJobRow.id))).all() == [first.id]  # 행은 하나
 
 
 async def test_start_while_another_runs(db, make, key) -> None:
