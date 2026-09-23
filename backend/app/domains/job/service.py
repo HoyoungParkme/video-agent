@@ -49,6 +49,8 @@ if TYPE_CHECKING:
 TRANSCRIBE_WEIGHT = 70
 # 서버가 죽어 running인 채 남은 작업의 실패 이유
 ORPHAN_REASON = "서버가 다시 시작됨"
+# 요약 세 단계 — 예상 몫은 셋을 합쳐 config.TEXT_EST_SEC 하나다(남은 시간)
+TEXT_STAGES = (JobStage.summarize, JobStage.chapter, JobStage.suggest)
 
 
 def _weights(stages: list[str]) -> dict[str, float]:
@@ -126,10 +128,13 @@ class JobService:
     def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None:
         """VA-MS-002#JobService.remaining_sec
 
-        남은 시간. 받아쓰기는 남은 조각 수 ÷ 이번 실행의 속도 — 이번 실행에서 끝난 조각(단계 시작
-        뒤에 끝난 것)만 센다. 다시 시도 뒤 이전 실행의 조각까지 세면 속도가 부푼다. 이번 실행에서
-        아직 끝난 조각이 없으면 조각당 예상 시간으로. 조각이 없는 단계(와 조각을 나누는 중)는
-        예상 전체 시간에서 지난 시간을 뺀다(0 아래로 가지 않는다).
+        남은 시간 — 작업 전체가 끝날 때까지. 끝난 단계가 예상보다 빨랐거나 늦었던 차이는 뒤로
+        넘기지 않는다(넘기면 받아쓰기가 빨리 끝났을 때 요약 단계의 남은 시간이 거꾸로 는다).
+        받아쓰기는 남은 조각 수 ÷ 이번 실행의 속도에 요약 세 단계 몫을 더한다 — 이번 실행에서
+        끝난 조각(단계 시작 뒤에 끝난 것)만 센다. 다시 시도 뒤 이전 실행의 조각까지 세면 속도가
+        부푼다. 아직 끝난 조각이 없으면 조각당 예상 시간으로. 요약 세 단계는 그 몫에서 세 단계에
+        쓴 시간을 빼고, 그 앞 단계(와 조각을 나누는 중)는 예상 전체에서 지난 시간을 뺀다.
+        0 아래로 가지 않는다.
 
         Args:
             row: 작업 행
@@ -140,6 +145,7 @@ class JobService:
         """
         if row.status != JobStatus.running:
             return None
+        text = config.TEXT_EST_SEC
         if row.stage == JobStage.transcribe and chunks:
             left = sum(1 for c in chunks if c.state != ChunkState.done)
             now_done = sum(
@@ -148,9 +154,12 @@ class JobService:
                 if c.state == ChunkState.done and c.done_at and c.done_at >= row.stage_started_at
             )
             if not now_done:
-                return math.ceil(left / row.concurrency) * config.CHUNK_EST_SEC
+                return math.ceil(left / row.concurrency) * config.CHUNK_EST_SEC + text
             rate = now_done / max(_elapsed(row.stage_started_at), 1.0)  # 초당 조각
-            return math.ceil(left / rate)
+            return math.ceil(left / rate) + text
+        if row.stage in TEXT_STAGES:
+            spent = sum(row.stage_durations_sec.get(s.value, 0) for s in TEXT_STAGES)
+            return max(round(text - spent - _elapsed(row.stage_started_at)), 0)
         spent = sum(row.stage_durations_sec.values()) + _elapsed(row.stage_started_at)
         return max(round(row.est_seconds - spent), 0)
 

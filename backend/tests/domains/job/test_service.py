@@ -103,11 +103,42 @@ def _row(**kw) -> AnalysisJobRow:
 
 
 def test_remaining_sec_without_chunks() -> None:
-    assert JobService.remaining_sec(_row(), []) in (46, 47)  # 60 − 3 − 10(남짓)
+    # 요약 단계 — 세 단계 몫 60초에서 요약에 쓴 10초. 앞 단계(자막 3초)는 빼지 않는다
+    assert JobService.remaining_sec(_row(), []) in (49, 50)
     late = _row(stage_started_at=datetime.now(UTC) - timedelta(seconds=300))
     assert JobService.remaining_sec(late, []) == 0  # 예상보다 오래 걸리면 0 — 화면이 비운다
     for status in (JobStatus.queued, JobStatus.failed, JobStatus.done):
         assert JobService.remaining_sec(_row(status=status), []) is None
+
+
+def test_remaining_sec_text_stages_do_not_take_leftover_time() -> None:
+    # 받아쓰기가 예상보다 빨리 끝났다 — 쓰지 않은 시간이 요약 단계로 넘어오지 않는다(UI-001 8장)
+    started = datetime.now(UTC) - timedelta(seconds=2)
+    fast = _row(
+        stages=STT_STAGES,
+        est_seconds=435,
+        stage_durations_sec={"download": 30, "transcribe": 60},
+        stage_started_at=started,
+    )
+    assert JobService.remaining_sec(fast, []) in (57, 58)  # 60 − 2 — 435 − 92가 아니다
+    # 챕터 단계 — 요약에 쓴 시간만큼 줄어 있다
+    chapter = _row(
+        stage=JobStage.chapter,
+        stages=STT_STAGES,
+        est_seconds=435,
+        stage_durations_sec={"download": 30, "transcribe": 60, "summarize": 25},
+        stage_started_at=datetime.now(UTC) - timedelta(seconds=5),
+    )
+    assert JobService.remaining_sec(chapter, []) in (29, 30)  # 60 − 25 − 5
+    # 세 단계가 예상보다 오래 걸리면 0
+    slow = _row(
+        stage=JobStage.suggest,
+        stages=STT_STAGES,
+        est_seconds=435,
+        stage_durations_sec={"summarize": 40, "chapter": 30},
+        stage_started_at=started,
+    )
+    assert JobService.remaining_sec(slow, []) == 0
 
 
 def _transcribe_row(started_ago: float) -> AnalysisJobRow:
@@ -132,18 +163,19 @@ def _chunks(row: AnalysisJobRow, done_now: int, done_before: int, total: int) ->
 def test_remaining_sec_transcribe_from_this_run_rate() -> None:
     row = _transcribe_row(started_ago=240)  # 12개가 4분 — 초당 0.05개
     got = JobService.remaining_sec(row, _chunks(row, done_now=12, done_before=0, total=30))
-    assert got in (360, 361)  # 남은 18개는 6분
+    assert got in (420, 421)  # 남은 18개는 6분 + 요약 세 단계 몫 1분
 
 
 def test_remaining_sec_transcribe_before_first_chunk() -> None:
     row = _transcribe_row(started_ago=20)
-    assert JobService.remaining_sec(row, _chunks(row, 0, 0, 30)) == 10 * 45  # 30 ÷ 동시 3 × 45초
+    # 30 ÷ 동시 3 × 45초 + 요약 세 단계 몫
+    assert JobService.remaining_sec(row, _chunks(row, 0, 0, 30)) == 10 * 45 + 60
 
 
 def test_remaining_sec_transcribe_after_retry_ignores_old_chunks() -> None:
     # 다시 시도 — 이전 실행의 15개는 속도에 안 든다. 이번 실행에서 끝난 것이 없으면 예상치
     row = _transcribe_row(started_ago=2)
-    assert JobService.remaining_sec(row, _chunks(row, 0, 15, 30)) == 5 * 45
+    assert JobService.remaining_sec(row, _chunks(row, 0, 15, 30)) == 5 * 45 + 60
 
 
 def test_remaining_sec_transcribe_while_splitting() -> None:
