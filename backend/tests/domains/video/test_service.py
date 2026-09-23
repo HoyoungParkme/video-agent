@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import hashlib
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,8 +17,8 @@ from app.core.db import SessionLocal
 from app.core.errors import (
     Internal,
     KeyMissing,
+    NoAudioTrack,
     NotFound,
-    NotImplementedYet,
     PathOutsideInbox,
     SourceUnavailable,
     UnsupportedFile,
@@ -166,9 +167,50 @@ async def test_info_of_youtube_unavailable(db, youtube, unavailable, probe) -> N
     assert e.value.extra["reason"] == "비공개 영상이에요"
 
 
-async def test_info_of_local_is_stub(db, youtube, probe) -> None:
-    with pytest.raises(NotImplementedYet):
-        await VideoService(db, youtube, probe).info_of(LocalSource(source="local", path="a.mp4"))
+def local(name: str) -> LocalSource:
+    return LocalSource(source="local", path=name)
+
+
+async def test_info_of_local(db, youtube, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "talk.mp3").write_bytes(b"voice")
+    probe.files = {"talk.mp3": (3011, True)}  # 음성 파일도 음성 트랙이 있어 통과
+    info = await VideoService(db, youtube, probe).info_of(local("talk.mp3"))
+    assert (info.source_kind, info.title, info.origin, info.channel) == (
+        "local",
+        "talk.mp3",
+        "talk.mp3",
+        None,
+    )
+    assert (info.duration_sec, info.has_captions, info.caption_language) == (3011, False, None)
+    assert info.source_id == hashlib.sha256(b"voice").hexdigest()
+    assert probe.calls == [str(tmp_path / "talk.mp3")]
+
+
+async def test_info_of_local_same_content_same_id(db, youtube, probe, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "a.mp4").write_bytes(b"same")
+    (tmp_path / "b.mp4").write_bytes(b"same")
+    svc = VideoService(db, youtube, probe)
+    a, b = await svc.info_of(local("a.mp4")), await svc.info_of(local("b.mp4"))
+    assert a.source_id == b.source_id and a.origin != b.origin
+
+
+async def test_info_of_local_without_audio(db, youtube, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "silent.mp4").write_bytes(b"x")
+    probe.files = {"silent.mp4": (1800, False)}
+    with pytest.raises(NoAudioTrack) as e:
+        await VideoService(db, youtube, probe).info_of(local("silent.mp4"))
+    assert e.value.extra == {"duration_sec": 1800}  # 길이는 알려 시작 불가 판에 보인다
+
+
+async def test_info_of_local_unreadable(db, youtube, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "broken.mkv").write_bytes(b"x")
+    probe.files = {"broken.mkv": None}
+    with pytest.raises(UnsupportedFile):
+        await VideoService(db, youtube, probe).info_of(local("broken.mkv"))
 
 
 # --- register
@@ -241,9 +283,29 @@ async def test_register_local_name_checks(db, youtube, key, tmp_path, monkeypatc
     with pytest.raises(NotFound) as e:
         await svc.register(LocalSource(source="local", path="gone.mp4"))
     assert e.value.extra == {"resource": "inbox_file", "id": "gone.mp4"}
-    (tmp_path / "talk.MP4").write_text("x")
-    with pytest.raises(NotImplementedYet):  # 형식은 통과, 정보 조회는 B2
-        await svc.register(LocalSource(source="local", path="talk.MP4"))
+    (tmp_path / "talk.MP4").write_text("x")  # 대문자 확장자도 받는다
+    video = await svc.register(LocalSource(source="local", path="talk.MP4"))
+    assert (video.status, video.source_kind, video.title) == ("registered", "local", "talk.MP4")
+
+
+async def test_register_local_renamed_is_same_video(db, youtube, probe, key, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "workshop.mp4").write_bytes(b"recording")
+    svc = VideoService(db, youtube, probe)
+    first = await svc.register(local("workshop.mp4"))
+    (tmp_path / "workshop.mp4").rename(tmp_path / "workshop_0912.mp4")
+    again = await svc.register(local("workshop_0912.mp4"))
+    assert again.id == first.id and await _count(db) == 1
+    assert again.origin == "workshop_0912.mp4"  # 작업이 없던 영상이라 새 이름으로 덮어쓴다
+
+
+async def test_register_local_too_long(db, youtube, probe, key, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "all_day.mp4").write_bytes(b"x")
+    probe.files = {"all_day.mp4": (10801, True)}
+    with pytest.raises(VideoTooLong):
+        await VideoService(db, youtube, probe).register(local("all_day.mp4"))
+    assert await _count(db) == 0
 
 
 async def test_register_too_long(db, youtube, key, probe) -> None:

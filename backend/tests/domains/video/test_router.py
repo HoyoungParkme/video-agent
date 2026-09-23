@@ -19,6 +19,39 @@ async def test_post_video_registers_with_estimate(api, key) -> None:
     assert body["estimate"]["seconds"] == 60
 
 
+async def test_post_video_local_needs_stt(api, key, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "workshop_0912.mp4").write_bytes(b"recording")
+    probe.files = {"workshop_0912.mp4": (9000, True)}
+    r = await api.post("/api/videos", json={"source": "local", "path": "workshop_0912.mp4"})
+    assert r.status_code == 200
+    video, est = r.json()["video"], r.json()["estimate"]
+    assert (video["status"], video["source_kind"], video["has_captions"]) == (
+        "registered",
+        "local",
+        False,
+    )
+    assert (est["needs_stt"], est["chunks"], est["concurrency"], est["stt_minutes"]) == (
+        True,
+        15,
+        3,
+        150.0,
+    )
+    assert est["stt_cost_usd"] == 0.9
+
+
+async def test_post_video_local_without_audio(api, key, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "silent.mp4").write_bytes(b"x")
+    probe.files = {"silent.mp4": (1800, False)}
+    r = await api.post("/api/videos", json={"source": "local", "path": "silent.mp4"})
+    assert (r.status_code, r.json()["type"], r.json()["duration_sec"]) == (
+        422,
+        "urn:va:no-audio-track",
+        1800,
+    )
+
+
 async def test_post_video_existing_job_has_no_estimate(api, key, make) -> None:
     first = (await api.post("/api/videos", json={"source": "youtube", "url": URL})).json()
     await make.job(first["video"]["id"], JobStatus.done)

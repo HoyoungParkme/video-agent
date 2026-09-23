@@ -7,6 +7,7 @@ JobService · ChatService에 id로 묻는다 — 같은 세션으로(VA-DOM-002 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 from datetime import UTC, datetime
@@ -19,8 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import config
 from app.core.errors import (
     Internal,
+    NoAudioTrack,
     NotFound,
-    NotImplementedYet,
     PathOutsideInbox,
     UnsupportedFile,
     UrlInvalid,
@@ -32,7 +33,7 @@ from app.domains.job.models import JobStatus
 from app.domains.job.schemas import JobSummary
 from app.domains.job.service import JobService
 from app.domains.video import crud
-from app.domains.video.models import VideoRow
+from app.domains.video.models import SourceKind, VideoRow
 from app.domains.video.ports import MediaProbePort, YouTubeInfoPort
 from app.domains.video.schemas import (
     InboxFile,
@@ -80,6 +81,15 @@ def _ext(name: str) -> str:
 def _listed(entry: os.DirEntry[str]) -> bool:
     # inbox 바로 아래의 받는 형식 파일만 — 하위 폴더 · 숨김 파일 · 다른 확장자는 안 보인다
     return entry.is_file() and not entry.name.startswith(".") and _ext(entry.name) in accepted()
+
+
+def _sha256(path: Path) -> str:
+    # 1MB씩 — 수 GB 파일도 메모리를 조금만 쓴다. 이벤트 루프를 막지 않게 스레드에서 부른다
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while block := f.read(1 << 20):
+            h.update(block)
+    return h.hexdigest()
 
 
 def _check_inbox_name(name: str) -> None:
@@ -193,7 +203,8 @@ class VideoService:
         """VA-MS-001#VideoService.info_of
 
         출처에서 영상 정보를 읽는다. YouTube는 포트가 정보만 받는다(내려받지 않는다).
-        로컬 갈래는 스텁 — B2(VA-CODE-001 B1).
+        로컬 파일은 길이 · 음성 트랙을 재고 내용 SHA-256을 출처 식별자로 쓴다 — 이름을 바꿔도
+        같은 영상이다. 해시는 스레드에서 1MB씩(수 GB면 몇 초 — 화면은 버튼 대기 표시).
 
         Args:
             req: YouTube 주소 또는 inbox 파일 이름
@@ -203,11 +214,26 @@ class VideoService:
 
         Raises:
             SourceUnavailable: YouTube 정보를 못 가져왔다
-            NotImplementedYet: inbox 파일(B2)
+            UnsupportedFile: 파일을 열 수 없다(포트)
+            NoAudioTrack: 음성 트랙이 없는 파일
         """
         if isinstance(req, YouTubeSource):
             return await self.youtube_info.info(req.url)
-        raise NotImplementedYet("inbox 파일 분석은 아직 지원하지 않아요")
+        path = Path(config.INBOX_DIR) / req.path
+        duration, has_audio = await self.media_probe.probe(str(path))
+        if not has_audio:
+            raise NoAudioTrack(duration_sec=duration)
+        return SourceInfo(
+            source_kind=SourceKind.local,
+            source_id=await asyncio.to_thread(_sha256, path),
+            title=req.path,
+            channel=None,
+            duration_sec=duration,
+            origin=req.path,
+            has_captions=False,
+            caption_language=None,
+            caption_kind=None,
+        )
 
     async def register(self, req: RegisterRequest) -> Video:
         """VA-MS-001#VideoService.register
