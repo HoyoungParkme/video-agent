@@ -35,7 +35,7 @@ def parse(text: str, end_sec: float) -> float | None:
         초. 읽을 수 없으면 None
     """
     parts = text.strip().strip("[]").split(":")
-    if not all(p.isdigit() for p in parts):
+    if not all(p.isascii() and p.isdigit() for p in parts):  # '²' 같은 글자는 숫자가 아니다
         return None
     if len(parts) == 2:
         m, s = (int(p) for p in parts)

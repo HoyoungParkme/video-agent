@@ -39,8 +39,8 @@ def render(name: str, **values: str | int) -> str:
         PromptError: 파일이 없거나, 값이 빠졌거나 남는다
     """
     path = Path(__file__).parent / f"{name}.md"
-    if not path.is_file():
-        raise PromptError(name, set(values), set())
+    if not path.is_file():  # 채울 자리가 하나도 없다 — 준 값이 모두 남는다
+        raise PromptError(name, set(), set(values))
     text = path.read_text(encoding="utf-8")
     names = set(HOLE.findall(text))
     if names != set(values):

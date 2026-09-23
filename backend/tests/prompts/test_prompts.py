@@ -61,8 +61,9 @@ def test_unknown_value() -> None:
 
 
 def test_missing_file() -> None:
-    with pytest.raises(PromptError):
-        render("nothing")
+    with pytest.raises(PromptError) as e:
+        render("nothing", x=1)
+    assert (e.value.missing, e.value.extra) == (set(), {"x"})
 
 
 def test_value_is_not_expanded_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
