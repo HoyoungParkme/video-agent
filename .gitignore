@@ -19,7 +19,12 @@ __pycache__/
 # Node
 node_modules/
 .next/
+frontend/.next-e2e/
 frontend/next-env.d.ts
 frontend/test-results/
 frontend/playwright-report/
+frontend/e2e/.tmp/
 *.tsbuildinfo
+# next dev가 AI 에이전트를 알아보면 만드는 안내 파일 — 뿌리의 AGENTS.md가 그 몫이다
+frontend/AGENTS.md
+frontend/CLAUDE.md
