@@ -179,8 +179,11 @@ class VideoService:
             raise Internal("inbox 폴더를 읽을 수 없어요") from e
         sem = asyncio.Semaphore(config.PROBE_CONCURRENCY)
 
-        async def one(entry: os.DirEntry[str]) -> InboxFile:
-            stat = entry.stat()
+        async def one(entry: os.DirEntry[str]) -> InboxFile | None:
+            try:
+                stat = entry.stat()
+            except FileNotFoundError:  # 목록을 읽은 뒤 사라졌다(옮기는 중) — 그 파일만 뺀다
+                return None
             duration: int | None = None
             async with sem:
                 try:
@@ -195,7 +198,7 @@ class VideoService:
                 modified_at=datetime.fromtimestamp(stat.st_mtime, UTC),
             )
 
-        files = list(await asyncio.gather(*(one(e) for e in entries)))
+        files = [f for f in await asyncio.gather(*(one(e) for e in entries)) if f is not None]
         files.sort(key=lambda f: f.modified_at, reverse=True)
         return InboxListing(path=config.INBOX_DISPLAY_PATH, files=files)
 

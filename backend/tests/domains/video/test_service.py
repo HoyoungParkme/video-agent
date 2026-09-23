@@ -89,6 +89,25 @@ async def test_list_inbox_without_mount_is_internal(db, youtube, probe, tmp_path
         await VideoService(db, youtube, probe).list_inbox()
 
 
+async def test_list_inbox_skips_file_gone_while_listing(db, youtube, tmp_path, monkeypatch) -> None:
+    # 목록을 읽은 뒤 재기 전에 파일이 사라졌다(옮기는 중) — 그 파일만 빠지고 나머지는 보인다
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    _touch(tmp_path, "a.mp4", T0)
+    _touch(tmp_path, "b.mp4", T0 + timedelta(seconds=1))
+
+    class Mover:
+        moved = False
+
+        async def probe(self, path: str) -> tuple[int, bool]:
+            if not Mover.moved:  # 처음 재는 파일이 아닌 다른 파일이 그사이 옮겨진다
+                (tmp_path / ("b.mp4" if path.endswith("a.mp4") else "a.mp4")).unlink()
+                Mover.moved = True
+            return 60, True
+
+    listing = await VideoService(db, youtube, Mover()).list_inbox()
+    assert len(listing.files) == 1
+
+
 async def test_list_inbox_probes_a_few_at_a_time(db, youtube, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
     for i in range(10):
