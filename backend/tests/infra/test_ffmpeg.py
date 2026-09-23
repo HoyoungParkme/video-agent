@@ -44,3 +44,14 @@ async def test_probe_broken_file(fake) -> None:
         await ffmpeg.probe("a.mp4")
     assert e.value.returncode == 1
     assert "Invalid data" in e.value.reason
+
+
+async def test_extract_audio_args(fake, tmp_path: Path) -> None:
+    fake.behave(write_last=1)
+    out = await ffmpeg.extract_audio("/inbox/a.mp4", str(tmp_path))
+    assert out == str(tmp_path / "audio.mp3")
+    [args] = fake.calls()
+    assert args[:5] == ["-y", "-v", "error", "-i", "/inbox/a.mp4"]
+    assert "-vn" in args
+    assert args[args.index("-vn") + 1 : -1] == config.AUDIO_FORMAT
+    assert args[-1] == out

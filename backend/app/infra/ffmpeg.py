@@ -56,3 +56,20 @@ async def probe(path: str) -> dict:
         path,
     )
     return json.loads(out)
+
+
+async def extract_audio(src: str, dest: str) -> str:
+    """VA-MS-007#ffmpeg.extract_audio
+
+    음성만 뽑아 mp3 64kbps 모노 16kHz로 바꾼다(config.AUDIO_FORMAT). 원본은 읽기만 한다.
+
+    Args:
+        src: 원본 영상 · 음성 파일
+        dest: 결과를 둘 폴더
+
+    Returns:
+        `{dest}/audio.mp3`
+    """
+    out = os.path.join(dest, "audio.mp3")
+    await _run(config.FFMPEG_BIN, "-y", "-v", "error", "-i", src, "-vn", *config.AUDIO_FORMAT, out)
+    return out
