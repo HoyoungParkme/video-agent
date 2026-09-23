@@ -248,3 +248,44 @@ async def test_estimate_follows_model_price(db, make, env_file) -> None:
     dear = await JobService(db).estimate(_video(row))
     assert dear.text_model == "gpt-5.4"
     assert dear.text_cost_usd > cheap.text_cost_usd
+
+
+# --- start
+
+
+async def test_start_queues_and_wakes(db, make, key) -> None:
+    row = await make.video()
+    job = await JobService(db).start(_video(row))
+    assert job.status == JobStatus.queued  # 워커가 없으니 그대로 — 파이프라인을 기다리지 않는다
+    assert job.queue_position == 1
+    assert job.stage == JobStage.pending
+    assert JobService.work_event.is_set()
+    saved = await _job_row(db, job.id)
+    assert saved.stages == ["download", "summarize", "chapter", "suggest"]
+    assert saved.stt_model is None  # 자막 있는 YouTube
+    assert (saved.text_model, saved.concurrency, saved.est_seconds) == ("gpt-5-mini", 3, 60)
+    assert saved.queued_at == saved.started_at == saved.stage_started_at
+
+
+async def test_start_twice_is_job_exists(db, make, key) -> None:
+    row = await make.video()
+    first = await JobService(db).start(_video(row))
+    with pytest.raises(JobExists) as e:
+        await JobService(db).start(_video(row))
+    assert e.value.extra == {"job_id": first.id, "job_status": "queued"}
+
+
+async def test_start_while_another_runs(db, make, key) -> None:
+    other = await make.video()
+    await make.job(other.id, JobStatus.running)
+    first = await JobService(db).start(_video(await make.video()))
+    assert (first.status, first.queue_position) == (JobStatus.queued, 1)  # 거절하지 않는다
+    second = await JobService(db).start(_video(await make.video()))
+    assert second.queue_position == 2
+
+
+async def test_start_without_key_makes_no_row(db, make, env_file) -> None:
+    row = await make.video()
+    with pytest.raises(KeyMissing):
+        await JobService(db).start(_video(row))
+    assert await db.scalar(select(AnalysisJobRow)) is None

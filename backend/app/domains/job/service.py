@@ -273,3 +273,49 @@ class JobService:
             stt_model=models.stt.id,
             text_model=models.text.id,
         )
+
+    async def start(self, video: Video) -> Job:
+        """VA-MS-002#JobService.start
+
+        작업 행을 늘 `queued`로 넣고 워커를 깨운다. 다른 영상이 돌고 있어도 거절하지 않는다 —
+        `running`으로 바꾸는 것은 워커 하나다. 파이프라인을 기다리지 않는다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받아 넘긴 영상
+
+        Returns:
+            만든 작업. 워커가 벌써 꺼냈으면 running, 아니면 queued와 차례
+
+        Raises:
+            KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다
+            JobExists: 이 영상에 이미 작업이 있다(실패한 작업은 다시 시도로)
+        """
+        await settings.require_key()
+        existing = await crud.latest(self.session, video.id)
+        if existing is not None:
+            raise JobExists(job_id=existing.id, job_status=existing.status.value)
+        est = self._estimate(video)
+        models = settings.current_models()
+        now = datetime.now(UTC)
+        row = AnalysisJobRow(
+            video_id=video.id,
+            status=JobStatus.queued,
+            stage=JobStage.pending,
+            stages=[s.value for s in self.stages_for(video)],
+            progress_pct=0,
+            est_seconds=est.seconds,
+            est_cost_usd=Decimal(str(est.total_cost_usd)),
+            concurrency=config.STT_CONCURRENCY,
+            stt_model=models.stt.id if est.needs_stt else None,
+            text_model=models.text.id,
+            stage_durations_sec={},
+            started_at=now,
+            queued_at=now,
+            stage_started_at=now,
+        )
+        self.session.add(row)
+        await self.session.commit()
+        self.wake()
+        await asyncio.sleep(0)  # 워커에게 한 번 양보한다 — 도는 작업이 없으면 곧 꺼낸다
+        await self.session.refresh(row)
+        return self.to_job(row, [], await self.queue_position(row))
