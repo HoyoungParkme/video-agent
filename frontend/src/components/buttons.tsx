@@ -3,11 +3,12 @@
  * 막힌 주 버튼은 disabled가 아니라 aria-disabled다 — 초점을 받고, 누르면 부른 쪽이 설정으로 보낸다.
  * 기다리는 동안(busy)은 잠그고 글자를 깜빡인다(VA-UI-001 3.4 「지금 하는 중」).
  */
-import type { ButtonHTMLAttributes } from "react";
+import type { ComponentPropsWithRef } from "react";
 
 type Kind = "primary" | "secondary" | "danger";
 
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+// ref도 받는다 — 연 버튼으로 초점을 돌려줄 때(공통 1.2)
+interface Props extends ComponentPropsWithRef<"button"> {
   kind: Kind;
   /** 막힌 주 버튼 — 키가 없거나 확인에 실패했을 때 */
   blocked?: boolean;

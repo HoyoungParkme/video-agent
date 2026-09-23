@@ -1,7 +1,8 @@
 """problem+json 에러 17종 — 종류마다 예외 클래스 하나(VA-API-001 2장, DEV-5).
 
 서비스는 이 예외를 던지기만 하고 라우터는 잡지 않는다. main.py가 건 핸들러가 응답으로 바꾸고,
-표에 없는 예외는 포괄 핸들러가 `internal`로 만든다.
+표에 없는 예외는 포괄 핸들러가 `internal`로 만든다. 카드 스텁의 `not-implemented`(501)는
+표에 없는 임시 종류다 — 스텁이 모두 풀리는 B4에서 지운다(VA-CODE-001 0장).
 """
 
 from __future__ import annotations
@@ -139,6 +140,12 @@ class ExportFailed(Problem):
 
 class Internal(Problem):
     """예상 못 한 오류. detail은 고정 문구, 원인은 로그만."""
+
+
+class NotImplementedYet(Problem):
+    """아직 만들지 않은 기능 — 카드의 스텁(VA-CODE-001 0장). API 에러 표에 없는 임시 종류."""
+
+    kind, status, title = "not-implemented", 501, "아직 지원하지 않는 기능이에요"
 
 
 def _response(problem: Problem) -> JSONResponse:

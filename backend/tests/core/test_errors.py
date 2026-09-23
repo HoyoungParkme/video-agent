@@ -31,10 +31,15 @@ TABLE = {
 
 
 def test_seventeen_kinds() -> None:
-    classes = [errors.Problem, *errors.Problem.__subclasses__()]
-    assert {c.kind: c.status for c in classes if c is not errors.Problem} | {
-        "internal": errors.Internal.status
-    } == TABLE
+    classes = [c for c in errors.Problem.__subclasses__() if c is not errors.NotImplementedYet]
+    assert {c.kind: c.status for c in classes} | {"internal": errors.Internal.status} == TABLE
+
+
+def test_stub_kind() -> None:
+    """카드 스텁의 not-implemented — 표에 없는 임시 종류, B4에서 지운다(VA-CODE-001 0장)."""
+    stub = errors.NotImplementedYet("아직")
+    assert (stub.kind, stub.status) == ("not-implemented", 501)
+    assert stub.body()["type"] == "urn:va:not-implemented"
 
 
 class Body(BaseModel):

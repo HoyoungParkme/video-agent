@@ -71,7 +71,8 @@ app/
 ├── main.py                 앱 조립. 라우터 등록, 시작 때(lifespan) 저장된 키 확인(SettingsService.check_stored_key),
 │                           서버가 죽어 running인 채 남은 작업을 failed로 되돌림(JobService.fail_orphans),
 │                           대기열 워커 하나를 띄움(pipeline.worker(load_video) — VideoService.get을 감싸 넘긴다) — 끌 때 취소한다.
-│                           어댑터에 넘길 client_for(부를 때마다 SettingsService.api_key로 openai.client)를 조립한다
+│                           어댑터를 한 번 만들어 라우터(app.state)와 파이프라인(모듈 속성)에 건넨다 — 테스트는 여기서 가짜로 바꿔 끼운다.
+│                           OpenAI 어댑터에는 client_for(부를 때마다 SettingsService.api_key로 openai.client)를 넘긴다
 │                           Host가 localhost · 127.0.0.1 · api가 아닌 요청은 입구 앞에서 400(TrustedHost — INFRA 5절)
 ├── core/                   도메인에 속하지 않는 것
 │   ├── config.py           환경 변수 → Config (DB URL · inbox/data 경로 · .env 경로 · 조각 길이 · 동시 수 · 재시도 상한 · 모델 목록과 단가)
@@ -125,15 +126,18 @@ app/
 │   └── answer.md           질문 답변 — 스크립트 근거만, 근거 시각
 │
 ├── shared/                 두 묶음 이상이 쓰는 순수 유틸(규약 1.9)
+│   ├── captions.py         yt-dlp 정보 → 자막 트랙(키 · 언어 · 종류). YouTube 정보(video)와 자막 가져오기(job) 두 어댑터가 같은 규칙을 쓴다(MINISPEC 어댑터 `captions.pick`)
 │   └── timecode.py         초 ↔ `mm:ss` · `h:mm:ss`. 내보내기(analysis)와 OpenAI 어댑터 둘(analysis · chat)이 쓴다(MINISPEC 어댑터 `timecode.label` · MINISPEC 어댑터 `timecode.parse`)
 │
 └── infra/                  외부 시스템 공용 클라이언트. 도메인별 해석은 각 묶음의 adapters/에
+    ├── errors.py           밖이 실패했을 때의 예외 셋 — YtdlpError · FfmpegError · OpenAIOutputError(모델 출력이 형식에 맞지 않음, 어댑터가 던진다).
+    │                       파이프라인이 이것으로 ErrorKind를 가른다(MINISPEC infra 0장 · 작업 서비스 `pipeline.error_kind`)
     ├── ytdlp.py            영상 정보 · 자막 목록 · 자막 내려받기 · 음성 내려받기
     ├── ffmpeg.py           ffprobe(길이 · 음성 트랙) · 음성 추출 · 무음 탐지 · 자르기
     └── openai.py           클라이언트 생성 · 키 확인(모델 목록 조회) · 받아쓰기 호출 · 채팅 호출
 ```
 
-`shared/`에는 `timecode.py` 하나만 있다. 시각 표기는 내보내기(analysis)와 OpenAI 어댑터 둘(analysis의 요약 · chat의 답변)이 쓰는데, 묶음끼리는 서로의 모듈을 부르지 않으므로 묶음 밖에 둔다. 다른 순수 유틸은 두 묶음이 실제로 같이 쓸 때 옮긴다.
+`shared/`에는 둘이 있다. 시각 표기는 내보내기(analysis)와 OpenAI 어댑터 둘(analysis의 요약 · chat의 답변)이 쓰고, 자막 고르기는 영상 등록(video의 `youtube_info`)과 파이프라인의 자막 가져오기(job의 `audio_source`)가 쓴다 — 두 곳이 같은 규칙이어야 등록 때 알린 자막과 분석 때 받는 자막이 같다. 묶음끼리는 서로의 모듈을 부르지 않으므로 묶음 밖에 둔다. 다른 순수 유틸은 두 묶음이 실제로 같이 쓸 때 옮긴다.
 
 **이 문서에서 파일 경로를 적을 때**는 패키지 안 상대 경로로 쓴다 — `domains/job/pipeline.py`는 `backend/app/domains/job/pipeline.py`를 가리킨다.
 
@@ -156,7 +160,8 @@ app/
 ```
 frontend/
 ├── package.json · tsconfig.json · next.config.ts   화면만 설정하므로 여기. next.config.ts가 `/api/*`를 api로 넘긴다 — 브라우저는 web 하나만 본다
-├── playwright.config.ts · e2e/   E2E. 와이어프레임 요소 번호(data-el)로 누르고, 가짜 OpenAI 서버(e2e/fake-openai.mjs)를 함께 띄운다
+├── playwright.config.ts · e2e/   E2E. 와이어프레임 요소 번호(data-el)로 누르고, 가짜 OpenAI 서버(e2e/fake-openai.mjs)를 함께 띄운다.
+│                              yt-dlp도 가짜(e2e/fake-ytdlp.mjs — 정해 둔 정보 · 자막)라 YouTube에 닿지 않는다. 시작 때 테스트 DB를 비운다
 ├── public/                    그대로 서빙 — favicon
 └── src/
     ├── app/                   Next.js App Router — 라우팅. 기본형의 main.tsx · App.tsx 몫
@@ -170,6 +175,7 @@ frontend/
     ├── components/            두 화면 이상이 쓰는 조각만. 와이어프레임 1장 공통 컴포넌트와 1:1 —
     │                          Header · Dialog · TimeChip · KeyBanner · Toast · FailureAlert · EmptyBox · buttons
     ├── api/client.ts          서버 호출 한곳. 화면이 직접 fetch 하지 않는다. 형태는 [[VA-API-001]] 4장 스키마 그대로
+    ├── labels.ts              코드값 → 화면 글자. 두 화면 이상이 쓰는 표기만 — 단계 이름([[VA-UI-002#UI-3]] 규칙) · 언어 이름 · 분석한 때('오늘 14:08')
     ├── assets/                글꼴 파일 — Hahmlet · IBM Plex Sans KR · IBM Plex Mono (next/font 로컬, 앱 밖으로 요청 없음)
     ├── proxy.ts               요청이 라우트에 닿기 전에 — `/api/*`의 Host가 localhost · 127.0.0.1이 아니면 400(INFRA 5절, DNS 리바인딩). Next 16에서 middleware의 새 이름
     └── styles.css             [[VA-UI-001]] 3장 토큰의 전사. 값을 컴포넌트에 직접 쓰지 않는다
@@ -1062,6 +1068,8 @@ class VideoRow(Base):
 
 **세션**: 요청마다 하나(`core/db.py`). 파이프라인 태스크는 단계마다 짧은 세션을 열고 닫는다 — 십여 분 도는 태스크가 세션 하나를 잡고 있지 않게. 트랜잭션 경계는 서비스 메서드 하나다.
 
+**서비스 조립**: 서비스는 클래스이고 생성자가 세션과 그 묶음의 포트를 받는다(`VideoService(session, youtube_info)` · `AnalysisService(session, summarizer)`). 라우터는 요청 세션과 `app.state`의 어댑터로 만들고, 파이프라인은 부를 때마다 짧은 세션으로 만든다. `JobService`가 들고 있는 태스크 핸들과 워커를 깨우는 신호는 프로세스에 하나라 클래스 속성이다. 작업 묶음은 `Video` 타입을 타입 검사 때만 import한다 — 영상 묶음을 부르지 않는다(3.2).
+
 **에러**: `core/errors.py`에 problem+json 종류마다 예외 클래스 하나. 라우터는 잡지 않고 앱 수준 핸들러가 `application/problem+json`으로 바꾼다. 포괄 핸들러가 나머지를 `urn:va:internal`로.
 
 **백그라운드**: `asyncio.create_task(pipeline.run(...))`. 핸들은 `JobService`의 `dict[int, Task]`(video_id → Task). 프로세스 하나 전제.
@@ -1089,4 +1097,4 @@ class VideoRow(Base):
 - [x] (반영: ERD v4) **되먹임** `analysis_jobs.queued_at timestamptz`와 대기열용 인덱스 — [[VA-DOM-003#analysis_jobs]]
 - [x] 프롬프트 파일의 자리 표시 이름과 출력 형식 — 반영: MINISPEC 어댑터 0장 「프롬프트 파일」
 - [ ] 관련 챕터 고르기(`ChatService.context_for`) — 첫 버전은 제목 · 요점 낱말 일치(MINISPEC 대화 서비스 `ChatService.context_for`). 품질이 모자라면 간단 임베딩으로 — 사용자가 결과를 보고 정한다([[VA-INFRA-001]] 9절)
-- [x] `shared/` — 결정: 시각 표기가 두 묶음에서 쓰여 `shared/timecode.py`를 만들었다(1장, MINISPEC 어댑터 되먹임). 프런트는 `components/TimeChip`이 따로 가진다
+- [x] `shared/` — 결정: 시각 표기가 두 묶음에서 쓰여 `shared/timecode.py`를 만들었다(1장, MINISPEC 어댑터 되먹임). 프런트는 `components/TimeChip`이 따로 가진다. 카드 B1에서 자막 고르기(`shared/captions.py`)를 더했다 — 실제 yt-dlp 목록에 기계 번역 자막이 섞여 규칙이 길어졌고, video와 job이 같은 규칙을 써야 한다

@@ -63,6 +63,7 @@ class AnalysisJobRow(Base):
     """영상 하나의 분석 시도(DOM-002 2.2 AnalysisJob). 재시도는 같은 행을 이어간다.
 
     `running`은 프로세스 전체에 하나 — 부분 unique 인덱스가 막는다. 대기열은 `queued` 행이다.
+    영상 하나에 기다리는 · 도는 작업도 하나다(부분 unique, 0002).
     """
 
     __tablename__ = "analysis_jobs"
@@ -84,6 +85,12 @@ class AnalysisJobRow(Base):
             "ix_analysis_jobs_queued_at",
             "queued_at",
             postgresql_where=text("status = 'queued'"),
+        ),
+        Index(
+            "uq_analysis_jobs_video_id_active",
+            "video_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
         ),
     )
 

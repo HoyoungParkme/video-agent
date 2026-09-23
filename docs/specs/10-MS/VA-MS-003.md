@@ -93,7 +93,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 3. if `토큰 수(segments) ≤ config.TEXT_TOKEN_LIMIT` → `draft = SummarizerPort.summary(segments, video.duration_sec, model)`
    else → 구간마다 `SummarizerPort.summary(구간의 segments, 구간 길이, model)`로 중간 요약을 얻고, 그 한 줄 요약 · 인사이트를 `[시각] 문장` 줄들의 가짜 구간 목록으로 만들어 `SummarizerPort.summary(그 목록, video.duration_sec, model)` — 최종 요약. 구간은 `config.TEXT_WINDOW_SEC`씩([[VA-UC-001#UC-S4]] 1a2를 챕터 대신 중간 요약으로)
 4. `insights = draft.insights[:n_max]` · if `len < n_min` → 그대로 둔다(프롬프트가 5~8을 요구하고 모자라면 있는 만큼)
-5. 인사이트마다 `source_secs = clamp_secs(source_secs, video.duration_sec)` · 빈 목록이 되면 그 인사이트를 뺀다(출처 없는 인사이트는 화면에 시각 칩이 없어 규칙 위반)
+5. 인사이트마다 `source_secs = clamp_secs(source_secs, video.duration_sec, segments)` · 빈 목록이 되면 그 인사이트를 뺀다(출처 없는 인사이트는 화면에 시각 칩이 없어 규칙 위반)
 6. **트랜잭션**: `DB: delete summaries where video_id`(cascade로 insights) · `DB: summaries insert(video_id, one_liner, model)` · `DB: insights insert ×N (summary_id, seq=1부터, text, source_secs)`
 7. `→ None`
 
@@ -117,7 +117,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 1. `segments = segments_of(video.id)` · `model = …text` · `target = max(3, round(video.duration_sec / 60 / config.CHAPTER_MINUTES))` — 목표 챕터 수
 2. if `토큰 수 ≤ config.TEXT_TOKEN_LIMIT` → `draft = SummarizerPort.chapters(segments, video.duration_sec, model)`
    else → 구간(`config.TEXT_WINDOW_SEC`)마다 `SummarizerPort.chapters(구간 segments, 구간 길이, model)` · 챕터 목록을 이어 붙인다(시각은 절대 시각으로 이미 온다) · 파트는 만들지 않는다 — 5번에서 만든다
-3. `chapters = draft.chapters`를 `start_sec` 오름차순 · `start_sec = clamp_secs([start_sec], duration)[0]` · 같은 시각이 둘이면 뒤 것을 뺀다 · 첫 챕터의 `start_sec`가 0이 아니면 0으로 당긴다(스크립트 처음이 어느 챕터에도 안 들어가는 것을 막는다)
+3. `chapters = draft.chapters`를 `start_sec` 오름차순 · `start_sec = clamp_secs([start_sec], duration, segments)[0]` · 같은 시각이 둘이면 뒤 것을 뺀다 · 첫 챕터의 `start_sec`가 0이 아니면 0으로 당긴다(스크립트 처음이 어느 챕터에도 안 들어가는 것을 막는다)
 4. `bullets`는 2~3줄로 자른다(4개 이상이면 앞 3개)
 5. if `video.duration_sec > config.PART_THRESHOLD_SEC` → 파트 — if `draft.parts`가 있고 `len ≥ 2` → 그대로 · else → 챕터를 60분 단위로 묶어 파트를 만들고 제목은 `SummarizerPort.summary`가 아니라 첫 챕터 제목을 쓴다(미결 3) · 챕터마다 `part_seq` = 시작 시각이 속한 파트
    else → 파트 없음, `part_seq=None`

@@ -1,4 +1,7 @@
-"""0001_initial — 테이블 11개 · 인덱스 · 제약이 ERD(VA-DOM-003)대로인지, 올리고 내릴 수 있는지."""
+"""마이그레이션 — 테이블 11개 · 인덱스 · 제약이 ERD(VA-DOM-003)대로인지, 올리고 내릴 수 있는지.
+
+0001_initial이 전부를 만들고 0002가 영상 하나에 기다리는 · 도는 작업 하나를 더한다.
+"""
 
 from __future__ import annotations
 
@@ -74,6 +77,13 @@ async def _insert_job(
     )
 
 
+JOB_SQL = (
+    "INSERT INTO analysis_jobs (video_id, status, stage, stages, progress_pct, est_seconds,"
+    " est_cost_usd, concurrency, text_model, stage_started_at, queued_at, started_at)"
+    " VALUES (:v, :st, 'pending', '[]', 0, 60, 0, 3, 'gpt-5-mini', now(), now(), now())"
+)
+
+
 async def _expect_violation(c: AsyncConnection, sql: str, params: dict | None = None) -> None:
     sp = await c.begin_nested()
     with pytest.raises(IntegrityError):
@@ -92,7 +102,7 @@ async def test_head_matches_models(conn: AsyncConnection) -> None:
 
 
 async def test_partial_indexes(conn: AsyncConnection) -> None:
-    """대기열 · running 하나 — 부분 인덱스 둘이 조건과 함께 있다(DOM-003 3장)."""
+    """대기열 · running 하나 · 영상 하나에 작업 하나 — 부분 인덱스 셋이 조건과 함께(DOM-003 3장)."""
     rows = await conn.execute(
         text("SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'analysis_jobs'")
     )
@@ -101,21 +111,29 @@ async def test_partial_indexes(conn: AsyncConnection) -> None:
     assert "WHERE ((status)::text = 'running'::text)" in defs["uq_analysis_jobs_running"]
     assert "WHERE ((status)::text = 'queued'::text)" in defs["ix_analysis_jobs_queued_at"]
     assert "started_at DESC" in defs["ix_analysis_jobs_video_id_started_at"]
+    active = defs["uq_analysis_jobs_video_id_active"]
+    assert "UNIQUE" in active
+    assert "(video_id)" in active
+    assert "'queued'" in active and "'running'" in active
 
 
 async def test_running_is_one(conn: AsyncConnection) -> None:
-    """running은 전체에 하나. queued는 여럿이어도 된다."""
-    v1, v2 = await _insert_video(conn, "aaaaaaaaaaa"), await _insert_video(conn, "bbbbbbbbbbb")
+    """running은 전체에 하나. queued는 여럿이어도 된다(영상이 다르면)."""
+    v1, v2, v3, v4 = [await _insert_video(conn, c * 11) for c in "abcd"]
     await _insert_job(conn, v1, "running")
-    await _insert_job(conn, v1, "queued")
     await _insert_job(conn, v2, "queued")
-    await _expect_violation(
-        conn,
-        "INSERT INTO analysis_jobs (video_id, status, stage, stages, progress_pct, est_seconds,"
-        " est_cost_usd, concurrency, text_model, stage_started_at, queued_at, started_at)"
-        " VALUES (:v, 'running', 'pending', '[]', 0, 60, 0, 3, 'gpt-5-mini', now(), now(), now())",
-        {"v": v2},
-    )
+    await _insert_job(conn, v3, "queued")
+    await _expect_violation(conn, JOB_SQL, {"v": v4, "st": "running"})
+
+
+async def test_active_job_is_one_per_video(conn: AsyncConnection) -> None:
+    """영상 하나에 기다리는 · 도는 작업은 하나. 끝난 · 실패한 작업은 막지 않는다(0002)."""
+    v = await _insert_video(conn)
+    await _insert_job(conn, v, "done")
+    await _insert_job(conn, v, "failed", kind="unknown", reason="서버가 다시 시작됨")
+    await _insert_job(conn, v, "queued")
+    for status in ("queued", "running"):  # 같은 영상에 [분석 시작]이 동시에 두 번
+        await _expect_violation(conn, JOB_SQL, {"v": v, "st": status})
 
 
 async def test_error_fields_only_when_failed(conn: AsyncConnection) -> None:
@@ -229,8 +247,17 @@ async def test_delete_video_cascades(conn: AsyncConnection) -> None:
         {"v": v},
     )
     await conn.execute(text("DELETE FROM videos WHERE id = :v"), {"v": v})
-    for table in ("analysis_jobs", "audio_chunks", "summaries", "insights", "chat_turns"):
-        assert await conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0
+    # 이 영상의 것만 센다 — 앞서 돈 테스트 · E2E가 같은 DB에 남긴 행과 섞이지 않게
+    left = {
+        "analysis_jobs": ("video_id", v),
+        "audio_chunks": ("job_id", j),
+        "summaries": ("video_id", v),
+        "insights": ("summary_id", s),
+        "chat_turns": ("video_id", v),
+    }
+    for table, (column, owner) in left.items():
+        count = f"SELECT count(*) FROM {table} WHERE {column} = :o"
+        assert await conn.scalar(text(count), {"o": owner}) == 0
 
 
 async def test_downgrade_then_upgrade(

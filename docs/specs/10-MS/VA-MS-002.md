@@ -107,7 +107,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 1. `SettingsService.require_key()` · if 없음 → `! key-missing` · if 확인 실패 → `! key-invalid`
 2. `DB: analysis_jobs where video_id` · if 있음 → `! job-exists {job_id, job_status}` — 실패한 작업은 `retry`로, 끝난 작업은 다시 만들지 않는다
 3. `stages = stages_for(video)` · `est = estimate(video)`(여기서는 `status`를 보지 않는다 — 작업이 없다는 것을 2에서 확인했다) · `models = SettingsService.current_models()`
-4. **트랜잭션**: `DB: analysis_jobs insert(video_id, status=queued, stage=pending, stages, progress_pct=0, est_seconds=est.seconds, est_cost_usd=est.total_cost_usd, concurrency=config.STT_CONCURRENCY, stt_model=models.stt.id if needs_stt else None, text_model=models.text.id, stage_durations_sec={}, started_at=now, queued_at=now, stage_started_at=now)` — **늘 `queued`다.** 다른 영상이 도는지 보지 않는다. `running`으로 바꾸는 것은 워커 하나라([[#JobService.claim_next]]) 시작하는 길이 하나다
+4. **트랜잭션**: `DB: analysis_jobs insert(video_id, status=queued, stage=pending, stages, progress_pct=0, est_seconds=est.seconds, est_cost_usd=est.total_cost_usd, concurrency=config.STT_CONCURRENCY, stt_model=models.stt.id if needs_stt else None, text_model=models.text.id, stage_durations_sec={}, started_at=now, queued_at=now, stage_started_at=now)` — **늘 `queued`다.** 다른 영상이 도는지 보지 않는다. `running`으로 바꾸는 것은 워커 하나라([[#JobService.claim_next]]) 시작하는 길이 하나다 · 커밋이 영상 하나에 작업 하나인 부분 unique([[VA-DOM-003]] 3장)에 걸리면 — 2와 4 사이에 같은 영상의 [분석 시작]이 하나 더 들어왔다(탭 둘) — 롤백하고 먼저 들어간 작업으로 `! job-exists`
 5. 커밋 뒤 `wake()` · `await asyncio.sleep(0)` — 워커에게 한 번 양보한다. 도는 작업이 없으면 워커가 이 틈에 꺼내 `running`이 된다(보장은 아니다 — 안 됐으면 `queued`로 나가고 첫 폴링에서 바뀐다)
 6. `row = DB: analysis_jobs where id`(다시 읽기) · `→ to_job(row, [], queue_position(row))`
 
@@ -117,7 +117,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** `SettingsService.require_key` · `SettingsService.current_models` · [[#JobService.stages_for]] · [[#JobService.estimate]] · [[#JobService.wake]] · [[#JobService.queue_position]] · [[#JobService.to_job]]
 
-**테스트 관점** 응답이 파이프라인을 기다리지 않는다(깨우기만 한다) · 같은 영상 두 번 → 둘째는 `job-exists` · 다른 영상이 `running`이어도 **거절하지 않고** `queued` · `queue_position=1` · 대기 작업이 하나 더 있으면 2 · 자막 있는 YouTube → `stt_model=None`, `stages` 4개 · 행에 그때의 모델 이름 · 동시 수 · 예상치가 남는다 · 키가 없으면 행이 안 생긴다
+**테스트 관점** 응답이 파이프라인을 기다리지 않는다(깨우기만 한다) · 같은 영상 두 번 → 둘째는 `job-exists` · 2에서 못 본 같은 영상의 작업이 커밋 때 부분 unique에 걸리면 `job-exists`이고 행은 하나 · 다른 영상이 `running`이어도 **거절하지 않고** `queued` · `queue_position=1` · 대기 작업이 하나 더 있으면 2 · 자막 있는 YouTube → `stt_model=None`, `stages` 4개 · 행에 그때의 모델 이름 · 동시 수 · 예상치가 남는다 · 키가 없으면 행이 안 생긴다
 
 ---
 
@@ -285,9 +285,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 근거: [[VA-SEQ-001#SEQ-13]] · [[VA-DOM-002]] 5장 8 · 시퀀스 되먹임 #3
 
-**처리** **트랜잭션**: `rows = DB: analysis_jobs where status = running` · 행마다 `status=failed` · `error_kind=unknown` · `error_reason='서버가 다시 시작됨'` · `error_chunk_seq=None` · `error_attempts=None` · `DB: audio_chunks where job_id and state = in_flight → waiting` · `→ len(rows)`. `queued`는 건드리지 않는다 — 기다리던 것이라 워커가 뜨면 이어서 돈다. `main.py` lifespan이 **워커를 띄우기 전에** 부른다 — 거꾸로면 죽은 `running` 행 때문에 워커가 아무것도 꺼내지 못한다([[VA-SEQ-001#SEQ-13]])
+**처리** **트랜잭션**: `rows = DB: analysis_jobs where status = running` · 행마다 `status=failed` · `error_kind=unknown` · `error_reason='서버가 다시 시작됨'` · `error_chunk_seq=None` · `error_attempts=1`(돌던 단계를 한 번 보낸 것 — 응답의 `JobError.attempts`는 비지 않는 정수다, [[VA-API-001]] 4장) · `DB: audio_chunks where job_id and state = in_flight → waiting` · `→ len(rows)`. `queued`는 건드리지 않는다 — 기다리던 것이라 워커가 뜨면 이어서 돈다. `main.py` lifespan이 **워커를 띄우기 전에** 부른다 — 거꾸로면 죽은 `running` 행 때문에 워커가 아무것도 꺼내지 못한다([[VA-SEQ-001#SEQ-13]])
 
-**테스트 관점** `running` 둘(있을 수 없지만 데이터로) → 둘 다 `failed`, 반환 2 · `in_flight` 조각이 `waiting` · `done` 조각은 그대로 · `queued` 작업은 그대로 · 없으면 0
+**테스트 관점** `running` 하나 → `failed`, `error_attempts=1`, 반환 1(둘은 부분 unique 인덱스가 막아 데이터로도 만들 수 없다) · `in_flight` 조각이 `waiting` · `done` 조각은 그대로 · `queued` 작업은 그대로 · 없으면 0
 
 ---
 
@@ -402,17 +402,17 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **처리** — `main.py` lifespan이 태스크 하나로 띄운다. 끝없이 돈다
 1. `JobService.work_event.clear()`
-2. `row = JobService.claim_next()`(짧은 세션) · if `None` → `JobService.wait_for_work()` · 1로
-3. `video = load_video(row.video_id)` · if `None`(그 사이 지워짐 — 행도 cascade로 없다) → 1로
+2. `row = JobService.claim_next()`(짧은 세션) · if `None` → `JobService.wait_for_work()` · 1로. `claim_next`가 예외면(DB가 잠깐 안 됨 등) 로그를 남기고 `None`과 같게 — 워커는 죽지 않는다
+3. `video = load_video(row.video_id)` · if `None`(그 사이 지워짐 — 행도 cascade로 없다) → 1로 · if 예외 → 그 작업을 `fail`(`error_kind(e)`)로 접고 1로 — `running`으로 꺼낸 채 두면 대기열이 막힌다
 4. `coro = run(row.id, video) if row.stage == pending else resume(row.id, video)` · `task = asyncio.create_task(coro)` · `JobService.tasks[video.id] = task`
-5. `await task`를 `CancelledError`(삭제가 취소한 것) · `Exception`을 삼키며 기다린다 · `JobService.tasks.pop(video.id, None)` · 1로
+5. `await task`를 `CancelledError`(삭제가 취소한 것) · `Exception`을 삼키며 기다린다 · `JobService.tasks.pop(video.id, None)` · 태스크가 예외로 끝났으면(`run`이 `fail`로 접지 못한 경우) 그 작업을 `fail`(`error_kind(e)`)로 접는다 — `running`으로 남으면 대기열이 막힌다 · 1로
 6. **워커 자신이** 취소되면(서버 종료) 돌던 `task`도 취소하고 끝난다. 그 작업은 `running`인 채 남고 다음 시작 때 `fail_orphans`가 되돌린다
 
 **출력** 없음. 끝나지 않는다
 
 **호출하는 것** [[#JobService.claim_next]] · [[#JobService.wait_for_work]] · [[#pipeline.run]] · [[#pipeline.resume]]
 
-**테스트 관점** 가짜 `run`으로: `queued` 둘을 넣으면 차례로 하나씩만 돈다(동시에 `running` 둘이 없다) · 첫 작업이 예외로 끝나도 둘째가 시작된다 · `stage != pending`인 행은 `resume`으로 · `load_video`가 `None`이면 건너뛴다 · 워커를 취소하면 돌던 태스크도 취소된다 · 5에서 구분할 것 — 삼키는 `CancelledError`는 `task`의 것이고, 워커 자신의 취소는 다시 던진다(`task.cancelled()`로 가른다)
+**테스트 관점** 가짜 `run`으로: `queued` 둘을 넣으면 차례로 하나씩만 돈다(동시에 `running` 둘이 없다) · 첫 작업이 예외로 끝나도 둘째가 시작된다(첫 작업은 `failed`) · `stage != pending`인 행은 `resume`으로 · `load_video`가 `None`이면 건너뛴다 · 워커를 취소하면 돌던 태스크도 취소된다 · 5에서 구분할 것 — 삼키는 `CancelledError`는 `task`의 것이고, 워커 자신의 취소는 다시 던진다(`task.cancelled()`로 가른다)
 
 ---
 
@@ -425,7 +425,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 **처리** — 워커([[#pipeline.worker]])가 띄운 백그라운드 태스크 안. 서비스 호출마다 세션 하나
 1. `stages = DB: analysis_jobs where id`의 `stages`(짧은 세션) · `tmp = config.DATA_DIR / "tmp" / str(video.id)` · `FS: mkdir`
 2. `for stage in stages:` `JobService.mark_stage(job_id, stage)` 뒤 단계 실행 —
-   - `download` · if `video.has_captions` → `(lines, lang, kind) = AudioSourcePort.captions(video.source_id)` · `AnalysisService.save_transcript(video.id, caption_manual if kind == manual else caption_auto, lang, None, lines)` · else → `audio = AudioSourcePort.download_audio(video.source_id, tmp)`
+   - `download` · if `video.has_captions` → `(lines, lang, kind) = AudioSourcePort.captions(video.source_id)` · if `None`(등록 뒤 자막이 사라짐 — 단계 목록에 받아쓰기가 없다) → `! YtdlpError('자막을 찾지 못했습니다', kind=unavailable)`, `youtube`로 접힌다 · `AnalysisService.save_transcript(video.id, caption_manual if kind == manual else caption_auto, lang, None, lines)` · else → `audio = AudioSourcePort.download_audio(video.source_id, tmp)`
    - `extract` → `audio = AudioSourcePort.extract_audio(config.INBOX_DIR / video.origin, tmp)`
    - `transcribe` → if `audio` 없음(로컬 음성) → `audio = config.INBOX_DIR / video.origin` · `transcribe_stage(job_id, video, audio, tmp)`
    - `summarize` → `AnalysisService.generate_summary(video)`
@@ -438,7 +438,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** [[#JobService.mark_stage]] · [[#JobService.finish]] · [[#JobService.fail]] · [[#pipeline.transcribe_stage]] · [[#pipeline.error_kind]] · `AudioSourcePort.captions` · `download_audio` · `extract_audio` · `AnalysisService.save_transcript` · `generate_summary` · `generate_chapters` · `generate_questions`
 
-**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다
+**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다 · 자막이 사라져 `captions`가 None → `failed`, `error.kind=youtube`
 
 ---
 
@@ -493,9 +493,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 근거: [[VA-DOM-002]] 4.2 파이프라인 문단 · [[VA-UI-002#UI-3]] 5.1 제목 재료
 
-**처리** if `isinstance(e, (TimeoutError, OSError의 네트워크 계열, openai.APIConnectionError))` → `network`(`APITimeoutError`는 `APIConnectionError`의 하위라 함께 걸린다) · elif OpenAI SDK 예외 → `openai` · elif 어댑터의 `YtdlpError` → `youtube` · elif 어댑터의 `FfmpegError` → `ffmpeg` · elif `OSError(ENOSPC)` → `disk` · else → `unknown`
+**처리** if `isinstance(e, (TimeoutError, OSError의 네트워크 계열, openai.APIConnectionError))` → `network`(`APITimeoutError`는 `APIConnectionError`의 하위라 함께 걸린다) · elif OpenAI SDK 예외 또는 `OpenAIOutputError`(모델 출력이 형식에 맞지 않아 어댑터가 던진 것 — [[VA-MS-007]] 0장) → `openai` · elif 어댑터의 `YtdlpError` → `youtube` · elif 어댑터의 `FfmpegError` → `ffmpeg` · elif `OSError(ENOSPC)` → `disk` · else → `unknown`
 
-**테스트 관점** 여섯 종류 각각 · OpenAI SDK의 연결 오류는 `openai`가 아니라 `network`(SDK가 `APIConnectionError`로 감싼다 — 먼저 검사)
+**테스트 관점** 여섯 종류 각각 · `OpenAIOutputError` → `openai` · OpenAI SDK의 연결 오류는 `openai`가 아니라 `network`(SDK가 `APIConnectionError`로 감싼다 — 먼저 검사)
 
 ---
 
