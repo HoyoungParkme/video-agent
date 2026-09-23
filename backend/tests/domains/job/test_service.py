@@ -486,3 +486,11 @@ async def test_claim_next_retried_job_waits_behind(db, make) -> None:
 
 async def test_claim_next_empty(db) -> None:
     assert await JobService(db).claim_next() is None
+
+
+# --- 스텁
+
+
+async def test_retry_is_stub(db, make) -> None:
+    with pytest.raises(NotImplementedYet):
+        await JobService(db).retry(_video(await make.video()))

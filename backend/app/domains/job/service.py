@@ -500,3 +500,13 @@ class JobService:
             await self.session.rollback()
             return None
         return row
+
+    async def retry(self, video: Video) -> Job:
+        """VA-MS-002#JobService.retry
+
+        실패한 작업을 같은 행으로 대기열 끝에. 스텁 — B2에서 채운다(VA-CODE-001 B1).
+
+        Raises:
+            NotImplementedYet: 아직 없다
+        """
+        raise NotImplementedYet("다시 시도는 아직 지원하지 않아요")
