@@ -487,6 +487,19 @@ h1, h2, p { margin: 0; }
 .chapter-title { font-size: var(--text-17); line-height: 1.5; font-weight: 600; }
 .chapter-bullet { display: flex; gap: var(--space-8); font-size: var(--text-15); line-height: 1.65; color: var(--c-ink-2); }
 .chapter-dot { color: var(--c-line-faint); }
+/* UI-4 파트 카드(6.4) · 머리(6.5) — 1시간 넘는 영상 */
+.part { border-radius: var(--radius-14); border: 1px solid var(--c-line); background: var(--c-faint); overflow: hidden; }
+.part-head {
+  width: 100%; min-height: 64px; padding: var(--space-12) var(--space-18); display: flex; align-items: center; gap: var(--space-14);
+  border: 0; background: transparent; color: var(--c-ink); text-align: left; cursor: pointer;
+}
+.part-arrow { width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--c-ink-2); }
+.part-head[aria-expanded="true"] .part-arrow { transform: rotate(90deg); }
+.part-text { flex-grow: 1; display: flex; flex-direction: column; gap: var(--space-2); }
+.part-title { font-size: var(--text-17); font-weight: 600; }
+.part-count { font-size: var(--text-13); color: var(--c-caption); }
+.part-range { font-size: var(--text-13); color: var(--c-ink-2); }
+.part-body { padding: 0 var(--space-10) var(--space-10); display: flex; flex-direction: column; gap: var(--space-4); }
 .panel { min-width: 0; border-left: 1px solid var(--c-line); background: var(--c-faint); }
 .panel-inner { position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h)); display: flex; flex-direction: column; }
 .tabs { height: 60px; flex-shrink: 0; padding: 0 var(--space-20); display: flex; align-items: flex-end; gap: var(--space-4); border-bottom: 1px solid var(--c-line); }

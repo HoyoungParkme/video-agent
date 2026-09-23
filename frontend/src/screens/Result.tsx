@@ -1,12 +1,14 @@
 /**
  * VA-UI-002#UI-4 결과 — 왼쪽 본문: 1 머리 줄(1.1 뒤로 링크) · 2 제목 블록(2.1 칩 셋 · 2.2 제목 · 2.3 메타 줄 ·
  * 2.4 원본 영상 열기) · 3 한 줄 요약 · 4 핵심 인사이트(4.1 · 4.2 · 4.3 시각 칩) · 5 추천 질문(5.1 알약) ·
- * 6 챕터(6.1 · 6.2 · 6.3 카드). 오른쪽 7 패널 — 7.1 스크립트 탭 · 8 스크립트(8.1 출처 · 8.2 선택한 시각 · 8.3 구간).
+ * 6 챕터(6.1 · 6.2 · 6.3 카드, 1시간 넘으면 6.4 파트 카드 · 6.5 파트 머리 · 6.6 파트 안 챕터 카드).
+ * 오른쪽 7 패널 — 7.1 스크립트 탭 · 8 스크립트(8.1 출처 · 8.2 선택한 시각 · 8.3 구간).
  * 11 짧은 알림 — UI-1에서 이미 분석한 영상을 넣어 열렸을 때.
- * 시각을 누르는 곳(4.3 · 6.3 · 8.3)은 모두 같은 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤 ·
+ * 시각을 누르는 곳(4.3 · 6.3 · 6.6 · 8.3)은 모두 같은 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤 ·
  * 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
  * 서버에 잠깐 닿지 못하면 2초 뒤 다시 받는다.
- * B1이 채우지 않은 것: 내보내기(1.2) · 휴지통(1.3)은 B4, 파트(6.4 ~ 6.6)는 B2, 질문하기 탭(7.2 · 7.3 · 9 · 10)과
+ * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다.
+ * 채우지 않은 것: 내보내기(1.2) · 휴지통(1.3)은 B4, 질문하기 탭(7.2 · 7.3 · 9 · 10)과
  * 추천 질문 전송은 B3 — 알약(5.1)은 보이되 누르면 아무 일도 없다.
  */
 "use client";
@@ -15,7 +17,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { api, ApiError, type Result as ResultData } from "@/api/client";
+import { api, ApiError, type Chapter, type Result as ResultData } from "@/api/client";
 import TimeChip, { durationLabel, isLong, timeLabel } from "@/components/TimeChip";
 import Toast, { takeFlash } from "@/components/Toast";
 import { analyzedLabel, languageName } from "@/labels";
@@ -46,11 +48,51 @@ function segmentAt(r: ResultData, sec: number): number | null {
   return found ?? r.transcript.segments[0]?.seq ?? null;
 }
 
+/** 챕터 카드(6.3 · 6.6) — 시작 시각 · 제목 · 요점. 카드 전체가 시각 누르기다(공통 1.3). */
+function ChapterCard({
+  c,
+  long,
+  selected,
+  onSelect,
+  el,
+}: {
+  c: Chapter;
+  long: boolean;
+  selected: boolean;
+  onSelect: (sec: number) => void;
+  el?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`chapter${selected ? " is-selected" : ""}`}
+      aria-pressed={selected}
+      data-el={el}
+      onClick={() => onSelect(c.start_sec)}
+    >
+      <span className="chapter-time mono">{timeLabel(c.start_sec, long)}</span>
+      <span className="chapter-body">
+        <span className="chapter-title">{c.title}</span>
+        {c.bullets.map((b) => (
+          <span key={b} className="chapter-bullet">
+            <span aria-hidden="true" className="chapter-dot">
+              ·
+            </span>
+            <span>{b}</span>
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
 export default function Result({ id }: { id: number }) {
   const router = useRouter();
   const [result, setResult] = useState<ResultData | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 펼친 파트 — 처음에는 첫 파트만(UI-4 규칙)
+  const [open, setOpen] = useState<Set<number>>(() => new Set([1]));
   const script = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,6 +143,15 @@ export default function Result({ id }: { id: number }) {
   const { video } = result;
   const long = isLong(video.duration_sec);
   const select = (sec: number) => setSelected(sec);
+  const parts = result.parts;
+  // 그 파트만 펴고 접는다 — 여러 파트를 함께 펼 수 있다
+  const toggle = (seq: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(seq)) next.delete(seq);
+      else next.add(seq);
+      return next;
+    });
   const model =
     result.transcript.source === "stt"
       ? `받아쓰기 ${result.models.stt ?? ""}`
@@ -229,7 +280,9 @@ export default function Result({ id }: { id: number }) {
                 챕터
               </h2>
               <span className="count" data-el="6.1">
-                {result.chapters.length}개
+                {parts.length
+                  ? `${result.chapters.length}개 · 파트 ${parts.length}개`
+                  : `${result.chapters.length}개`}
               </span>
             </div>
             <span className="caption" data-el="6.2">
@@ -237,29 +290,60 @@ export default function Result({ id }: { id: number }) {
             </span>
           </div>
           <div className="chapters">
-            {result.chapters.map((c, i) => (
-              <button
-                key={c.seq}
-                type="button"
-                className={`chapter${selected === c.start_sec ? " is-selected" : ""}`}
-                aria-pressed={selected === c.start_sec}
-                data-el={i === 0 ? "6.3" : undefined}
-                onClick={() => select(c.start_sec)}
-              >
-                <span className="chapter-time mono">{timeLabel(c.start_sec, long)}</span>
-                <span className="chapter-body">
-                  <span className="chapter-title">{c.title}</span>
-                  {c.bullets.map((b) => (
-                    <span key={b} className="chapter-bullet">
-                      <span aria-hidden="true" className="chapter-dot">
-                        ·
-                      </span>
-                      <span>{b}</span>
-                    </span>
-                  ))}
-                </span>
-              </button>
-            ))}
+            {parts.length === 0
+              ? result.chapters.map((c, i) => (
+                  <ChapterCard
+                    key={c.seq}
+                    c={c}
+                    long={long}
+                    selected={selected === c.start_sec}
+                    onSelect={select}
+                    el={i === 0 ? "6.3" : undefined}
+                  />
+                ))
+              : parts.map((p, pi) => {
+                  const expanded = open.has(p.seq);
+                  return (
+                    <div key={p.seq} className="part" data-el={pi === 0 ? "6.4" : undefined}>
+                      <button
+                        type="button"
+                        className="part-head"
+                        aria-expanded={expanded}
+                        data-el={pi === 0 ? "6.5" : undefined}
+                        onClick={() => toggle(p.seq)}
+                      >
+                        <span className="part-arrow" aria-hidden="true">
+                          <svg className="icon" width="18" height="18" viewBox="0 0 24 24">
+                            <path d="m9 18 6-6-6-6" />
+                          </svg>
+                        </span>
+                        <span className="part-text">
+                          <span className="part-title">{p.title}</span>
+                          <span className="part-count">챕터 {p.chapter_count}개</span>
+                        </span>
+                        <span className="part-range mono">
+                          {timeLabel(p.start_sec, long)} – {timeLabel(p.end_sec, long)}
+                        </span>
+                      </button>
+                      {expanded && (
+                        <div className="part-body">
+                          {result.chapters
+                            .filter((c) => c.part_seq === p.seq)
+                            .map((c, ci) => (
+                              <ChapterCard
+                                key={c.seq}
+                                c={c}
+                                long={long}
+                                selected={selected === c.start_sec}
+                                onSelect={select}
+                                el={pi === 0 && ci === 0 ? "6.6" : undefined}
+                              />
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
           </div>
         </section>
       </main>
