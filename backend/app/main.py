@@ -27,6 +27,8 @@ from app.domains.chat import router as chat_router
 from app.domains.job import pipeline
 from app.domains.job import router as job_router
 from app.domains.job.adapters.audio_source import AudioSourceAdapter
+from app.domains.job.adapters.audio_split import AudioSplitAdapter
+from app.domains.job.adapters.stt_openai import SttOpenAI
 from app.domains.job.service import JobService
 from app.domains.video import router as video_router
 from app.domains.video.adapters.media_probe import MediaProbeAdapter
@@ -92,6 +94,8 @@ app.state.youtube_info = YouTubeInfoAdapter()
 app.state.media_probe = MediaProbeAdapter()
 app.state.summarizer = SummarizerOpenAI(client_for)
 pipeline.audio_source = AudioSourceAdapter()
+pipeline.audio_split = AudioSplitAdapter()
+pipeline.stt = SttOpenAI(client_for)
 pipeline.summarizer = app.state.summarizer
 
 app.include_router(settings_router.router)
