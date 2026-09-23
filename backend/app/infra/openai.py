@@ -79,3 +79,35 @@ def client(key: str) -> AsyncOpenAI:
 
 def _invalid(kind: ReasonKind, reason: str) -> KeyCheck:
     return KeyCheck(KeyState.invalid, kind, reason, datetime.now(UTC))
+
+
+async def verify_key(key: str) -> KeyCheck:
+    """VA-MS-007#openai.verify_key
+
+    모델 목록을 한 번 조회해 키를 확인한다. 던지지 않는다 — 결과를 상태로 준다.
+
+    Args:
+        key: 확인할 키
+
+    Returns:
+        ok, 또는 invalid와 이유(format · auth · quota · network)
+    """
+    if not key.startswith("sk-") or len(key) < 20:
+        return _invalid(ReasonKind.format, "키 형식이 아닙니다")
+    try:
+        await client(key).models.list(timeout=config.KEY_CHECK_TIMEOUT_SEC)
+    except AuthenticationError:
+        return _invalid(ReasonKind.auth, "인증에 실패했습니다")
+    except RateLimitError as e:
+        if e.code == "insufficient_quota":
+            return _invalid(ReasonKind.quota, "잔액이 없습니다")
+        return _invalid(ReasonKind.auth, f"{e.status_code} {_first_line(e.message)}")
+    except APIConnectionError:  # 시간 초과(APITimeoutError)도 여기
+        return _invalid(ReasonKind.network, "연결하지 못했습니다")
+    except APIStatusError as e:
+        return _invalid(ReasonKind.auth, f"{e.status_code} {_first_line(e.message)}")
+    return KeyCheck(KeyState.ok, None, None, datetime.now(UTC))
+
+
+def _first_line(message: str) -> str:
+    return message.strip().splitlines()[0] if message.strip() else ""

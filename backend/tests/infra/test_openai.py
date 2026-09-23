@@ -79,3 +79,45 @@ def test_client_keeps_one_pair() -> None:
     b = openai.client(KEY + "x")
     assert b is not a
     assert openai.client(KEY) is not a  # 한 쌍만 둔다 — 옛 키면 또 새 객체
+
+
+async def test_verify_format_without_request(server: FakeServer) -> None:
+    check = await openai.verify_key("abc")
+    assert (check.state, check.reason_kind) == (KeyState.invalid, ReasonKind.format)
+    assert server.requests == []
+
+
+@pytest.mark.parametrize(
+    ("reply", "kind"),
+    [
+        (_error(401, "invalid_api_key"), ReasonKind.auth),
+        (_error(429, "insufficient_quota"), ReasonKind.quota),
+        (_error(429, "rate_limit_exceeded"), ReasonKind.auth),
+        (_error(500, "server_error"), ReasonKind.auth),
+        (httpx2.ConnectError("연결 거부"), ReasonKind.network),
+        (httpx2.ReadTimeout("시간 초과"), ReasonKind.network),
+    ],
+)
+async def test_verify_failures(server: FakeServer, reply: Any, kind: ReasonKind) -> None:
+    server.reply = reply
+    check = await openai.verify_key(KEY)
+    assert (check.state, check.reason_kind) == (KeyState.invalid, kind)
+    assert check.reason and check.checked_at
+
+
+async def test_verify_ok(server: FakeServer) -> None:
+    check = await openai.verify_key(KEY)
+    assert check.state == KeyState.ok and check.reason_kind is None
+    assert check.checked_at is not None
+    [req] = server.requests
+    assert req.url.path == "/v1/models"
+    assert req.headers["authorization"] == f"Bearer {KEY}"
+
+
+async def test_key_not_logged(server: FakeServer, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="app")
+    openai.client(KEY)
+    await openai.verify_key(KEY)
+    server.reply = _error(401, "invalid_api_key")
+    await openai.verify_key(KEY)
+    assert KEY not in caplog.text
