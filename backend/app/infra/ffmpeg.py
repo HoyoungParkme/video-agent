@@ -107,3 +107,35 @@ async def silences(path: str) -> list[float]:
             mids.append((start + float(value)) / 2)
             start = None
     return sorted(mids)
+
+
+async def cut(path: str, start: float, end: float, dest: str) -> str:
+    """VA-MS-007#ffmpeg.cut
+
+    구간을 다시 인코딩하지 않고 잘라 새 파일로 쓴다(-c copy). 끝이 길이를 넘으면 끝까지.
+
+    Args:
+        path: 음성 파일
+        start: 시작(초)
+        end: 끝(초)
+        dest: 쓸 파일 경로
+
+    Returns:
+        dest
+    """
+    await _run(
+        config.FFMPEG_BIN,
+        "-y",
+        "-v",
+        "error",
+        "-ss",
+        f"{start:.3f}",
+        "-to",
+        f"{end:.3f}",
+        "-i",
+        path,
+        "-c",
+        "copy",
+        dest,
+    )
+    return dest

@@ -67,3 +67,59 @@ async def test_silences_midpoints(fake) -> None:
 async def test_silences_none(fake) -> None:
     fake.behave(stderr="size=N/A time=00:00:30.00\n")
     assert await ffmpeg.silences("audio.mp3") == []
+
+
+async def test_cut_args(fake, tmp_path: Path) -> None:
+    fake.behave(write_last=1)
+    dest = str(tmp_path / "3.mp3")
+    assert await ffmpeg.cut("audio.mp3", 1200.0, 1800.5, dest) == dest
+    [args] = fake.calls()
+    assert args[args.index("-ss") + 1] == "1200.000"
+    assert args[args.index("-to") + 1] == "1800.500"
+    assert args[args.index("-c") + 1] == "copy"
+
+
+# 진짜 ffmpeg — 호스트에 없으면 건너뛴다(이미지에는 있다)
+real = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg가 없다")
+
+
+async def _make_video(path: Path, seconds: int) -> None:
+    """앞 2초 소리 · 1초 무음 · 나머지 소리인 테스트 영상."""
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-y", "-v", "error",
+        "-f", "lavfi", "-i", f"color=size=64x64:duration={seconds}",
+        "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}",
+        "-af", "volume=enable='between(t,2,3)':volume=0",
+        "-shortest", "-c:v", "libx264", "-c:a", "aac", str(path),
+    )  # fmt: skip
+    assert await proc.wait() == 0
+
+
+@real
+async def test_real_extract_cut_silences(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("FFMPEG_BIN", "FFPROBE_BIN"):
+        monkeypatch.setattr(config, name, name.split("_")[0].lower())
+    src = tmp_path / "v.mp4"
+    await _make_video(src, 8)
+    info = await ffmpeg.probe(str(src))
+    assert {s["codec_type"] for s in info["streams"]} == {"video", "audio"}
+
+    audio = await ffmpeg.extract_audio(str(src), str(tmp_path))
+    streams = (await ffmpeg.probe(audio))["streams"]
+    assert [(s["codec_name"], s["channels"], s["sample_rate"]) for s in streams] == [
+        ("mp3", 1, "16000")
+    ]
+    assert src.exists()
+
+    mids = await ffmpeg.silences(audio)
+    assert len(mids) == 1 and 2.2 < mids[0] < 2.8
+
+    part = await ffmpeg.cut(audio, 1.0, 4.0, str(tmp_path / "1.mp3"))
+    assert abs(float((await ffmpeg.probe(part))["format"]["duration"]) - 3.0) <= 0.1
+
+
+@real
+async def test_real_missing_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "FFPROBE_BIN", "ffprobe")
+    with pytest.raises(FfmpegError):
+        await ffmpeg.probe("/없는/파일.mp4")
