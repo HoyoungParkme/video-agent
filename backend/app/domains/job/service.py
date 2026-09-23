@@ -188,3 +188,18 @@ class JobService:
             started_at=row.started_at,
             finished_at=row.finished_at,
         )
+
+    async def queue_position(self, row: AnalysisJobRow) -> int | None:
+        """VA-MS-002#JobService.queue_position
+
+        대기열에서의 차례 — 1이 바로 다음. UI-1 '{n}번째'와 UI-3 '앞 영상 {n}개'가 같은 값이다.
+
+        Args:
+            row: 작업 행
+
+        Returns:
+            차례. queued가 아니면 None
+        """
+        if row.status != JobStatus.queued:
+            return None
+        return await crud.count_queued_before(self.session, row.queued_at, row.id) + 1

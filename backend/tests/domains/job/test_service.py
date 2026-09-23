@@ -159,3 +159,23 @@ def test_to_job_failed_chunk_and_next_seq() -> None:
     )
     assert job.concurrency == 3
     assert job.remaining_sec is None
+
+
+# --- queue_position
+
+
+async def test_queue_position(db, make) -> None:
+    videos = [await make.video() for _ in range(3)]
+    jobs = [
+        await make.job(v.id, JobStatus.queued, at=T0 + timedelta(seconds=i))
+        for i, v in enumerate(videos)
+    ]
+    svc = JobService(db)
+    assert [await svc.queue_position(j) for j in jobs] == [1, 2, 3]
+    jobs[0].status = JobStatus.running
+    await db.commit()
+    assert [await svc.queue_position(j) for j in jobs[1:]] == [1, 2]
+    assert await svc.queue_position(jobs[0]) is None  # running
+    for status in (JobStatus.failed, JobStatus.done):
+        v = await make.video()
+        assert await svc.queue_position(await make.job(v.id, status)) is None
