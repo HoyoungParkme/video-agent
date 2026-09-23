@@ -87,3 +87,72 @@ def _first_line(e: BaseException) -> str:
     # 실패 이유 한 줄 — 한국어 문구는 어댑터 · 서비스가 만든다
     text = str(e).strip()
     return text.splitlines()[0] if text else type(e).__name__
+
+
+async def run(job_id: int, video: Video) -> None:
+    """VA-MS-002#pipeline.run
+
+    첫 단계부터 끝까지. 워커가 띄운 태스크 안에서 돈다. 단계마다 mark_stage 뒤 실행하고,
+    끝나면 finish와 임시 폴더 정리. 실패하면 fail로 접고, 취소되면 아무것도 쓰지 않는다.
+    B1은 자막 갈래만 — 음성 내려받기 · 추출 · 받아쓰기는 스텁(VA-CODE-001 B1).
+
+    Args:
+        job_id: 작업 id
+        video: 영상(load_video가 준 것)
+    """
+    tmp = Path(config.DATA_DIR) / "tmp" / str(video.id)
+    stage: JobStage | None = None
+    try:
+        async with SessionLocal() as s:
+            stages = (await crud.by_id(s, job_id)).stages
+        tmp.mkdir(parents=True, exist_ok=True)
+        for name in stages:
+            stage = JobStage(name)
+            async with SessionLocal() as s:
+                await JobService(s).mark_stage(job_id, stage)
+            await _stage(stage, job_id, video, tmp)
+        async with SessionLocal() as s:
+            await JobService(s).finish(job_id)
+        shutil.rmtree(tmp, ignore_errors=True)
+    except asyncio.CancelledError:
+        raise  # 삭제 · 서버 종료 — 행은 그대로 둔다
+    except Exception as e:
+        log.warning("작업 %d이 %s 단계에서 실패: %s", job_id, stage, type(e).__name__)
+        error = JobError(kind=error_kind(e), reason=_first_line(e), chunk_seq=None, attempts=1)
+        async with SessionLocal() as s:
+            await JobService(s).fail(job_id, error)
+        if stage in (None, JobStage.download, JobStage.extract):  # 임시 파일이 쓸모없다
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+async def _stage(stage: JobStage, job_id: int, video: Video, tmp: Path) -> None:
+    # 단계 하나. 서비스 호출마다 짧은 세션
+    source_port, summarizer_port = _ports()
+    if stage == JobStage.download:
+        if not video.has_captions:
+            raise NotImplementedYet("자막 없는 영상의 음성 내려받기는 아직 지원하지 않아요")
+        got = await source_port.captions(video.source_id)
+        if got is None:  # 등록 뒤 자막이 사라졌다 — 단계 목록에 받아쓰기가 없다
+            raise YtdlpError("자막을 찾지 못했습니다", "unavailable")
+        lines, lang, kind = got
+        source = (
+            TranscriptSource.caption_manual if kind == "manual" else TranscriptSource.caption_auto
+        )
+        async with SessionLocal() as s:
+            await AnalysisService(s, summarizer_port).save_transcript(
+                video.id, source, lang, None, lines
+            )
+    elif stage == JobStage.extract:
+        raise NotImplementedYet("영상 파일의 음성 추출은 아직 지원하지 않아요")
+    elif stage == JobStage.transcribe:
+        audio = str(Path(config.INBOX_DIR) / video.origin)  # 로컬 음성 파일(B2가 갈래를 채운다)
+        await transcribe_stage(job_id, video, audio, str(tmp))
+    else:
+        async with SessionLocal() as s:
+            analysis = AnalysisService(s, summarizer_port)
+            if stage == JobStage.summarize:
+                await analysis.generate_summary(video)
+            elif stage == JobStage.chapter:
+                await analysis.generate_chapters(video)
+            elif stage == JobStage.suggest:
+                await analysis.generate_questions(video)

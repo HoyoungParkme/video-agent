@@ -66,3 +66,103 @@ def test_error_kind_each() -> None:
     assert kind(OSError(errno.ENOSPC, "No space left on device")) == ErrorKind.disk
     assert kind(ValueError("x")) == ErrorKind.unknown
     assert kind(NotImplementedYet("아직")) == ErrorKind.unknown
+
+
+# --- run
+
+
+async def test_run_captions_to_done(db, make, ports, tmp_path) -> None:
+    audio_source, summarizer = ports
+    video, job = await _running(make)
+    await pipeline.run(job.id, video)
+    row = await _row(job.id)
+    assert (row.status, row.progress_pct, row.stage) == (JobStatus.done, 100, JobStage.suggest)
+    assert set(row.stage_durations_sec) == {"download", "summarize", "chapter", "suggest"}
+    assert audio_source.calls == [video.source_id]
+    assert [name for name, _ in summarizer.calls] == [
+        "summary",
+        "chapters",
+        "questions",
+    ]  # 받아쓰기 0회
+    t = await db.scalar(select(TranscriptRow))
+    assert (t.source, t.language, t.model) == ("caption_manual", "ko", None)
+    assert not (tmp_path / "tmp" / str(video.id)).exists()  # 끝나면 임시 폴더가 없다
+
+
+async def test_run_auto_captions_source(db, make, ports) -> None:
+    audio_source, _ = ports
+    lines, _, _ = audio_source.result
+    audio_source.result = (lines, "en", "auto")
+    video, job = await _running(make)
+    await pipeline.run(job.id, video)
+    t = await db.scalar(select(TranscriptRow))
+    assert (t.source, t.language) == ("caption_auto", "en")
+
+
+async def test_run_summary_fails(db, make, ports) -> None:
+    _, summarizer = ports
+    summarizer.fail["summary"] = OpenAIOutputError("모델 출력을 읽지 못했어요(형식)")
+    video, job = await _running(make)
+    await pipeline.run(job.id, video)
+    row = await _row(job.id)
+    assert (row.status, row.stage, row.progress_pct) == (JobStatus.failed, JobStage.summarize, 25)
+    assert (row.error_kind, row.error_reason, row.error_attempts) == (
+        ErrorKind.openai,
+        "모델 출력을 읽지 못했어요(형식)",
+        1,
+    )
+    assert await db.scalar(select(SegmentRow).limit(1)) is not None  # 스크립트는 남아 있다
+    assert await db.scalar(select(SummaryRow)) is None
+
+
+async def test_run_download_fails_removes_tmp(db, make, ports, tmp_path) -> None:
+    audio_source, _ = ports
+    audio_source.error = YtdlpError("ERROR: Private video\nsecond line", "private")
+    video, job = await _running(make)
+    await pipeline.run(job.id, video)
+    row = await _row(job.id)
+    assert (row.status, row.stage, row.error_kind) == (
+        JobStatus.failed,
+        JobStage.download,
+        ErrorKind.youtube,
+    )
+    assert row.error_reason == "ERROR: Private video"  # 첫 줄
+    assert not (tmp_path / "tmp" / str(video.id)).exists()
+
+
+async def test_run_captions_vanished(db, make, ports) -> None:
+    audio_source, _ = ports
+    audio_source.result = None  # 등록 뒤 자막이 사라졌다
+    video, job = await _running(make)
+    await pipeline.run(job.id, video)
+    row = await _row(job.id)
+    assert (row.status, row.error_kind, row.error_reason) == (
+        JobStatus.failed,
+        ErrorKind.youtube,
+        "자막을 찾지 못했습니다",
+    )
+
+
+async def test_run_without_captions_is_stub(db, make, ports) -> None:
+    video, job = await _running(make, has_captions=False, caption_language=None, caption_kind=None)
+    await pipeline.run(job.id, video)
+    row = await _row(job.id)
+    assert (row.status, row.stage, row.error_kind) == (
+        JobStatus.failed,
+        JobStage.download,
+        ErrorKind.unknown,
+    )
+
+
+async def test_run_cancelled_writes_nothing(db, make, ports) -> None:
+    _, summarizer = ports
+    summarizer.delay = 5
+    video, job = await _running(make)
+    task = asyncio.create_task(pipeline.run(job.id, video))
+    while not summarizer.calls:
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):  # 예외가 밖으로
+        await task
+    row = await _row(job.id)
+    assert (row.status, row.stage, row.error_kind) == (JobStatus.running, JobStage.summarize, None)
