@@ -149,3 +149,36 @@ async def test_transcribe(tmp_path: Path) -> None:
     assert rec.kwargs["model"] == "whisper-1"
     assert "language" not in rec.kwargs
     assert rec.kwargs["file"].closed
+
+
+def _chat_client(rec: _Recorder) -> Any:
+    return SimpleNamespace(chat=SimpleNamespace(completions=rec))
+
+
+def _completion(content: str | None) -> Any:
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+        usage=SimpleNamespace(prompt_tokens=1200, completion_tokens=300),
+    )
+
+
+async def test_chat_json_mode(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="app")
+    rec = _Recorder(_completion('{"one_liner": "요약"}'))
+    messages = [{"role": "user", "content": "<transcript>비밀 스크립트</transcript>"}]
+    assert await openai.chat(_chat_client(rec), "gpt-5-mini", messages) == '{"one_liner": "요약"}'
+    assert rec.kwargs["response_format"] == {"type": "json_object"}
+    assert "1200" in caplog.text and "300" in caplog.text
+    assert "비밀 스크립트" not in caplog.text
+
+
+async def test_chat_plain_and_empty() -> None:
+    rec = _Recorder(_completion(None))
+    assert await openai.chat(_chat_client(rec), "gpt-5-mini", [], json_mode=False) == ""
+    assert "response_format" not in rec.kwargs
+
+
+async def test_chat_passes_sdk_errors() -> None:
+    error = sdk.APIConnectionError(request=httpx2.Request("POST", "http://fake/v1/chat"))
+    with pytest.raises(sdk.APIConnectionError):
+        await openai.chat(_chat_client(_Recorder(error=error)), "gpt-5-mini", [])

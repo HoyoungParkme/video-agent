@@ -134,3 +134,31 @@ async def transcribe(client: AsyncOpenAI, path: str, model: str) -> dict:
             timestamp_granularities=["segment"],
         )
     return resp.model_dump()
+
+
+async def chat(
+    client: AsyncOpenAI, model: str, messages: list[dict], json_mode: bool = True
+) -> str:
+    """VA-MS-007#openai.chat
+
+    채팅 완성 한 번. 파싱은 어댑터가 한다. 토큰 사용량만 로그에 남긴다.
+
+    Args:
+        client: `client(key)`가 준 클라이언트
+        model: 텍스트 모델
+        messages: 대화 메시지 목록
+        json_mode: 참이면 JSON 객체로만 답하게 한다
+
+    Returns:
+        첫 선택지의 본문. 비었으면 빈 문자열
+    """
+    extra: dict[str, Any] = {"response_format": {"type": "json_object"}} if json_mode else {}
+    resp = await client.chat.completions.create(model=model, messages=messages, **extra)
+    if resp.usage is not None:
+        log.info(
+            "chat %s 토큰 입력 %d · 출력 %d",
+            model,
+            resp.usage.prompt_tokens,
+            resp.usage.completion_tokens,
+        )
+    return resp.choices[0].message.content or ""
