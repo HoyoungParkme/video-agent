@@ -47,7 +47,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 **처리**
 1. `dir = config.INBOX_DIR` · if 없거나 읽을 수 없음 → `! internal` (마운트가 안 된 것은 설치 오류다. 빈 폴더와 다르다)
 2. `FS: dir 바로 아래 항목` 중 파일이고 · 이름이 `.`으로 시작하지 않고 · 확장자(소문자로 비교) ∈ `ACCEPTED`인 것만. 하위 폴더는 들어가지 않는다
-3. 파일마다 `name` · `size_bytes = stat.st_size` · `modified_at = stat.st_mtime`(UTC) · `kind = video if 확장자 ∈ {mp4, mkv, mov, webm} else audio` · `duration_sec = MediaProbePort.probe(path)[0]` — `config.PROBE_CONCURRENCY`개씩 동시에 · if probe가 예외 → `duration_sec = None` (그 파일을 고르면 `register`가 `unsupported-file`을 낸다)
+3. 파일마다 `name` · `size_bytes = stat.st_size` · `modified_at = stat.st_mtime`(UTC) · `kind = video if 확장자 ∈ {mp4, mkv, mov, webm} else audio` · `duration_sec = MediaProbePort.probe(path)[0]` — `config.PROBE_CONCURRENCY`개씩 동시에 · if probe가 예외 → `duration_sec = None` (그 파일을 고르면 `register`가 `unsupported-file`을 낸다) · 목록을 읽은 뒤 재기 전에 파일이 사라졌으면(옮기는 중) 그 파일만 뺀다 — 목록 전체가 실패하지 않게
 4. `modified_at` 내림차순 정렬 → `→ InboxListing(path=config.INBOX_DISPLAY_PATH, files=[InboxFile ×N])`
 
 **출력** `InboxListing`. 폴더가 비어 있으면 `files = []`
@@ -56,7 +56,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **호출하는 것** `MediaProbePort.probe`
 
-**테스트 관점** 하위 폴더 안 파일은 안 보인다 · `.DS_Store` 같은 숨김 파일은 안 보인다 · `MP4` 대문자 확장자도 받는다 · txt 파일은 안 보인다 · 깨진 파일은 `duration_sec=None`으로 목록에 있다 · 수정 시각 최근 것이 맨 위 · 빈 폴더 → `files=[]`, 200 · `path`는 마운트 경로가 아니라 표시 경로
+**테스트 관점** 하위 폴더 안 파일은 안 보인다 · `.DS_Store` 같은 숨김 파일은 안 보인다 · `MP4` 대문자 확장자도 받는다 · txt 파일은 안 보인다 · 깨진 파일은 `duration_sec=None`으로 목록에 있다 · 읽는 사이 사라진 파일은 빠지고 나머지는 200 · 수정 시각 최근 것이 맨 위 · 빈 폴더 → `files=[]`, 200 · `path`는 마운트 경로가 아니라 표시 경로
 
 ---
 
@@ -76,7 +76,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 3. `info = info_of(req)` — 정보 조회. `source-unavailable` · `unsupported-file` · `no-audio-track`은 거기서 난다
 4. if `info.duration_sec > config.MAX_DURATION_SEC` → `! video-too-long {duration_sec, max_sec}` (길이는 알려야 화면이 시작 불가 판에 보인다)
 5. **트랜잭션**: `row = DB: videos where source_id = info.source_id` (중복 판정 — YouTube는 영상 ID, 로컬은 내용 해시라 주소 형태 · 파일 이름이 달라도 같다)
-   - if `row` 있음 → `job = JobService.latest(row.id)` · if `job is None`(사전 안내에서 취소했던 영상) → `DB: videos update row ← info` (title · channel · duration_sec · origin · has_captions · caption_language · caption_kind. `id` · `created_at`은 그대로) · else → 그대로 둔다
+   - if `row` 있음 → `job = JobService.latest(row.id)` · if `job is None`(사전 안내에서 취소했던 영상) → `DB: videos update row ← info` (title · channel · duration_sec · origin · has_captions · caption_language · caption_kind. `id` · `created_at`은 그대로) · else → 그대로 둔다. 단 로컬 파일이고 `origin`이 다르면(이름을 바꿨다) `origin`만 지금 이름으로 고친다 — 다시 시도하는 파이프라인이 `INBOX_DIR / origin`을 읽는다([[VA-MS-002#pipeline.resume]]). 제목은 그대로
    - else → `row = DB: videos insert(info)` · `job = None`
    - if insert가 unique 위반(같은 영상을 동시에 두 번 넣음) → 다시 읽어 `row`로 (한 번만)
 6. `count = ChatService.count_by_videos([row.id]).get(row.id, 0)`
@@ -97,7 +97,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **호출하는 것** `SettingsService.check_stored_key` · `SettingsService.require_key` · [[#VideoService.info_of]] · `JobService.latest` · `ChatService.count_by_videos` · [[#VideoService.to_dto]]
 
-**테스트 관점** 키 없음 → `key-missing`이고 YouTube · ffprobe에 닿지 않는다 · `https://youtu.be/dQw4w9WgXcQ`와 `https://www.youtube.com/watch?v=dQw4w9WgXcQ`는 같은 `source_id` · `shorts/` 주소도 받는다 · `https://vimeo.com/…` → `url-invalid` · `../etc/passwd` · `sub/a.mp4` → `path-outside-inbox` · `notes.txt` → `unsupported-file` · 같은 파일을 이름만 바꿔 넣으면 같은 영상 · 취소했던 영상을 다시 넣으면 제목이 새 정보로 바뀌고 `status=registered` · 작업이 있는 영상을 다시 넣으면 행이 안 바뀌고 `status`가 작업을 따른다 · 3시간 1초 → `video-too-long`, 행이 안 생긴다 · 동시에 두 번 넣어도 행은 하나
+**테스트 관점** 키 없음 → `key-missing`이고 YouTube · ffprobe에 닿지 않는다 · `https://youtu.be/dQw4w9WgXcQ`와 `https://www.youtube.com/watch?v=dQw4w9WgXcQ`는 같은 `source_id` · `shorts/` 주소도 받는다 · `https://vimeo.com/…` → `url-invalid` · `../etc/passwd` · `sub/a.mp4` → `path-outside-inbox` · `notes.txt` → `unsupported-file` · 같은 파일을 이름만 바꿔 넣으면 같은 영상 · 취소했던 영상을 다시 넣으면 제목이 새 정보로 바뀌고 `status=registered` · 작업이 있는 영상을 다시 넣으면 행이 안 바뀌고 `status`가 작업을 따른다 · 작업이 실패한 로컬 파일을 이름만 바꿔 넣으면 `origin`만 새 이름이고 제목 · 작업은 그대로 · 3시간 1초 → `video-too-long`, 행이 안 생긴다 · 동시에 두 번 넣어도 행은 하나
 
 ---
 
