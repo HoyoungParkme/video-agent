@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import socket
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -306,7 +307,7 @@ async def test_transcribe_chunk_fails_after_three(db, make, ports, stt, tmp_path
     assert [(c.seq, c.state, c.attempts) for c in chunks] == [
         (1, ChunkState.done, 1),
         (2, ChunkState.failed, 3),
-        (3, ChunkState.done, 1),  # 하나가 실패해도 나머지는 끝까지
+        (3, ChunkState.done, 1),  # 하나가 실패해도 돌던 조각은 끝까지
     ]
     assert stt.calls.count(2) == 3
     assert sorted(p.name for p in tmp.iterdir()) == [
@@ -322,6 +323,37 @@ async def test_transcribe_keeps_concurrency(db, make, ports, audio_split, stt) -
     await pipeline.run(job.id, video)
     assert (await _row(job.id)).status == JobStatus.done
     assert stt.peak == 3  # 작업의 동시 수를 넘지 않는다
+
+
+async def test_transcribe_failure_starts_no_new_chunks(db, make, ports, audio_split, stt) -> None:
+    # 1번이 곧바로 세 번 실패 — 돌던 2 · 3번은 끝까지, 기다리던 4 ~ 6번은 보내지 않는다(UC-S3 3a2)
+    audio_split.n = 6
+    stt.fail, stt.delays = {1: 99}, {seq: 1.0 for seq in range(2, 7)}
+    video, job = await _stt_job(make, STT_STAGES)
+    await pipeline.run(job.id, video)
+    row = await _row(job.id)
+    assert (row.status, row.error_chunk_seq, row.error_attempts) == (JobStatus.failed, 1, 3)
+    assert sorted(stt.calls) == [1, 1, 1, 2, 3]
+    assert [(c.seq, c.state, c.attempts) for c in await _chunks(job.id)] == [
+        (1, ChunkState.failed, 3),
+        (2, ChunkState.done, 1),
+        (3, ChunkState.done, 1),
+        (4, ChunkState.waiting, 0),
+        (5, ChunkState.waiting, 0),
+        (6, ChunkState.waiting, 0),
+    ]
+
+
+async def test_transcribe_waits_before_resending(db, make, ports, stt, monkeypatch) -> None:
+    # SDK 재시도를 껐다 — 다시 보내기 전에 설정값, 그다음은 두 배를 기다린다
+    monkeypatch.setattr(config, "CHUNK_RETRY_WAIT_SEC", 0.5)
+    stt.fail = {2: 2}  # 두 번 실패하고 셋째에 된다
+    video, job = await _stt_job(make, STT_STAGES)
+    started = time.monotonic()
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done
+    assert stt.calls.count(2) == 3
+    assert time.monotonic() - started >= 1.45  # 0.5 + 1.0 — 기다리지 않으면 1초도 안 걸린다
 
 
 # --- resume

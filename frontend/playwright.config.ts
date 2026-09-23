@@ -45,6 +45,8 @@ export default defineConfig({
         FFMPEG_BIN: path.join(__dirname, "e2e", "fake-ffmpeg.mjs"),
         FFPROBE_BIN: path.join(__dirname, "e2e", "fake-ffmpeg.mjs"),
         INBOX_DIR: path.join(TMP, "inbox"),
+        // 조각을 다시 보내기 전의 기다림(2초 · 4초)을 줄인다 — 실패 흐름이 빨리 끝나게
+        CHUNK_RETRY_WAIT_SEC: "0.2",
         DATABASE_URL: "postgresql+asyncpg://va:va@127.0.0.1:5433/va_test",
         INBOX_DISPLAY_PATH: "~/video-agent/inbox",
       },

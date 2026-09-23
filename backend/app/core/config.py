@@ -75,6 +75,7 @@ class Config(BaseSettings):
     CHUNK_SEC: int = 600
     STT_CONCURRENCY: int = 3
     CHUNK_MAX_ATTEMPTS: int = 3
+    CHUNK_RETRY_WAIT_SEC: float = 2  # 다시 보내기 전 첫 기다림, 다음은 두 배
     CHUNK_EST_SEC: int = 45
     TEXT_EST_SEC: int = 60
     TOKENS_PER_MIN: int = 200

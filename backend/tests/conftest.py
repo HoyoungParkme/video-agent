@@ -88,6 +88,12 @@ async def _alembic(action: str, target: str) -> None:
     await asyncio.to_thread(getattr(command, action), alembic_config(), target)
 
 
+@pytest.fixture(autouse=True)
+def _no_retry_wait(monkeypatch) -> None:
+    """조각을 다시 보내기 전의 기다림(2초 · 4초)을 없앤다 — 기다림을 보는 테스트만 값을 준다."""
+    monkeypatch.setattr(config, "CHUNK_RETRY_WAIT_SEC", 0)
+
+
 @pytest.fixture(scope="session")
 def alembic() -> Callable[[str, str], Awaitable[None]]:
     """`await alembic("upgrade", "head")` — 리비전을 올리고 내린다."""
@@ -465,11 +471,12 @@ def audio_split() -> FakeAudioSplit:
 @dataclass
 class FakeStt:
     """SttPort 자리 — 조각(파일 이름의 seq)마다 구간 둘. fail[seq]만큼 error로 실패시키고,
-    받은 조각 번호와 동시에 도는 수의 최댓값을 센다."""
+    받은 조각 번호와 동시에 도는 수의 최댓값을 센다. 지연은 조각마다 줄 수 있다(delays)."""
 
     fail: dict[int, int] = field(default_factory=dict)
     error: Exception = field(default_factory=TimeoutError)
     delay: float = 0
+    delays: dict[int, float] = field(default_factory=dict)
     calls: list[int] = field(default_factory=list)
     running: int = 0
     peak: int = 0
@@ -480,7 +487,7 @@ class FakeStt:
         self.running += 1
         self.peak = max(self.peak, self.running)
         try:
-            await asyncio.sleep(self.delay)
+            await asyncio.sleep(self.delays.get(seq, self.delay))
             if self.fail.get(seq, 0) > 0:
                 self.fail[seq] -= 1
                 raise self.error

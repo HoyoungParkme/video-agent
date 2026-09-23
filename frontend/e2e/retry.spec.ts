@@ -17,10 +17,12 @@ test("8번 조각이 세 번 실패 → 실패 알림 → 다시 시도하면 8�
   page,
   request,
 }) => {
+  // 받아쓰기를 조금 늦춘다 — 8번이 세 번 실패하는 동안 같이 시작한 7 · 9번이 돈다. 실패 뒤에는
+  // 새 조각을 시작하지 않고 돌던 조각만 끝까지 가므로(UC-S3 3a2) 완료가 늘 8개다
   await fakeOpenAI(request, {
     reset: true,
     chat_delay_ms: 0,
-    stt_delay_ms: 0,
+    stt_delay_ms: 300,
     stt_fail: { seq: 8, times: 3 },
   });
 

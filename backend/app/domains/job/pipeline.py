@@ -162,8 +162,10 @@ async def transcribe_stage(job_id: int, video: Video, audio: str | None, tmp: st
 
     조각 병렬 받아쓰기. 조각 행이 없으면 음성을 나눠 만든다. done이 아닌 조각만 동시 수만큼
     보내고, 조각마다 이번 실행에서 상한만큼 자동으로 다시 보낸다(다시 시도하면 새로 센다).
-    하나가 상한을 넘어도 돌던 조각은 끝까지 기다린다 — 완료 수와 다음 조각 번호가 맞게. 다
-    끝나면 조각 결과에 오프셋을 더해 이어 붙여 스크립트로 저장한다.
+    다시 보내기 전에는 2초 · 4초 기다린다 — SDK 재시도를 꺼서 바로 보내면 요청 한도 · 일시
+    오류에 세 번이 1초 안에 끝난다. 하나가 상한을 넘으면 새 조각은 시작하지 않고 돌던 조각만
+    끝까지 기다린다 — 완료 수와 다음 조각 번호가 맞게(UC-S3 3a2). 다 끝나면 조각 결과에
+    오프셋을 더해 이어 붙여 스크립트로 저장한다.
 
     Args:
         job_id: 작업 id
@@ -185,10 +187,13 @@ async def transcribe_stage(job_id: int, video: Video, audio: str | None, tmp: st
             await JobService(s).plan_chunks(job_id, plans)
             chunks = await crud.chunks(s, job_id)
     sem = asyncio.Semaphore(concurrency)
+    stop = asyncio.Event()  # 한 조각이 상한을 넘었다 — 새 조각은 시작하지 않는다
 
     async def one(c: AudioChunkRow) -> None:
         sent = 0  # 이번 실행에서 보낸 횟수
         async with sem:
+            if stop.is_set():
+                return  # 보내지 않는다 — 조각은 waiting 그대로
             while True:
                 async with SessionLocal() as s:
                     await JobService(s).mark_chunk(job_id, c.seq, ChunkState.in_flight)
@@ -202,7 +207,9 @@ async def transcribe_stage(job_id: int, video: Video, audio: str | None, tmp: st
                     async with SessionLocal() as s:
                         await JobService(s).mark_chunk(job_id, c.seq, state)
                     if state == ChunkState.failed:
+                        stop.set()
                         raise _ChunkFailed(c.seq, sent, e) from e
+                    await asyncio.sleep(config.CHUNK_RETRY_WAIT_SEC * 2 ** (sent - 1))
                     continue
                 async with SessionLocal() as s:
                     await JobService(s).mark_chunk(job_id, c.seq, ChunkState.done, segments)
