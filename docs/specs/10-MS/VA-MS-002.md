@@ -10,7 +10,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 ## 0. 이 문서가 다루는 것
 
-`domains/job/service.py`의 함수 20개와 `domains/job/pipeline.py`의 함수 5개. 클래스 명세 [[VA-DOM-002#JobService]]와 그 아래 「파이프라인」의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나** — 4.2 절이 두 파일이라 이 문서도 두 모듈이다. 포트 · 어댑터(`audio_source` · `audio_split` · `stt_openai`)는 4.6 · 4.7의 MS 문서에서.
+`domains/job/service.py`의 함수 20개와 `domains/job/pipeline.py`의 함수 6개. 클래스 명세 [[VA-DOM-002#JobService]]와 그 아래 「파이프라인」의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나** — 4.2 절이 두 파일이라 이 문서도 두 모듈이다. 포트 · 어댑터(`audio_source` · `audio_split` · `stt_openai`)는 4.6 · 4.7의 MS 문서에서.
 
 형식은 명세 작성 규약 2.10. 내부 타입(`ChunkPlan` `SttSegment` `Progress`)은 [[VA-DOM-002]] 2.6, 응답 형태(`Job` `JobSummary` `Chunks` `Chunk` `JobError` `Estimate` `Models`)는 [[VA-API-001]] 4장.
 
@@ -65,6 +65,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 | [[#pipeline.resume]] | 행의 단계부터 |
 | [[#pipeline.transcribe_stage]] | 조각 병렬 받아쓰기 |
 | [[#pipeline.error_kind]] | 예외 → `ErrorKind` |
+| [[#pipeline.reason_of]] | 예외 → 실패 이유 한 줄(한국어) |
 
 ---
 
@@ -83,7 +84,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 2. `models = SettingsService.current_models()` — 모델 이름과 단가
 3. `needs_stt = not video.has_captions`
 4. if `not needs_stt` → `chunks = None` · `concurrency = None` · `stt_minutes = None` · `stt_price_per_min = None` · `stt_cost = 0` · `seconds = config.TEXT_EST_SEC`
-   else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기 몫으로 `duration_sec / 60`초를 더한다)
+   else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기, 로컬 음성이면 mp3 변환 몫으로 `duration_sec / 60`초를 더한다 — 로컬 음성도 받아쓰기 단계가 조각을 나누기 전에 바꾼다, [[#pipeline.run]])
 5. `in_tokens = duration_sec / 60 × config.TOKENS_PER_MIN` · `text_cost = (in_tokens × 3 × models.text.price.input_per_mtok_usd + 6000 × models.text.price.output_per_mtok_usd) / 1_000_000` — 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 6천 토큰으로 본다
 6. `→ Estimate(needs_stt, seconds, chunks, concurrency, stt_minutes, stt_price_per_min, stt_cost_usd=round(stt_cost, 4), text_cost_usd=round(text_cost, 4), total_cost_usd=round(stt_cost + text_cost, 2), stt_model=models.stt.id, text_model=models.text.id)`
 
@@ -152,7 +153,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 1. `SettingsService.require_key()` · `! key-missing` · `! key-invalid`
 2. `row = DB: analysis_jobs where video_id order by started_at desc limit 1` · if 없음 → `! not-found {resource: job}`
 3. if `row.status != failed` → `! job-not-failed {job_status}`
-4. **트랜잭션**: `DB: analysis_jobs update status=queued · queued_at=now · error_kind=error_reason=error_chunk_seq=error_attempts=null` (같은 행. `stage` · `stages` · `started_at` · 모델은 그대로. `stage`가 `pending`이 아니라서 워커가 `resume`으로 돌린다) · `DB: audio_chunks where job_id and state = failed → state = waiting` (실패 조각도 다시 보낸다. `attempts`는 그대로 두고 상한을 다시 센다 — 아래 `mark_chunk`)
+4. **트랜잭션**: `DB: analysis_jobs update status=queued · queued_at=now · error_kind=error_reason=error_chunk_seq=error_attempts=null` (같은 행. `stage` · `stages` · `started_at` · 모델은 그대로. `stage`가 `pending`이 아니라서 워커가 `resume`으로 돌린다) · `DB: audio_chunks where job_id and state = failed → state = waiting` (실패 조각도 다시 보낸다. `attempts`는 누적 이력이라 그대로 두고, 상한은 다음 실행에서 새로 센다 — [[#pipeline.transcribe_stage]] 3번)
 5. 커밋 뒤 `wake()` · `await asyncio.sleep(0)` — `start` 5번과 같다
 6. 행을 다시 읽어 `→ to_job(row, chunks, queue_position(row))`
 
@@ -215,14 +216,14 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **처리** — **트랜잭션**
 1. `row = DB: analysis_jobs where id`
-2. if `row.stage != pending` → `row.stage_durations_sec[row.stage] = round(now − row.stage_started_at)` — 끝난 단계의 걸린 시간
+2. if `row.stage != pending` → `row.stage_durations_sec[row.stage] += round(now − row.stage_started_at)` — 끝난 단계의 걸린 시간. 다시 시도로 같은 단계를 여러 번 돌면 더해 간다(없으면 0부터)
 3. `row.stage = stage` · `row.stage_started_at = now`
-4. `row.progress_pct = 완료한 단계들의 가중치 합`(0장 표. `stages`에서 `stage` 앞에 있는 것들)
+4. `row.progress_pct = 완료한 단계들의 가중치 합`(0장 표. `stages`에서 `stage` 앞에 있는 것들) · if `stage == transcribe`이고 조각 행이 있음(다시 시도) → `+ 70 × (done 수 / 전체 수)` — 진행률이 뒤로 가지 않게([[#JobService.mark_chunk]]와 같은 식)
 5. `DB: update`
 
 **출력** 없음
 
-**테스트 관점** 자막 있는 YouTube에서 `summarize`로 바꾸면 `stage_durations_sec[download]`가 생기고 `progress_pct=25` · 받아쓰기 있는 작업에서 `summarize`로 바꾸면 `progress_pct=70+7`(download 7.5 → 반올림 규칙 한 가지로) · `pending`에서 첫 단계로 갈 때는 duration이 안 생긴다
+**테스트 관점** 자막 있는 YouTube에서 `summarize`로 바꾸면 `stage_durations_sec[download]`가 생기고 `progress_pct=25` · 받아쓰기 있는 작업에서 `summarize`로 바꾸면 `progress_pct=70+7`(download 7.5 → 반올림 규칙 한 가지로) · `pending`에서 첫 단계로 갈 때는 duration이 안 생긴다 · 30개 중 15 완료에서 받아쓰기로 다시 들어가면 진행률이 받아쓰기 몫의 절반부터 · 같은 단계를 두 번 돌면 걸린 시간이 더해진다
 
 ---
 
@@ -367,10 +368,11 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **처리**
 - if `row.status != running` → `→ None`
-- elif `row.stage == transcribe` → `done = [c for c in chunks if c.state == done]` · if `done` 비어 있음 → `→ ceil(len(chunks) / row.concurrency) × config.CHUNK_EST_SEC` · else → `rate = len(done) / (now − row.stage_started_at)`(초당 조각) · `→ ceil((len(chunks) − len(done)) / rate)`
+- elif `row.stage == transcribe`이고 조각 행이 있음 → `left = done이 아닌 조각 수` · `now_done = [c for c in chunks if c.state == done and c.done_at ≥ row.stage_started_at]` — **이번 실행에서 끝난 조각만**(다시 시도 뒤 이전 실행의 조각까지 세면 속도가 부푼다) · if `now_done` 비어 있음 → `→ ceil(left / row.concurrency) × config.CHUNK_EST_SEC` · else → `rate = len(now_done) / (now − row.stage_started_at)`(초당 조각) · `→ ceil(left / rate)`
+- elif `row.stage == transcribe`이고 조각 행이 없음(음성을 나누는 중) → 아래 조각 없는 단계와 같다
 - else → `→ max(row.est_seconds − Σ row.stage_durations_sec.values() − (now − row.stage_started_at), 0)` — 예상 전체에서 지난 시간을 뺀다. 0이 되면 화면이 '약 0초'가 아니라 값을 비운다([[VA-API-001#GET/api/videos/{id}/job]] — 0이면 화면이 비운다)
 
-**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 · 첫 조각 완료 전에는 예상치 기반 · 요약 단계에서 예상보다 오래 걸리면 0
+**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 · 첫 조각 완료 전에는 예상치 기반 · 요약 단계에서 예상보다 오래 걸리면 0 · 다시 시도 뒤 이전 실행의 완료 조각은 속도에 안 든다 · 조각 행이 아직 없으면 예상 전체 − 지난 시간
 
 ---
 
@@ -427,18 +429,18 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 2. `for stage in stages:` `JobService.mark_stage(job_id, stage)` 뒤 단계 실행 —
    - `download` · if `video.has_captions` → `(lines, lang, kind) = AudioSourcePort.captions(video.source_id)` · if `None`(등록 뒤 자막이 사라짐 — 단계 목록에 받아쓰기가 없다) → `! YtdlpError('자막을 찾지 못했습니다', kind=unavailable)`, `youtube`로 접힌다 · `AnalysisService.save_transcript(video.id, caption_manual if kind == manual else caption_auto, lang, None, lines)` · else → `audio = AudioSourcePort.download_audio(video.source_id, tmp)`
    - `extract` → `audio = AudioSourcePort.extract_audio(config.INBOX_DIR / video.origin, tmp)`
-   - `transcribe` → if `audio` 없음(로컬 음성) → `audio = config.INBOX_DIR / video.origin` · `transcribe_stage(job_id, video, audio, tmp)`
+   - `transcribe` → if `audio` 없음(로컬 음성 — 추출 단계가 없다) → `audio = AudioSourcePort.extract_audio(config.INBOX_DIR / video.origin, tmp)` — mp3로 바꾼다. `ffmpeg.cut`은 다시 인코딩하지 않아 wav · m4a를 그대로 자를 수 없고, 조각이 하나면 음성 파일이 곧 조각이라 받아쓰기가 끝나면 지워진다 — inbox 원본은 읽기만 한다 · `transcribe_stage(job_id, video, audio, tmp)`
    - `summarize` → `AnalysisService.generate_summary(video)`
    - `chapter` → `AnalysisService.generate_chapters(video)`
    - `suggest` → `AnalysisService.generate_questions(video)`
 3. `JobService.finish(job_id)` · `FS: rmtree(tmp, ignore_errors=True)`
-4. 예외 처리 — `except CancelledError → raise`(아무것도 쓰지 않는다. 조각 파일도 둔다) · `except Exception as e → JobService.fail(job_id, JobError(error_kind(e), reason=str(e)의 첫 줄(한국어 문구는 어댑터가 만든다), chunk_seq=None, attempts=1))` · 내려받기 · 추출 실패면 `FS: rmtree(tmp)`([[VA-UC-001#UC-S2]] 1d). 받아쓰기 실패는 `transcribe_stage`가 `chunk_seq` · `attempts`를 채운 `JobError`로 던진다
+4. 예외 처리 — `except CancelledError → raise`(아무것도 쓰지 않는다. 조각 파일도 둔다) · `except Exception as e → JobService.fail(job_id, JobError(error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1))` · 내려받기 · 추출 실패면 `FS: rmtree(tmp)`([[VA-UC-001#UC-S2]] 1d). 받아쓰기 실패는 `transcribe_stage`가 `chunk_seq` · `attempts`를 채운 `JobError`로 던진다
 
 **출력** 없음. 결과는 행에
 
-**호출하는 것** [[#JobService.mark_stage]] · [[#JobService.finish]] · [[#JobService.fail]] · [[#pipeline.transcribe_stage]] · [[#pipeline.error_kind]] · `AudioSourcePort.captions` · `download_audio` · `extract_audio` · `AnalysisService.save_transcript` · `generate_summary` · `generate_chapters` · `generate_questions`
+**호출하는 것** [[#JobService.mark_stage]] · [[#JobService.finish]] · [[#JobService.fail]] · [[#pipeline.transcribe_stage]] · [[#pipeline.error_kind]] · [[#pipeline.reason_of]] · `AudioSourcePort.captions` · `download_audio` · `extract_audio` · `AnalysisService.save_transcript` · `generate_summary` · `generate_chapters` · `generate_questions`
 
-**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다 · 자막이 사라져 `captions`가 None → `failed`, `error.kind=youtube`
+**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다 · 자막이 사라져 `captions`가 None → `failed`, `error.kind=youtube` · 로컬 음성(wav) → `extract_audio`로 바꾼 `tmp` 안 mp3를 나누고, inbox 원본은 그대로 남는다
 
 ---
 
@@ -452,7 +454,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 1. `row = DB: analysis_jobs where id` · `start_at = row.stages.index(row.stage)` — 실패한 단계
 2. `run`과 같은 반복을 `stages[start_at:]`부터. 단 —
    - `download` · `extract`에서 실패했으면 처음부터와 같다(임시 파일이 지워졌다)
-   - `transcribe`에서 실패했으면 `audio`는 `tmp` 안 음성 파일(있어야 한다. 없으면 `extract`/`download`부터 다시 — `stages`에서 앞 단계를 찾아 그 단계부터) · `transcribe_stage`는 `done`이 아닌 조각만 보낸다
+   - `transcribe`에서 실패했으면 조각 행이 있을 때는 음성 파일이 필요 없다 — `transcribe_stage`는 `done`이 아닌 조각만, 남아 있는 조각 파일로 보낸다. 조각 행이 없으면(나누다 멈춤) `audio = tmp / audio.mp3`(내려받기 · 추출 · 변환이 쓰는 이름) · 없으면 로컬 음성은 받아쓰기 단계가 다시 바꾸고([[#pipeline.run]]), 그 밖은 `stages`에서 앞 단계(`download` · `extract`)를 찾아 그 단계부터
    - `summarize` 이후 실패는 스크립트가 있으므로 그 단계부터
 3. 마무리 · 예외 처리는 `run`과 같다
 
@@ -470,10 +472,10 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **처리**
 1. `chunks = DB: audio_chunks where job_id` · if 비어 있음 → `plans = AudioSplitPort.split(audio, tmp)` · `JobService.plan_chunks(job_id, plans)` · 다시 읽는다
-2. `todo = [c for c in chunks if c.state != done]` · `sem = Semaphore(row.concurrency)` · `models = row.stt_model`
-3. 조각마다 태스크 — `async def one(c):` `async with sem:` `loop:` `JobService.mark_chunk(job_id, c.seq, in_flight)` · `try: segs = SttPort.transcribe(c.path, model)` · `JobService.mark_chunk(job_id, c.seq, done, segs)` · `FS: remove(c.path)` · `return` · `except Exception as e:` if `attempts(방금 올린 값) < config.CHUNK_MAX_ATTEMPTS` → `mark_chunk(waiting)` · 계속(같은 조각을 다시) · else → `mark_chunk(failed)` · `raise ChunkFailed(seq=c.seq, attempts, cause=e)`
+2. `todo = [c for c in chunks if c.state != done]` · `sem = Semaphore(row.concurrency)` · `models = row.stt_model` · 조각마다 `base = c.attempts`(이번 실행을 시작할 때의 누적 횟수)
+3. 조각마다 태스크 — `async def one(c):` `async with sem:` `loop:` `JobService.mark_chunk(job_id, c.seq, in_flight)` · `try: segs = SttPort.transcribe(c.path, model)` · `JobService.mark_chunk(job_id, c.seq, done, segs)` · `FS: remove(c.path)` · `return` · `except Exception as e:` `sent = attempts(방금 올린 값) − base`(**이번 실행에서 보낸 횟수** — 다시 시도하면 상한을 새로 센다) · if `sent < config.CHUNK_MAX_ATTEMPTS` → `mark_chunk(waiting)` · 계속(같은 조각을 다시) · else → `mark_chunk(failed)` · `raise ChunkFailed(seq=c.seq, sent, cause=e)`
 4. `results = gather(one(c) for c in todo, return_exceptions=True)` — **하나가 실패해도 나머지를 끝까지 기다린다.** 그래야 완료 수(j)와 다음 조각(r)이 맞다
-5. if `ChunkFailed`가 하나라도 있음 → 가장 작은 `seq`의 것으로 `raise JobFailure(JobError(kind=error_kind(cause), reason, chunk_seq=seq, attempts))` — `run`이 받아 `fail`
+5. if `ChunkFailed`가 하나라도 있음 → 가장 작은 `seq`의 것으로 `raise JobFailure(JobError(kind=error_kind(cause), reason=reason_of(cause), chunk_seq=seq, attempts=sent))` — `run`이 받아 그 `JobError` 그대로 `fail`. `attempts`는 이번 실행에서 보낸 횟수라 화면 문구 '{n}번 보냈지만'이 상한과 같다
 6. `all = DB: audio_chunks where job_id order by seq`(이번엔 `result` 포함) · `lines = []` · 조각마다 `result`의 `SttSegment`에 `offset_sec`을 더해 `CaptionLine(start_sec, end_sec, text)`으로 · `language`는 첫 조각의 `language`
 7. `AnalysisService.save_transcript(video.id, stt, language, row.stt_model, lines)`
 
@@ -481,9 +483,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **예외** `JobFailure`(조각 상한 초과) · 그 밖의 예외는 `run`이 `unknown`으로 접는다
 
-**호출하는 것** [[#JobService.plan_chunks]] · [[#JobService.mark_chunk]] · [[#pipeline.error_kind]] · `AudioSplitPort.split` · `SttPort.transcribe` · `AnalysisService.save_transcript`
+**호출하는 것** [[#JobService.plan_chunks]] · [[#JobService.mark_chunk]] · [[#pipeline.error_kind]] · [[#pipeline.reason_of]] · `AudioSplitPort.split` · `SttPort.transcribe` · `AnalysisService.save_transcript`
 
-**테스트 관점** 가짜 STT가 16번을 세 번 실패시키면 → `failed` 조각 하나, `attempts=3`, 나머지는 끝까지 돌아 `done` · `JobError.chunk_seq=16` · 재개 시 `done` 조각은 호출 안 됨 · 동시에 도는 태스크가 `concurrency`를 넘지 않는다(가짜 STT가 동시 수를 센다) · 이어 붙인 구간의 시각이 오프셋만큼 밀린다(2번째 조각 0초 → 600초) · `done` 조각의 파일은 지워지고 `waiting` 조각의 파일은 남는다
+**테스트 관점** 가짜 STT가 16번을 세 번 실패시키면 → `failed` 조각 하나, `attempts=3`, 나머지는 끝까지 돌아 `done` · `JobError.chunk_seq=16` · 재개 시 `done` 조각은 호출 안 됨 · 동시에 도는 태스크가 `concurrency`를 넘지 않는다(가짜 STT가 동시 수를 센다) · 이어 붙인 구간의 시각이 오프셋만큼 밀린다(2번째 조각 0초 → 600초) · `done` 조각의 파일은 지워지고 `waiting` 조각의 파일은 남는다 · 다시 시도 뒤 `attempts=3`인 실패 조각도 다시 3번까지 보내고, 또 실패하면 `JobError.attempts=3`(누적 6)
 
 ---
 
@@ -496,6 +498,31 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 **처리** if `isinstance(e, (TimeoutError, OSError의 네트워크 계열, openai.APIConnectionError))` → `network`(`APITimeoutError`는 `APIConnectionError`의 하위라 함께 걸린다) · elif OpenAI SDK 예외 또는 `OpenAIOutputError`(모델 출력이 형식에 맞지 않아 어댑터가 던진 것 — [[VA-MS-007]] 0장) → `openai` · elif 어댑터의 `YtdlpError` → `youtube` · elif 어댑터의 `FfmpegError` → `ffmpeg` · elif `OSError(ENOSPC)` → `disk` · else → `unknown`
 
 **테스트 관점** 여섯 종류 각각 · `OpenAIOutputError` → `openai` · OpenAI SDK의 연결 오류는 `openai`가 아니라 `network`(SDK가 `APIConnectionError`로 감싼다 — 먼저 검사)
+
+---
+
+#### pipeline.reason_of 예외 → 실패 이유 한 줄
+
+**시그니처** `def reason_of(e: BaseException) -> str`
+
+근거: [[VA-UI-002#UI-3]] 5.2 '왜' · [[VA-SCN-001#S6]] 4번과 변형(인터넷 끊김) · [[VA-DOM-003#analysis_jobs]] `error_reason`(한 줄, 한국어)
+
+어댑터는 예외를 그대로 올리고(분류 · 재시도가 파이프라인 몫이듯) 이유 한 줄도 여기서 만든다. 어댑터가 SDK 예외를 감싸 바꾸면 [[#pipeline.error_kind]]가 종류를 가를 수 없다.
+
+**처리**
+1. `line = str(e)의 첫 줄(앞뒤 공백 없이)` · if `line`에 한글이 있음 → `→ line` — 앱이 만든 문장이다(`NotImplementedYet` · `OpenAIOutputError` · 파이프라인의 `YtdlpError('자막을 찾지 못했습니다')` · infra의 '시간 제한을 넘었습니다' 등)
+2. else `error_kind(e)`로 —
+   - `network` → 시간 초과(`TimeoutError` · `APITimeoutError`)면 '네트워크 시간 초과', 아니면 '네트워크에 연결할 수 없음'
+   - `openai` → 상태 401 'API 키 인증 실패' · 403 'OpenAI 권한 없음' · 429는 `insufficient_quota`면 'OpenAI 잔액 부족', 아니면 'OpenAI 요청 한도 초과' · 5xx 'OpenAI 서버 오류' · 그 밖 상태 'OpenAI가 요청을 거절함({상태})' · 상태 없음 'OpenAI 오류'
+   - `youtube` → `YtdlpError.kind`로 private '비공개 영상' · unavailable '삭제되었거나 볼 수 없는 영상' · geo '이 지역에서 볼 수 없는 영상' · network 'YouTube 연결 실패' · extractor 'yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트' · other 'yt-dlp 오류'
+   - `ffmpeg` → 'ffmpeg 처리 실패' · `disk` → '저장 공간 부족'
+   - `unknown` → '알 수 없는 오류({예외 클래스 이름})'
+
+**출력** 한 줄(한국어). 화면이 실패 알림 본문의 '왜'로 그대로 쓴다([[VA-UI-002#UI-3]] 5.2)
+
+**호출하는 것** [[#pipeline.error_kind]]
+
+**테스트 관점** `APITimeoutError` → '네트워크 시간 초과' · `APIConnectionError` → '네트워크에 연결할 수 없음' · 401 → 'API 키 인증 실패' · 429 `insufficient_quota` → 'OpenAI 잔액 부족' · 503 → 'OpenAI 서버 오류' · 영어 표준 오류의 `YtdlpError(kind=private)` → '비공개 영상' · `NotImplementedYet` · `OpenAIOutputError`는 그 문장 · 여러 줄 한국어 → 첫 줄 · `KeyError('x')` → '알 수 없는 오류(KeyError)'
 
 ---
 
