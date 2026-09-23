@@ -74,3 +74,41 @@ async def test_stages_for_four_sources(make) -> None:
     assert JobService.stages_for(_video(yt_no)) == STT_STAGES
     assert JobService.stages_for(_video(mp4)) == ["extract", *STT_STAGES[1:]]
     assert JobService.stages_for(_video(mp3)) == STT_STAGES[1:]  # 로컬 음성은 origin의 확장자
+
+
+# --- remaining_sec
+
+
+def _row(**kw) -> AnalysisJobRow:
+    values = {
+        "status": JobStatus.running,
+        "stage": JobStage.summarize,
+        "stages": ["download", "summarize", "chapter", "suggest"],
+        "est_seconds": 60,
+        "stage_durations_sec": {"download": 3},
+        "stage_started_at": datetime.now(UTC) - timedelta(seconds=10),
+        "progress_pct": 25,
+        "concurrency": 3,
+        "stt_model": None,
+        "text_model": "gpt-5-mini",
+        "est_cost_usd": Decimal("0.02"),
+        "id": 1,
+        "video_id": 1,
+        "started_at": T0,
+        "queued_at": T0,
+        "finished_at": None,
+    }
+    return AnalysisJobRow(**(values | kw))
+
+
+def test_remaining_sec_without_chunks() -> None:
+    assert JobService.remaining_sec(_row(), []) in (46, 47)  # 60 − 3 − 10(남짓)
+    late = _row(stage_started_at=datetime.now(UTC) - timedelta(seconds=300))
+    assert JobService.remaining_sec(late, []) == 0  # 예상보다 오래 걸리면 0 — 화면이 비운다
+    for status in (JobStatus.queued, JobStatus.failed, JobStatus.done):
+        assert JobService.remaining_sec(_row(status=status), []) is None
+
+
+def test_remaining_sec_chunks_is_stub() -> None:
+    with pytest.raises(NotImplementedYet):
+        JobService.remaining_sec(_row(stage=JobStage.transcribe, stages=STT_STAGES), [])

@@ -105,3 +105,24 @@ class JobService:
         if _is_audio(video):
             return [JobStage.transcribe, *tail]
         return [JobStage.extract, JobStage.transcribe, *tail]
+
+    @staticmethod
+    def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None:
+        """VA-MS-002#JobService.remaining_sec
+
+        남은 시간. 조각이 없는 단계는 예상 전체 시간에서 지난 시간을 뺀다(0 아래로 가지 않는다).
+        받아쓰기 단계(조각 갈래)는 스텁 — B2(VA-CODE-001 B1).
+
+        Args:
+            row: 작업 행
+            chunks: 작업의 조각들
+
+        Returns:
+            초. 돌고 있지 않으면 None, 0이면 화면이 비운다
+        """
+        if row.status != JobStatus.running:
+            return None
+        if row.stage == JobStage.transcribe:
+            raise NotImplementedYet("받아쓰기의 남은 시간은 아직 지원하지 않아요")
+        spent = sum(row.stage_durations_sec.values()) + _elapsed(row.stage_started_at)
+        return max(round(row.est_seconds - spent), 0)
