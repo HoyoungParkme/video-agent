@@ -799,7 +799,7 @@ sequenceDiagram
         W-->>U: 다이얼로그 열린 채 실패 한 줄 · 잠금 해제
     end
     VS-->>RV: 완료
-    RV->>JS: 워커를 깨운다
+    RV->>JS: wake() — 워커를 깨운다
     Note over JS: 도는 작업을 지웠으면 다음 대기 작업이 시작된다 — SEQ-14
     RV-->>W: 204
     W-->>U: UI-1 (행 빠짐, 개수 -1). UI-4에서 열었으면 history.replace
@@ -848,7 +848,7 @@ sequenceDiagram
         W-->>U: 이유 한 줄. 전 키 그대로
     end
     OA-->>SS: KeyCheck(ok, checked_at)
-    SS->>FS: .env의 OPENAI_API_KEY 줄을 고친다 (다른 줄은 그대로 · 임시 파일 → rename)
+    SS->>FS: .env의 OPENAI_API_KEY 줄을 고친다 (다른 줄은 그대로 · 같은 파일에 제자리 쓰기 — 바인드 마운트라 rename 불가)
     SS->>SS: last_check = ok
     SS-->>RS: Settings
     RS-->>W: 200 Settings
@@ -893,7 +893,7 @@ sequenceDiagram
         JS->>DB: status = failed · error_kind = unknown · error_reason = '서버가 다시 시작됨' · in_flight 조각 → waiting
     end
     JS-->>MN: 건수
-    MN->>PL: create_task(worker()) — 하나. 서버를 끌 때 취소한다
+    MN->>PL: create_task(worker(load_video)) — 하나. 서버를 끌 때 취소한다
     Note over PL: queued로 남아 있던 작업이 있으면 이어서 돈다 — SEQ-14
     MN->>MN: 라우터 등록 · 127.0.0.1에 바인딩
 ```
@@ -937,8 +937,9 @@ sequenceDiagram
         end
         alt None
             PL->>JS: wait_for_work()
-            Note over PL,JS: start · retry · finish · fail · cancel이 깨운다
+            Note over PL,JS: start · retry와 삭제 라우터(삭제 뒤)가 wake()로 깨운다
         else 작업을 받았다
+            PL->>PL: video = load_video(row.video_id) — main.py가 넘긴 함수. 없으면(그 사이 지워짐) 건너뛴다
             alt stage = pending
                 PL->>PL: create_task(run(job_id, video)) — 핸들은 JobService가 video_id로 보관
                 Note over PL: SEQ-3 또는 SEQ-4
@@ -956,7 +957,7 @@ sequenceDiagram
 - 대기열은 메모리에 없다. `queued` 행이 곧 대기열이라 서버가 다시 떠도 기다리던 작업이 남고([[#SEQ-13]]), 워커가 뜨면 이어서 돈다. 메모리에 있는 것은 깨우는 신호 하나뿐이다
 - 앞 작업이 **실패해도** 다음 작업은 시작된다. 실패한 작업은 `failed`로 남을 뿐 대기열을 막지 않는다([[VA-UI-002#UI-3]] 규칙)
 - 워커는 태스크의 예외로 죽지 않는다. 파이프라인 안의 실패는 `fail`로 접히고([[#SEQ-4]]), 취소는 [[#SEQ-11]]이 한다
-- `video`는 워커가 `VideoService`에서 받지 않는다 — 작업 묶음은 영상 테이블을 모른다. `run` · `resume`에 넘길 `Video`를 어떻게 얻는지는 되먹일 것 #7
+- 워커는 `Video`를 `main.py`가 넘긴 `load_video`로 얻는다 — `VideoService.get`을 감싼 함수다. 작업 묶음은 영상 묶음을 import하지 않고, 둘을 아는 곳은 조립 지점뿐이다(되먹일 것 #7의 결론, [[VA-DOM-002]] 3.2 규칙)
 
 ---
 
@@ -1020,6 +1021,6 @@ sequenceDiagram
 
 - [x] 되먹일 것 #1~#5를 [[VA-DOM-002]] · [[VA-DOM-003]]에 반영한다 — 반영: 클래스 명세 v8 · ERD v2
 - [x] 키 확인이 네트워크로 실패했을 때의 배너 문구(되먹일 것 #6) — 결정: 문구를 가르고 버튼을 막지 않는다(사용자 결정 2026-09-21, [[VA-UI-002]] 1.4)
-- [ ] 되먹일 것 #7 · #8(워커가 `Video`를 얻는 길 · 삭제 뒤 워커 깨우기)을 [[VA-DOM-002]]와 MINISPEC(작업 서비스)에 반영한다
+- [x] (반영: 클래스 명세 v12 · 작업 서비스 MINISPEC v2) 되먹일 것 #7 · #8 — 워커는 `load_video`로 영상을 얻고, 삭제 라우터가 삭제 뒤에 `wake`를 부른다
 - [ ] UI-1이 열려 있는 동안 진행 중 행을 갱신하는 주기([[#SEQ-7]]) — 목록 전체를 몇 초마다 다시 부를지 MINISPEC
 - [ ] 취소된 파이프라인이 OpenAI에 이미 보낸 조각([[#SEQ-11]]) — 응답을 버리므로 비용만 든다. 삭제 다이얼로그에 알릴지 사용자 확인
