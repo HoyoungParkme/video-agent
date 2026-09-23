@@ -70,3 +70,20 @@ def error_kind(e: BaseException) -> ErrorKind:
     if isinstance(e, OSError) and e.errno == errno.ENOSPC:
         return ErrorKind.disk
     return ErrorKind.unknown
+
+
+async def transcribe_stage(job_id: int, video: Video, audio: str, tmp: str) -> None:
+    """VA-MS-002#pipeline.transcribe_stage
+
+    조각 병렬 받아쓰기. 스텁 — B2(VA-CODE-001 B1). 자막 없는 영상은 화면이 시작 전에 막는다.
+
+    Raises:
+        NotImplementedYet: 아직 없다
+    """
+    raise NotImplementedYet("받아쓰기는 아직 지원하지 않아요")
+
+
+def _first_line(e: BaseException) -> str:
+    # 실패 이유 한 줄 — 한국어 문구는 어댑터 · 서비스가 만든다
+    text = str(e).strip()
+    return text.splitlines()[0] if text else type(e).__name__
