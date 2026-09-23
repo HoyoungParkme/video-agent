@@ -9,6 +9,8 @@ const VIDEOS = {
   // 대기열 — 두 영상을 차례로
   e2eCaption2: { title: "벡터 검색 튜닝 실전", duration: 2285, subtitles: { ko: [] } },
   e2eCaption3: { title: "LLM 에이전트 설계 패턴", duration: 2400, subtitles: { ko: [] } },
+  // 서버에 잠깐 닿지 못해도 화면이 다시 받는다 — UI-3 · UI-4
+  e2eCaption4: { title: "임베딩 모델 고르기", duration: 1500, subtitles: { ko: [] } },
   // 자막 없는 영상 — B1은 시작 불가 판 '아직 지원하지 않음'
   e2eNoCapt01: { title: "자막 없는 강연", duration: 1800, subtitles: {} },
 };
