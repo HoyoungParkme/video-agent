@@ -61,6 +61,8 @@ class Config(BaseSettings):
     INBOX_DIR: str = "/app/inbox"  # MS-001 — 컨테이너 안 마운트 경로
     INBOX_DISPLAY_PATH: str = "inbox"  # MS-001 — 사용자에게 보일 호스트 경로. compose가 채운다
     DATA_DIR: str = "/app/data"  # MS-001 — tmp/{video_id}/ · export/
+    # 받는 Host — DNS 리바인딩을 막는다(INFRA 5절). api는 compose 안에서 web이 `api`로 부른다
+    ALLOWED_HOSTS: list[str] = ["localhost", "127.0.0.1", "api"]
 
     # 영상 — MS-001
     MAX_DURATION_SEC: int = 10800

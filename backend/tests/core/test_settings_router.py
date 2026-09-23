@@ -23,7 +23,7 @@ async def client(env_file, verify, monkeypatch) -> AsyncIterator[httpx.AsyncClie
         settings, "last_check", KeyCheck(KeyState.missing, None, None, datetime.now(UTC))
     )
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c
 
 

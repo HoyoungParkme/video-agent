@@ -2,6 +2,8 @@
  * 첫 실행 — 빈 앱을 열면 배너 → 설정에서 키 저장 → 배너 사라짐(VA-SCN-001 S6 1번, VA-UI-002 UI-1 S-8 · UI-5 S-1 · S-2).
  * 요소는 와이어프레임 번호(data-el)로 찾는다.
  */
+import http from "node:http";
+
 import { expect, test, type Page } from "@playwright/test";
 
 const GOOD_KEY = "sk-e2e-good-000000000000000000"; // e2e/fake-openai.mjs와 같은 값
@@ -135,4 +137,23 @@ test.describe("저장 실패", () => {
     );
     await expect(page).toHaveURL(/\/settings$/);
   });
+});
+
+/** Host 헤더를 마음대로 정해 web에 GET — 브라우저는 Host를 바꿀 수 없어 Node로 보낸다 */
+function getWithHost(url: string, host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, { headers: { Host: host } }, (res) => {
+      res.resume();
+      resolve(res.statusCode ?? 0);
+    });
+    req.on("error", reject);
+  });
+}
+
+test("다른 Host로 온 /api 요청은 막는다 — DNS 리바인딩(INFRA 5절)", async ({ baseURL }) => {
+  const url = `${baseURL}/api/settings`;
+  const port = new URL(url).port;
+  expect(await getWithHost(url, `evil.example:${port}`)).toBe(400);
+  expect(await getWithHost(url, `127.0.0.1:${port}`)).toBe(200);
+  expect(await getWithHost(url, `localhost:${port}`)).toBe(200);
 });
