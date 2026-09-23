@@ -61,3 +61,13 @@ async def test_chapters_of_without_parts(db, make, summarizer) -> None:
     chapters = await AnalysisService(db, summarizer).chapters_of(row.id)
     assert [c.seq for c in chapters] == list(range(1, 9))
     assert all(c.part_seq is None for c in chapters)
+
+
+def test_clamp_secs() -> None:
+    segs = _segs(0, 10, 20, 2990)
+    clamp = AnalysisService.clamp_secs
+    assert clamp([-3], 3000, segs) == [0]  # 첫 구간 시작
+    assert clamp([3010], 3000, segs) == [2990]  # 마지막 구간 시작
+    assert clamp([12.5, 700], 3000, segs) == [12.5, 700]  # 범위 안은 그대로
+    assert clamp([30, 30, 5], 3000, segs) == [5, 30]  # 중복 없이 오름차순
+    assert clamp([-1, 3001], 3000, []) == []  # 구간이 없으면 범위 밖은 뺀다

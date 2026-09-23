@@ -113,3 +113,26 @@ class AnalysisService:
             )
             for c, part_seq in rows
         ]
+
+    @staticmethod
+    def clamp_secs(secs: list[float], duration_sec: int, segments: list[Segment]) -> list[float]:
+        """VA-MS-003#AnalysisService.clamp_secs
+
+        모델이 준 시각을 스크립트 범위로 보정한다. 범위 밖이면 시작 시각이 가장 가까운 구간의
+        시작으로(길이를 넘으면 마지막 구간). 중복을 없애고 오름차순.
+
+        Args:
+            secs: 시각들(초)
+            duration_sec: 영상 길이
+            segments: 구간들 — 비어 있으면 범위 밖 시각을 뺀다
+
+        Returns:
+            보정한 시각들
+        """
+        out = set()
+        for sec in secs:
+            if 0 <= sec <= duration_sec:
+                out.add(sec)
+            elif segments:
+                out.add(min(segments, key=lambda s: abs(s.start_sec - sec)).start_sec)
+        return sorted(out)
