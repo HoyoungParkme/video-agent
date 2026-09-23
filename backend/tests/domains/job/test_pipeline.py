@@ -177,3 +177,149 @@ async def test_run_cancelled_writes_nothing(db, make, ports) -> None:
         await task
     row = await _row(job.id)
     assert (row.status, row.stage, row.error_kind) == (JobStatus.running, JobStage.summarize, None)
+
+
+# --- worker
+
+
+async def load_video(video_id: int):
+    """main.py의 load_video와 같은 일 — 짧은 세션으로 VideoService.get."""
+    async with SessionLocal() as s:
+        return (await VideoService(s, None).get(video_id)).video
+
+
+def _worker(load=load_video) -> asyncio.Task:
+    return asyncio.create_task(pipeline.worker(load))
+
+
+async def _stop(task: asyncio.Task) -> None:
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def _wait_status(job_id: int, status: JobStatus, timeout: float = 5) -> None:
+    async def loop():
+        while (await _row(job_id)).status != status:
+            await asyncio.sleep(0.02)
+
+    await asyncio.wait_for(loop(), timeout)
+
+
+async def test_worker_runs_queue_one_by_one(db, make, ports, monkeypatch) -> None:
+    monkeypatch.setattr(config, "WORKER_IDLE_SEC", 0.05)
+    running_seen: list[int] = []
+
+    async def fake_run(job_id: int, video) -> None:
+        async with SessionLocal() as s:
+            n = len(
+                list(
+                    await s.scalars(
+                        select(AnalysisJobRow.id).where(AnalysisJobRow.status == JobStatus.running)
+                    )
+                )
+            )
+        running_seen.append(n)
+        await asyncio.sleep(0.05)
+        if job_id == first.id:
+            raise RuntimeError("첫 작업이 예외로 끝난다")
+        async with SessionLocal() as s:
+            await JobService(s).finish(job_id)
+
+    monkeypatch.setattr(pipeline, "run", fake_run)
+    first = await make.job((await make.video()).id, JobStatus.queued, at=T0)
+    second = await make.job((await make.video()).id, JobStatus.queued, at=T0 + timedelta(seconds=1))
+    worker = _worker()
+    try:
+        await _wait_status(second.id, JobStatus.done)  # 첫 작업이 예외로 끝나도 둘째가 돈다
+    finally:
+        await _stop(worker)
+    assert running_seen == [1, 1]  # 동시에 running 둘이 없다
+    assert JobService.tasks == {}
+    failed = await _row(first.id)  # 예외로 끝난 작업은 실패로 접혀 대기열을 막지 않는다
+    assert (failed.status, failed.error_kind, failed.error_reason) == (
+        JobStatus.failed,
+        ErrorKind.unknown,
+        "첫 작업이 예외로 끝난다",
+    )
+
+
+async def test_worker_resumes_retried_and_skips_deleted(db, make, ports, monkeypatch) -> None:
+    monkeypatch.setattr(config, "WORKER_IDLE_SEC", 0.05)
+    calls: list[tuple[str, int]] = []
+
+    async def fake_resume(job_id: int, video) -> None:
+        calls.append(("resume", job_id))
+        async with SessionLocal() as s:
+            await JobService(s).finish(job_id)
+
+    monkeypatch.setattr(pipeline, "resume", fake_resume)
+    retried = await make.job((await make.video()).id, JobStatus.queued, stage="summarize")
+    gone = await make.job((await make.video()).id, JobStatus.queued, at=T0 - timedelta(days=1))
+
+    loaded: list[int] = []
+
+    async def load(video_id: int):
+        loaded.append(video_id)
+        if video_id == gone.video_id:  # 그 사이 지워졌다 — 작업 행도 cascade로 없다
+            async with SessionLocal() as s:
+                await s.delete(await s.get(VideoRow, video_id))
+                await s.commit()
+            return None
+        return await load_video(video_id)
+
+    worker = _worker(load)
+    try:
+        await _wait_status(retried.id, JobStatus.done)
+    finally:
+        await _stop(worker)
+    assert calls == [("resume", retried.id)]  # stage가 pending이 아니면 resume
+    assert loaded[0] == gone.video_id
+
+
+async def test_worker_cancel_cancels_task(db, make, ports, monkeypatch) -> None:
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def fake_run(job_id: int, video) -> None:
+        started.set()
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(pipeline, "run", fake_run)
+    job = await make.job((await make.video()).id, JobStatus.queued)
+    worker = _worker()
+    await asyncio.wait_for(started.wait(), 5)
+    await _stop(worker)  # 서버 종료 — 워커 자신의 취소는 다시 던진다
+    assert cancelled.is_set()  # 돌던 태스크도 취소된다
+    assert (await _row(job.id)).status == JobStatus.running  # 다음 시작 때 fail_orphans가 되돌린다
+
+
+async def test_worker_survives_deleted_task(db, make, ports, monkeypatch) -> None:
+    monkeypatch.setattr(config, "WORKER_IDLE_SEC", 0.05)
+    started = asyncio.Event()
+
+    async def fake_run(job_id: int, video) -> None:
+        if job_id == first.id:
+            started.set()
+            await asyncio.sleep(30)
+        async with SessionLocal() as s:
+            await JobService(s).finish(job_id)
+
+    monkeypatch.setattr(pipeline, "run", fake_run)
+    first = await make.job((await make.video()).id, JobStatus.queued, at=T0)
+    second = await make.job((await make.video()).id, JobStatus.queued, at=T0 + timedelta(seconds=1))
+    worker = _worker()
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        JobService.tasks[first.video_id].cancel()  # 삭제가 도는 태스크를 취소한 것처럼
+        async with SessionLocal() as s:  # 삭제 라우터가 행을 지운 것처럼 — 도는 작업이 없어진다
+            await s.delete(await s.get(AnalysisJobRow, first.id))
+            await s.commit()
+        JobService.wake()
+        await _wait_status(second.id, JobStatus.done)  # 워커는 살아 다음 작업을 꺼낸다
+    finally:
+        await _stop(worker)

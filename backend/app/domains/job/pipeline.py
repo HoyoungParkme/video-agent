@@ -168,3 +168,61 @@ async def resume(job_id: int, video: Video) -> None:
         NotImplementedYet: 아직 없다
     """
     raise NotImplementedYet("이어서 다시 시도는 아직 지원하지 않아요")
+
+
+async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
+    """VA-MS-002#pipeline.worker
+
+    대기열 워커 — 한 번에 하나씩 차례로 돌린다. main.py lifespan이 태스크 하나로 띄우고
+    끝없이 돈다. 태스크의 취소(삭제)는 삼키고, 예외는 그 작업을 실패로 접고 다음 작업으로
+    간다 — running으로 남으면 대기열이 막힌다. 워커 자신이 취소되면(서버 종료) 돌던 태스크도
+    취소하고 끝난다 — 그 작업은 running으로 남고 다음 시작 때 fail_orphans가 되돌린다.
+
+    Args:
+        load_video: 영상 id → Video(없으면 None). main.py가 VideoService.get을 감싸 넘긴다
+    """
+    while True:
+        JobService.work_event.clear()  # 확인하기 전에 — 확인과 잠들기 사이에 온 신호를 잃지 않게
+        try:
+            async with SessionLocal() as s:
+                row = await JobService(s).claim_next()
+        except Exception:  # DB가 잠깐 안 되는 등 — 워커는 죽지 않고 조금 뒤 다시 본다
+            log.exception("대기열을 보지 못했다")
+            row = None
+        if row is None:
+            await JobService.wait_for_work()
+            continue
+        try:
+            video = await load_video(row.video_id)
+        except Exception as e:  # running으로 꺼낸 채 두면 대기열이 막힌다 — 실패로 접는다
+            log.exception("작업 %d의 영상을 읽지 못했다", row.id)
+            await _fail_quietly(row.id, e)
+            continue
+        if video is None:  # 그 사이 지워졌다 — 행도 cascade로 없다
+            continue
+        coro = run(row.id, video) if row.stage == JobStage.pending else resume(row.id, video)
+        task = asyncio.create_task(coro)
+        JobService.tasks[video.id] = task
+        try:
+            await asyncio.wait({task})
+        except asyncio.CancelledError:  # 워커 자신이 취소됐다(서버 종료)
+            task.cancel()
+            await asyncio.wait({task})
+            raise
+        finally:
+            JobService.tasks.pop(video.id, None)
+        error = None if task.cancelled() else task.exception()
+        if isinstance(
+            error, Exception
+        ):  # run이 fail로 접지 못했다 — running으로 두면 대기열이 막힌다
+            log.error("작업 %d의 태스크가 예외로 끝났다", row.id, exc_info=error)
+            await _fail_quietly(row.id, error)
+
+
+async def _fail_quietly(job_id: int, e: Exception) -> None:
+    try:
+        error = JobError(kind=error_kind(e), reason=_first_line(e), chunk_seq=None, attempts=1)
+        async with SessionLocal() as s:
+            await JobService(s).fail(job_id, error)
+    except Exception:
+        log.exception("작업 %d을 실패로 적지 못했다 — 다음 시작 때 fail_orphans가 되돌린다", job_id)
