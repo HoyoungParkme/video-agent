@@ -439,3 +439,20 @@ class JobService:
         row.progress_pct = 100
         row.finished_at = datetime.now(UTC)
         await self.session.commit()
+
+    async def fail(self, job_id: int, error: JobError) -> None:
+        """VA-MS-002#JobService.fail
+
+        실패 — 이유를 남긴다. 단계와 진행률은 멈춘 그대로다.
+
+        Args:
+            job_id: 작업 id
+            error: 종류 · 이유 · 조각 번호 · 보낸 횟수
+        """
+        row = await crud.by_id(self.session, job_id)
+        row.status = JobStatus.failed
+        row.error_kind = error.kind
+        row.error_reason = error.reason
+        row.error_chunk_seq = error.chunk_seq
+        row.error_attempts = error.attempts
+        await self.session.commit()

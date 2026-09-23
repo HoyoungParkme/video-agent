@@ -415,3 +415,15 @@ async def test_finish(db, make) -> None:
     assert (row.status, row.progress_pct) == (JobStatus.done, 100)
     assert "suggest" in row.stage_durations_sec  # 마지막 단계의 걸린 시간
     assert (datetime.now(UTC) - row.finished_at).total_seconds() < 5
+    # 영상의 analyzed · 분석 완료 시각은 영상 테스트의 test_get_after_finish가 본다
+
+
+async def test_fail_keeps_stage_and_progress(db, make) -> None:
+    video = await make.video()
+    job = await make.job(video.id, JobStatus.running, stage="summarize", progress_pct=25)
+    error = JobError(kind=ErrorKind.openai, reason="형식이 틀렸어요", chunk_seq=None, attempts=1)
+    await JobService(db).fail(job.id, error)
+    got = await JobService(db).progress(video.id)
+    assert got.status == JobStatus.failed
+    assert got.error == error
+    assert (got.stage, got.progress_pct) == (JobStage.summarize, 25)
