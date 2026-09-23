@@ -256,3 +256,73 @@ class AnalysisService:
                 texts.append(q)
         await crud.replace_questions(self.session, video.id, texts[: config.QUESTION_COUNT])
         await self.session.commit()
+
+    async def result_of(self, video: Video) -> Result:
+        """VA-MS-003#AnalysisService.result_of
+
+        결과 화면 응답 전부 — 구간을 나누지 않는다. 읽기만 한다. 쿼리 여섯.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상(상태 · 길이 · 대화 수)
+
+        Returns:
+            Result
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다(video_status)
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        t = await crud.transcript(self.session, video.id)
+        s, insights = await crud.summary_with_insights(self.session, video.id)
+        if t is None or s is None:  # analyzed인데 결과가 없는 것은 있을 수 없지만 막는다
+            raise ResultNotReady(video_status=video.status)
+        segs = await crud.segments_of_transcript(self.session, t.id)
+        part_rows = await crud.parts(self.session, video.id)
+        chapter_rows = await crud.chapters_with_part_seq(self.session, video.id)
+        questions = await crud.questions(self.session, video.id)
+        parts = [
+            Part(
+                seq=p.seq,
+                title=p.title,
+                start_sec=p.start_sec,
+                end_sec=part_rows[i + 1].start_sec
+                if i + 1 < len(part_rows)
+                else video.duration_sec,
+                chapter_count=sum(1 for _, seq in chapter_rows if seq == p.seq),
+            )
+            for i, p in enumerate(part_rows)
+        ]
+        return Result(
+            video=video,
+            transcript=Transcript(
+                source=t.source,
+                language=t.language,
+                model=t.model,
+                segments=[
+                    Segment(seq=g.seq, start_sec=g.start_sec, end_sec=g.end_sec, text=g.text)
+                    for g in segs
+                ],
+            ),
+            summary=Summary(
+                one_liner=s.one_liner,
+                model=s.model,
+                insights=[
+                    Insight(seq=i.seq, text=i.text, source_secs=i.source_secs) for i in insights
+                ],
+            ),
+            parts=parts,
+            chapters=[
+                Chapter(
+                    seq=c.seq,
+                    part_seq=seq,
+                    start_sec=c.start_sec,
+                    title=c.title,
+                    bullets=c.bullets,
+                )
+                for c, seq in chapter_rows
+            ],
+            suggested_questions=[SuggestedQuestion(seq=q.seq, text=q.text) for q in questions],
+            models=Models(stt=t.model, text=s.model),
+            analyzed_at=video.analyzed_at,
+        )

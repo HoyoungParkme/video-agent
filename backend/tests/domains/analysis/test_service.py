@@ -247,3 +247,69 @@ async def test_generate_questions_samples_long_script(db, make, summarizer, env_
     assert sum(len(s.text) for s in sent) // 2 <= 40000 + 1000  # 앞 · 가운데 · 끝에서 상한의 셋째씩
     seqs = [s.seq for s in sent]
     assert seqs[0] == 1 and seqs[-1] == 90 and 45 in seqs
+
+
+# --- result_of
+
+
+async def test_result_not_ready(db, make, summarizer) -> None:
+    video = await _video(db, make, JobStatus.running)
+    with pytest.raises(ResultNotReady) as e:
+        await AnalysisService(db, summarizer).result_of(video)
+    assert e.value.extra == {"video_status": "in_progress"}
+
+
+async def test_result_of(db, make, summarizer, youtube, env_file, queries) -> None:
+    video = await _video(db, make, duration_sec=3000)
+    await make.transcript(video.id, ["x"] * 30, step=100)
+    svc = AnalysisService(db, summarizer)
+    await svc.generate_summary(video)
+    await svc.generate_chapters(video)
+    await svc.generate_questions(video)
+    await make.job(video.id, JobStatus.done)
+    done = (await VideoService(db, youtube).get(video.id)).video
+    queries.clear()
+    result = await svc.result_of(done)
+    assert len(queries) <= 6  # 쿼리 여섯을 넘지 않는다
+    assert len(result.transcript.segments) == 30
+    assert (result.transcript.source, result.models.stt, result.models.text) == (
+        "caption_manual",
+        None,
+        "gpt-5-mini",
+    )
+    assert len(result.summary.insights) == 6
+    assert (len(result.chapters), result.parts) == (8, [])
+    assert [q.text for q in result.suggested_questions] == summarizer.question_list
+    assert result.analyzed_at == done.analyzed_at
+    assert result.video == done
+
+
+async def test_result_of_parts_end_and_counts(db, make, summarizer, env_file) -> None:
+    row = await make.video(duration_sec=9000)
+    await make.transcript(row.id, ["x"] * 90, step=100)
+    s = SummaryRow(video_id=row.id, one_liner="한 줄", model="gpt-5-mini")
+    db.add(s)
+    p1 = PartRow(video_id=row.id, seq=1, title="앞", start_sec=0)
+    p2 = PartRow(video_id=row.id, seq=2, title="뒤", start_sec=4000)
+    db.add_all([p1, p2])
+    await db.flush()
+    db.add_all(
+        [
+            ChapterRow(video_id=row.id, part_id=p1.id, seq=1, start_sec=0, title="가", bullets=[]),
+            ChapterRow(
+                video_id=row.id, part_id=p1.id, seq=2, start_sec=2000, title="나", bullets=[]
+            ),
+            ChapterRow(
+                video_id=row.id, part_id=p2.id, seq=3, start_sec=4000, title="다", bullets=[]
+            ),
+        ]
+    )
+    await db.commit()
+    await make.job(row.id, JobStatus.done)
+    video = VideoService.to_dto(row, await JobService(db).latest(row.id), 0)
+    result = await AnalysisService(db, summarizer).result_of(video)
+    assert [(p.seq, p.start_sec, p.end_sec, p.chapter_count) for p in result.parts] == [
+        (1, 0, 4000, 2),
+        (2, 4000, 9000, 1),
+    ]
+    assert [c.part_seq for c in result.chapters] == [1, 1, 2]
