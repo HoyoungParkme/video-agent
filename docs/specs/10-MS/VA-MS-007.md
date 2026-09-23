@@ -27,6 +27,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | `config.PROC_TIMEOUT_SEC` | 1800 | 자식 프로세스 상한 |
 | `config.YTDLP_BIN` · `config.FFMPEG_BIN` · `config.FFPROBE_BIN` | `yt-dlp` · `ffmpeg` · `ffprobe` | 이미지에 든 실행 파일([[VA-INFRA-001#C8]]) |
 | `config.OPENAI_TIMEOUT_SEC` | 120 | 조각 하나 받아쓰기 · 긴 요약 호출의 상한 |
+| `config.OPENAI_BASE_URL` | None | OpenAI 주소. 비우면 공식 주소. E2E가 가짜 OpenAI 서버를 가리킬 때만 채운다 — 사용자가 채울 값이 아니다 |
 | `config.OPENAI_MAX_RETRIES` | 0 | SDK 자체 재시도를 끈다 — 재시도는 파이프라인이 세면서 한다([[VA-MS-002#pipeline.transcribe_stage]]) |
 
 ---
@@ -151,7 +152,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 근거: [[VA-DOM-002]] 4.7 규칙(키는 SettingsService가 준다 · 키마다 클라이언트 하나) · [[VA-MS-005#SettingsService.api_key]] · [[VA-MS-006]] 0장(어댑터는 부를 때마다 `client_for`를 부른다)
 
-**처리** 마지막으로 만든 `(키, 클라이언트)` 한 쌍을 모듈에 둔다 · if `key`가 그 키와 같다 → `→ 그 클라이언트` · else → `c = AsyncOpenAI(api_key=key, timeout=config.OPENAI_TIMEOUT_SEC, max_retries=config.OPENAI_MAX_RETRIES)` · 쌍을 `(key, c)`로 바꾼다 · `→ c`. 옛 클라이언트는 닫지 않고 버린다 — 옛 키로 보낸 요청이 아직 돌 수 있다. 부르는 곳은 `main.py`가 어댑터에 넘기는 `client_for` 하나이고, 어댑터가 모델을 부를 때마다 불린다. 그래서 화면이나 `.env`에서 키를 바꾸면 다음 호출부터 새 클라이언트다
+**처리** 마지막으로 만든 `(키, 클라이언트)` 한 쌍을 모듈에 둔다 · if `key`가 그 키와 같다 → `→ 그 클라이언트` · else → `c = AsyncOpenAI(api_key=key, base_url=config.OPENAI_BASE_URL, timeout=config.OPENAI_TIMEOUT_SEC, max_retries=config.OPENAI_MAX_RETRIES)` · 쌍을 `(key, c)`로 바꾼다 · `→ c`. 옛 클라이언트는 닫지 않고 버린다 — 옛 키로 보낸 요청이 아직 돌 수 있다. 부르는 곳은 `main.py`가 어댑터에 넘기는 `client_for` 하나이고, 어댑터가 모델을 부를 때마다 불린다. 그래서 화면이나 `.env`에서 키를 바꾸면 다음 호출부터 새 클라이언트다
 
 **테스트 관점** `max_retries=0` · 시간 제한이 설정값 · 같은 키로 두 번 → 같은 객체 · 키가 바뀌면 새 객체, 다시 옛 키면 또 새 객체(한 쌍만 둔다) · 키 문자열이 로그에 안 찍힌다
 
