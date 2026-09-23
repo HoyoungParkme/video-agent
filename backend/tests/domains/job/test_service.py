@@ -456,3 +456,33 @@ async def test_fail_orphans(db, make) -> None:
     assert states == [ChunkState.done, ChunkState.waiting, ChunkState.waiting]
     assert (await _job_row(db, queued.id)).status == JobStatus.queued  # 기다리던 것은 그대로
     assert await JobService(db).fail_orphans() == 0
+
+
+async def test_claim_next_order(db, make) -> None:
+    jobs = [
+        await make.job((await make.video()).id, JobStatus.queued, at=T0 + timedelta(seconds=s))
+        for s in (30, 10, 20)
+    ]
+    got = await JobService(db).claim_next()
+    assert got.id == jobs[1].id  # 가장 오래 기다린 것
+    assert got.status == JobStatus.running
+    assert (datetime.now(UTC) - got.stage_started_at).total_seconds() < 5
+    assert await JobService(db).claim_next() is None  # 도는 작업이 있으면 꺼내지 않는다
+
+
+async def test_claim_next_retried_job_waits_behind(db, make) -> None:
+    first = await make.job((await make.video()).id, JobStatus.queued, at=T0)
+    # 다시 시도한 작업 — started_at은 이르지만 queued_at이 늦다
+    retried = await make.job(
+        (await make.video()).id,
+        JobStatus.queued,
+        at=T0 - timedelta(hours=1),
+        queued_at=T0 + timedelta(minutes=1),
+        stage="summarize",
+    )
+    assert (await JobService(db).claim_next()).id == first.id
+    assert retried.stage == JobStage.summarize
+
+
+async def test_claim_next_empty(db) -> None:
+    assert await JobService(db).claim_next() is None

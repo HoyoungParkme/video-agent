@@ -477,3 +477,26 @@ class JobService:
             await crud.in_flight_to_waiting(self.session, [r.id for r in rows])
         await self.session.commit()
         return len(rows)
+
+    async def claim_next(self) -> AnalysisJobRow | None:
+        """VA-MS-002#JobService.claim_next
+
+        대기열에서 가장 오래 기다린 작업을 running으로 바꿔 준다 — 한 트랜잭션.
+        도는 작업이 있으면 꺼내지 않는다(동시에 도는 분석은 하나).
+
+        Returns:
+            running이 된 행, 또는 None(도는 작업이 있거나 기다리는 작업이 없거나 부분 unique 위반)
+        """
+        if await crud.any_running(self.session):
+            return None
+        row = await crud.next_queued(self.session)
+        if row is None:
+            return None
+        row.status = JobStatus.running
+        row.stage_started_at = datetime.now(UTC)
+        try:
+            await self.session.commit()
+        except IntegrityError:  # running 둘 — 서버가 두 번 떴다
+            await self.session.rollback()
+            return None
+        return row
