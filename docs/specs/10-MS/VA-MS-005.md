@@ -12,7 +12,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 `core/settings.py`의 함수 9개. 클래스 명세 [[VA-DOM-002#SettingsService]]의 시그니처를 함수 내부까지 내린 것. `infra/openai.verify_key`는 4.7의 MS 문서에서.
 
-형식은 명세 작성 규약 2.10. 내부 타입(`KeyCheck`)은 [[VA-DOM-002]] 2.6, 응답 형태(`Settings` `KeyStatus` `Models` `ModelOption`)는 [[VA-API-001]] 4장.
+형식은 명세 작성 규약 2.10. 내부 타입(`KeyCheck` `ChosenModels`)은 [[VA-DOM-002]] 2.6, 응답 형태(`Settings` `KeyStatus` `Models` `ModelOption`)는 [[VA-API-001]] 4장.
 
 **표기** — `→` 반환 · 결과, `!` 예외(이름은 [[VA-API-001]] 2장의 `urn:va:` 뒤 부분), `FS:` 파일 접근.
 
@@ -63,7 +63,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 1. `key = read_env().get("OPENAI_API_KEY")` · 빈 문자열은 없는 것으로 본다(`.env.example`을 복사한 직후)
 2. `masked` = if `key` → 앞 3자 + `…` + 끝 4자 · else → `None` · `stored_in` = if `key` → `'.env에 저장됨'` · else → `None`
 3. `status = KeyStatus(state=last_check.state, masked, stored_in, checked_at=last_check.checked_at, reason_kind=last_check.reason_kind, reason=last_check.reason)` — **OpenAI에 아무것도 보내지 않는다**
-4. `→ Settings(key=status, models=current_models(), model_options=config.MODEL_OPTIONS, inbox_path=config.INBOX_DISPLAY_PATH)`
+4. `m = current_models()` · `→ Settings(key=status, models=Models(stt=m.stt.id, text=m.text.id), model_options=config.MODEL_OPTIONS, inbox_path=config.INBOX_DISPLAY_PATH)` — 응답의 `Models`는 id 둘이다
 
 **출력** `Settings`. 페이지 넷이 배너를 그리려고 부른다 — 값싸야 한다(작은 파일 읽기 한 번)
 
@@ -166,13 +166,13 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 #### SettingsService.current_models 지금 모델과 단가
 
-**시그니처** `def current_models() -> Models`
+**시그니처** `def current_models() -> ChosenModels`
 
-근거: [[VA-API-001]] 4장 `Models` · [[VA-DOM-002]] 4.2 `estimate` 규칙(단가는 `current_models`의 값)
+근거: [[VA-API-001]] 4장 `ModelOption` · [[VA-DOM-002]] 2.6 `ChosenModels` · [[VA-DOM-002]] 4.2 `estimate` 규칙(단가는 `current_models`의 값)
 
-**처리** `env = read_env()` · `stt = env.get("STT_MODEL")` · `text = env.get("TEXT_MODEL")` · 없거나 빈 값이면 `config.DEFAULT_MODELS` · `MODEL_OPTIONS`에서 그 id의 `ModelOption`을 찾아 `→ Models(stt=…, text=…)` — 이름과 단가를 같이 돌려준다. 파일의 값이 목록에 없으면(옵션이 바뀐 뒤 · 손으로 잘못 적음) 기본값으로
+**처리** `env = read_env()` · `stt = env.get("STT_MODEL")` · `text = env.get("TEXT_MODEL")` · 없거나 빈 값이면 `config.DEFAULT_MODELS` · `MODEL_OPTIONS`에서 그 id의 `ModelOption`을 찾아 `→ ChosenModels(stt=…, text=…)` — 이름과 단가를 같이 돌려준다. 응답의 `Models`(id 둘)는 [[#SettingsService.get]]이 이것으로 만든다. 파일의 값이 목록에 없으면(옵션이 바뀐 뒤 · 손으로 잘못 적음) 기본값으로
 
-**출력** `Models`. `JobService.estimate` · `start`, `AnalysisService.generate_*`, `ChatService.ask`가 이름과 단가를 여기서 받는다
+**출력** `ChosenModels`. `JobService.estimate` · `start`, `AnalysisService.generate_*`, `ChatService.ask`가 이름과 단가를 여기서 받는다(`.stt.price` · `.text.id`)
 
 **호출하는 것** [[#SettingsService.read_env]]
 
@@ -243,3 +243,4 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 - [x] (반영: 클래스 명세 v12) **되먹임** — `require_key`가 `async`가 됐다(OpenAI를 부를 수 있다). 부르는 네 곳(`VideoService.register` · `JobService.start` · `retry` · `ChatService.ask`)은 이미 `async`라 `await`만 붙는다. `read_env` · `write_env` 둘을 [[VA-DOM-002#SettingsService]]에 private 메서드로 더한다
 - [ ] compose의 `env_file: .env` — api 서비스에 걸면 같은 이름의 환경 변수가 컨테이너에 옛 값으로 남는다. 이 서비스는 읽지 않으므로 해는 없지만, OpenAI SDK가 `OPENAI_API_KEY` 환경 변수를 스스로 읽지 않게 `infra/openai`가 키를 늘 인자로 넘긴다 — 카드 A에서 확인
 - [x] 어댑터에 줄 키 — 결정: 공개 함수 [[#SettingsService.api_key]]. 어댑터 MINISPEC의 되먹임(「키를 돌려주는 공개 함수가 없다」)을 여기서 닫는다
+- [x] `current_models`의 반환형(카드 A에서 찾음, 2026-09-23) — 응답의 `Models`는 id 둘인데 부르는 곳은 단가(`.stt.price`)와 id(`.text.id`)를 쓰고, `get`은 그 값을 `Settings.models`에 그대로 넣었다. 내부 타입 `ChosenModels`(`ModelOption` 둘)로 나누고 `get`이 id 둘로 바꾼다. [[VA-DOM-002]] v14 2.6 · 4.5에 반영
