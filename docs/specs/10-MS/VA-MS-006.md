@@ -31,7 +31,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 **표기** — `→` 반환, `!` 예외(이름은 [[VA-API-001]] 2장의 `urn:va:` 뒤 부분 또는 `infra/`의 예외 클래스), `FS:` 파일 접근, `EXT:` 외부(YouTube · OpenAI · ffmpeg)에 닿는 호출.
 
 **OpenAI 어댑터 셋의 공통 규칙**
-- **키는 부를 때마다 받는다.** 어댑터는 생성자에서 클라이언트가 아니라 클라이언트를 주는 함수 `client_for: Callable[[], AsyncOpenAI]`를 받고, 모델을 부를 때마다 부른다. 조립 지점(`main.py`)이 `SettingsService`의 지금 키로 [[VA-MS-007#openai.client]]를 부르는 함수를 넘긴다. 화면이나 `.env`에서 키를 바꾸면 서버를 다시 띄우지 않아도 다음 호출부터 새 키를 쓴다([[VA-MS-005]] 0장). 어댑터는 키 문자열을 보지 않는다([[VA-DOM-002]] 4.7 규칙)
+- **키는 부를 때마다 받는다.** 어댑터는 생성자에서 클라이언트가 아니라 클라이언트를 주는 함수 `client_for: Callable[[], AsyncOpenAI]`를 받고, 모델을 부를 때마다 부른다. 조립 지점(`main.py`)이 [[VA-MS-005#SettingsService.api_key]]로 받은 지금 키로 [[VA-MS-007#openai.client]]를 부르는 함수를 넘긴다. 화면이나 `.env`에서 키를 바꾸면 서버를 다시 띄우지 않아도 다음 호출부터 새 키를 쓴다([[VA-MS-005]] 0장). 어댑터는 키 문자열을 보지 않는다([[VA-DOM-002]] 4.7 규칙)
 - **지시는 system, 스크립트는 user.** system 메시지는 프롬프트 파일을 채운 것이다. 스크립트 본문은 파일에 넣지 않고 user 메시지에 `<transcript>` … `</transcript>`로 감싸 보낸다. 스크립트 안의 문장이 지시로 읽히지 않게 둘을 섞지 않는다
 - **시각 표기.** 스크립트는 `[시각] 문장` 줄이고 시각은 [[#timecode.label]]로 쓴다. 표기는 보내는 구간의 마지막 끝 시각이 3600초 이상이면 `h:mm:ss`, 아니면 `mm:ss`다. 긴 영상을 구간으로 나눠 보낼 때도([[VA-MS-003#AnalysisService.generate_summary]]) 절대 시각이 그대로 읽힌다. 모델이 돌려준 시각은 [[#timecode.parse]]로 초로 되돌린다
 - **출력은 JSON 모드.** 형식은 아래 표의 「출력」이다. JSON이 아니거나, 필수 키가 없거나, 타입이 틀리거나, 다듬고 나서 결과가 비면 형식 실패다. 형식 실패면 `config.LLM_RETRY`만큼 다시 부르고, 그래도 실패하면 `OpenAIOutputError`(→ `ErrorKind.openai`)를 던진다. JSON 모드는 메시지에 'JSON'이라는 낱말이 있어야 받아 주므로 파일마다 출력 형식 문단에 넣는다
@@ -342,6 +342,6 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 - [ ] 로컬 음성 파일(mp3 · m4a · wav)도 mp3 64kbps로 다시 변환한다(`extract_audio`). 이미 작은 mp3면 건너뛸지 — 첫 버전은 항상 변환(형식을 하나로)
 - [ ] whisper-1 언어 이름 → ISO 코드 표 — 자주 나오는 20개만 두고 나머지는 그대로. 음성 형식 미결은 `config.AUDIO_FORMAT`으로 닫혔다([[VA-INFRA-001]] 9절)
 - [x] JSON 모드가 시각 표기를 `12:40:00`처럼 바꿔 쓰는 것 — 결정: [[#timecode.parse]] 3번. 스크립트 끝을 넘는 세 칸 표기는 앞 두 칸을 `mm:ss`로 읽는다. 실제 응답 표본을 테스트에 넣는다
-- [ ] **되먹임** [[VA-DOM-002]] 1장 트리에 `prompts/__init__.py`(`render`)와 `shared/timecode.py`를 더하고, 「`shared/`는 없다」 문장과 7장의 같은 미결을 닫는다. 「`{자리 표시}`」를 「`{{이름}}`」으로 고친다
-- [ ] **되먹임** [[VA-MS-003#export.timecode]]가 [[#timecode.label]]을 부르게 한다(`long = duration_sec ≥ 3600`). 같은 규칙이 두 벌이 되지 않게
-- [ ] **되먹임** 어댑터가 부를 때마다 지금 키의 클라이언트를 받으려면 [[VA-MS-005]]에 키를 돌려주는 공개 함수(예 `SettingsService.api_key() -> str | None`)가 있어야 한다. 지금은 가린 키만 나간다. [[VA-MS-007#openai.client]]는 키마다 클라이언트 하나를 캐시한다 — 「키가 바뀌면 다시 만든다」를 이 방식으로 고친다
+- [x] (반영: 클래스 명세 v12) **되먹임** [[VA-DOM-002]] 1장 트리에 `prompts/__init__.py`(`render`)와 `shared/timecode.py`를 더하고, 「`shared/`는 없다」 문장과 7장의 같은 미결을 닫는다. 「`{자리 표시}`」를 「`{{이름}}`」으로 고친다
+- [x] (반영: [[VA-MS-003]] v2) **되먹임** [[VA-MS-003#export.timecode]]가 [[#timecode.label]]을 부르게 한다(`long = duration_sec ≥ 3600`). 같은 규칙이 두 벌이 되지 않게
+- [x] (반영: [[VA-MS-005#SettingsService.api_key]] · [[VA-MS-007#openai.client]] v2 · 클래스 명세 v12 4.5 · 4.7) **되먹임** 어댑터가 부를 때마다 지금 키의 클라이언트를 받으려면 [[VA-MS-005]]에 키를 돌려주는 공개 함수(예 `SettingsService.api_key() -> str | None`)가 있어야 한다. 지금은 가린 키만 나간다. [[VA-MS-007#openai.client]]는 키마다 클라이언트 하나를 캐시한다 — 「키가 바뀌면 다시 만든다」를 이 방식으로 고친다
