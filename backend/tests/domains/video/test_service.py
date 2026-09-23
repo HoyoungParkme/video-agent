@@ -256,3 +256,25 @@ async def test_list_queries_do_not_grow(db, make, youtube, queries) -> None:
 
 async def test_list_empty(db, youtube) -> None:
     assert await VideoService(db, youtube).list() == []
+
+
+# --- get
+
+
+async def test_get(db, make, youtube) -> None:
+    with pytest.raises(NotFound) as e:
+        await VideoService(db, youtube).get(999)
+    assert e.value.extra == {"resource": "video", "id": 999}
+    row = await make.video()
+    detail = await VideoService(db, youtube).get(row.id)
+    assert (detail.job, detail.video.status) == (None, "registered")
+
+
+async def test_get_after_finish(db, make, youtube) -> None:
+    """JobService.finish 테스트 관점 — finish 뒤 get의 status=analyzed, analyzed_at = 끝난 시각."""
+    video = await make.video()
+    job = await make.job(video.id, JobStatus.running, stage="suggest")
+    await JobService(db).finish(job.id)
+    detail = await VideoService(db, youtube).get(video.id)
+    assert detail.video.status == "analyzed"
+    assert detail.video.analyzed_at == detail.job.finished_at is not None

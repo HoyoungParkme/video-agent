@@ -224,3 +224,24 @@ class VideoService:
             if r.id in jobs
         ]
         return sorted(out, key=lambda v: v.job.started_at, reverse=True)
+
+    async def get(self, video_id: int) -> VideoDetail:
+        """VA-MS-001#VideoService.get
+
+        영상 하나와 최근 작업 요약. 작업 · 결과 · 대화 라우터가 인자용으로도 부른다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            영상과 작업 요약(작업이 없으면 None)
+
+        Raises:
+            NotFound: 영상이 없다(resource=video)
+        """
+        row = await crud.by_id(self.session, video_id)
+        if row is None:
+            raise NotFound(resource="video", id=video_id)
+        job = await self.jobs.latest(video_id)
+        count = (await self.chats.count_by_videos([video_id])).get(video_id, 0)
+        return VideoDetail(video=self.to_dto(row, job, count), job=job)
