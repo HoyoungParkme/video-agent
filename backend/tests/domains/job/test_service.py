@@ -198,3 +198,53 @@ async def test_wait_for_work_times_out_quietly(db, monkeypatch) -> None:
     started = time.monotonic()
     await JobService.wait_for_work()  # 신호가 없어도 돌아오고, 예외가 나가지 않는다
     assert 0.04 <= time.monotonic() - started < 1
+
+
+# --- estimate
+
+
+async def test_estimate_captions(db, make, env_file) -> None:
+    row = await make.video(duration_sec=3012)
+    est = await JobService(db).estimate(_video(row))
+    assert est is not None
+    assert (est.needs_stt, est.chunks, est.concurrency, est.stt_minutes) == (
+        False,
+        None,
+        None,
+        None,
+    )
+    assert (est.stt_cost_usd, est.seconds) == (0, 60)
+    assert est.text_cost_usd > 0
+    assert est.total_cost_usd == round(est.text_cost_usd, 2)
+    assert (est.stt_model, est.text_model) == ("whisper-1", "gpt-5-mini")
+
+
+async def test_estimate_local_150_minutes(db, make, env_file) -> None:
+    row = await make.video(
+        source_kind=SourceKind.local,
+        channel=None,
+        origin="workshop.mp4",
+        duration_sec=9000,
+        has_captions=False,
+        caption_language=None,
+        caption_kind=None,
+    )
+    est = await JobService(db).estimate(_video(row))
+    assert (est.chunks, est.concurrency, est.stt_minutes, est.stt_cost_usd) == (15, 3, 150, 0.9)
+    assert est.stt_price_per_min == 0.006
+    assert est.seconds == 5 * 45 + 60 + 150  # 조각 · 텍스트 · 추출 몫
+
+
+async def test_estimate_none_when_job_exists(db, make, env_file) -> None:
+    row = await make.video()
+    await make.job(row.id, JobStatus.running)
+    assert await JobService(db).estimate(_video(row, "in_progress")) is None
+
+
+async def test_estimate_follows_model_price(db, make, env_file) -> None:
+    row = await make.video()
+    cheap = await JobService(db).estimate(_video(row))
+    env_file.write_text("TEXT_MODEL=gpt-5.4\n")  # 설정에서 읽는다
+    dear = await JobService(db).estimate(_video(row))
+    assert dear.text_model == "gpt-5.4"
+    assert dear.text_cost_usd > cheap.text_cost_usd

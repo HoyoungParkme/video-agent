@@ -221,3 +221,55 @@ class JobService:
         """
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(cls.work_event.wait(), timeout=config.WORKER_IDLE_SEC)
+
+    async def estimate(self, video: Video) -> Estimate | None:
+        """VA-MS-002#JobService.estimate
+
+        사전 안내의 예상 시간 · 비용. 작업이 있는 영상이면 None — 라우터는 그대로 싣는다.
+
+        Args:
+            video: register가 돌려준 영상(status · 길이 · 자막 유무 · 출처)
+
+        Returns:
+            예상치, 또는 작업이 있으면 None
+        """
+        if video.status != "registered":
+            return None
+        return self._estimate(video)
+
+    def _estimate(self, video: Video) -> Estimate:
+        # start도 부른다 — 거기서는 상태를 보지 않는다(작업이 없다는 것을 먼저 확인했다)
+        models = settings.current_models()
+        needs_stt = not video.has_captions
+        chunks = concurrency = None
+        stt_minutes = stt_price = None
+        stt_cost = 0.0
+        seconds = config.TEXT_EST_SEC
+        if needs_stt:
+            chunks = math.ceil(video.duration_sec / config.CHUNK_SEC)
+            concurrency = config.STT_CONCURRENCY
+            stt_minutes = round(video.duration_sec / 60, 1)
+            stt_price = models.stt.price.per_min_usd or 0.0
+            stt_cost = stt_minutes * stt_price
+            seconds += math.ceil(chunks / concurrency) * config.CHUNK_EST_SEC
+            if not _is_audio(video):  # YouTube 내려받기 · 로컬 영상 추출 몫 — 길이(분)만큼의 초
+                seconds += math.ceil(video.duration_sec / 60)
+        # 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 6천 토큰으로 본다
+        in_tokens = video.duration_sec / 60 * config.TOKENS_PER_MIN
+        text_cost = (
+            in_tokens * 3 * (models.text.price.input_per_mtok_usd or 0.0)
+            + 6000 * (models.text.price.output_per_mtok_usd or 0.0)
+        ) / 1_000_000
+        return Estimate(
+            needs_stt=needs_stt,
+            seconds=seconds,
+            chunks=chunks,
+            concurrency=concurrency,
+            stt_minutes=stt_minutes,
+            stt_price_per_min=stt_price,
+            stt_cost_usd=round(stt_cost, 4),
+            text_cost_usd=round(text_cost, 4),
+            total_cost_usd=round(stt_cost + text_cost, 2),
+            stt_model=models.stt.id,
+            text_model=models.text.id,
+        )
