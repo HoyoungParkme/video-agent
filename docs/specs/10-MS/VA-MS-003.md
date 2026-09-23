@@ -23,7 +23,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 | 이름 | 첫 값 | 이유 |
 |---|---|---|
 | `config.TEXT_WINDOW_SEC` | 1800 | 스크립트가 길 때 30분 구간으로 나눈다. 3시간이면 6구간 |
-| `config.TEXT_TOKEN_LIMIT` | 40000 | 한 번에 보내는 스크립트 토큰 상한. 분당 200토큰이면 200분 — 60분 넘는 영상은 거의 구간 처리로 간다 |
+| `config.TEXT_TOKEN_LIMIT` | 40000 | 한 번에 보내는 스크립트 토큰 상한. 분당 200토큰이면 200분이라 3시간 상한 안의 영상은 대부분 한 번에 간다 — 말이 아주 빠르거나 글자가 많은 스크립트만 구간 처리로 간다 |
 | `config.CHAPTER_MINUTES` | 6 | 챕터 하나가 맡는 분. 목표 챕터 수 = 길이(분) ÷ 6 |
 | `config.PART_THRESHOLD_SEC` | 3600 | 이보다 길면 파트를 만든다([[VA-PRD-001#R5]]) |
 | `config.EXPORT_DIR` | `data/export` | 파일로 저장 위치([[VA-UI-001]] 7장 14) |
@@ -91,7 +91,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 1. `segments = segments_of(video.id)` · `model = SettingsService.current_models().text.id`
 2. `n_max = 10 if video.duration_sec > config.PART_THRESHOLD_SEC else 8` · `n_min = 5`
 3. if `토큰 수(segments) ≤ config.TEXT_TOKEN_LIMIT` → `draft = SummarizerPort.summary(segments, video.duration_sec, model)`
-   else → 구간마다 `SummarizerPort.summary(구간의 segments, 구간 길이, model)`로 중간 요약을 얻고, 그 한 줄 요약 · 인사이트를 `[시각] 문장` 줄들의 가짜 구간 목록으로 만들어 `SummarizerPort.summary(그 목록, video.duration_sec, model)` — 최종 요약. 구간은 `config.TEXT_WINDOW_SEC`씩([[VA-UC-001#UC-S4]] 1a2를 챕터 대신 중간 요약으로)
+   else → 구간마다 `SummarizerPort.summary(구간의 segments, 구간 길이, model)`로 중간 요약을 얻고, 그 한 줄 요약(구간 시작 시각의 줄) · 인사이트(첫 출처 시각의 줄)를 `[시각] 문장` 줄들의 가짜 구간 목록으로 시각순으로 만들어 `SummarizerPort.summary(그 목록, video.duration_sec, model)` — 최종 요약. 구간은 `config.TEXT_WINDOW_SEC`씩([[VA-UC-001#UC-S4]] 1a2를 챕터 대신 중간 요약으로)
 4. `insights = draft.insights[:n_max]` · if `len < n_min` → 그대로 둔다(프롬프트가 5~8을 요구하고 모자라면 있는 만큼)
 5. 인사이트마다 `source_secs = clamp_secs(source_secs, video.duration_sec, segments)` · 빈 목록이 되면 그 인사이트를 뺀다(출처 없는 인사이트는 화면에 시각 칩이 없어 규칙 위반)
 6. **트랜잭션**: `DB: delete summaries where video_id`(cascade로 insights) · `DB: summaries insert(video_id, one_liner, model)` · `DB: insights insert ×N (summary_id, seq=1부터, text, source_secs)`
@@ -103,7 +103,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** [[#AnalysisService.segments_of]] · [[#AnalysisService.clamp_secs]] · `SettingsService.current_models` · `SummarizerPort.summary`
 
-**테스트 관점** 가짜 포트로: 50분 → 포트 호출 1회, 인사이트 ≤ 8 · 150분 → 구간 5 + 최종 1 = 6회, 인사이트 ≤ 10 · 출처 시각이 길이를 넘는 인사이트 → 가장 가까운 구간 시각으로 · 출처가 전부 밖이라 비면 그 인사이트가 빠진다 · 두 번 돌리면 행이 한 벌 · 언어는 프롬프트가 한국어로(어댑터 테스트)
+**테스트 관점** 가짜 포트로: 50분 → 포트 호출 1회, 인사이트 ≤ 8 · 150분이고 토큰이 상한을 넘는 스크립트 → 구간 5 + 최종 1 = 6회, 인사이트 ≤ 10 · 150분이라도 상한 안이면 1회 · 출처 시각이 길이를 넘는 인사이트 → 가장 가까운 구간 시각으로 · 출처가 전부 밖이라 비면 그 인사이트가 빠진다 · 두 번 돌리면 행이 한 벌 · 언어는 프롬프트가 한국어로(어댑터 테스트)
 
 ---
 
@@ -119,7 +119,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
    else → 구간(`config.TEXT_WINDOW_SEC`)마다 `SummarizerPort.chapters(구간 segments, 구간 길이, model)` · 챕터 목록을 이어 붙인다(시각은 절대 시각으로 이미 온다) · 파트는 만들지 않는다 — 5번에서 만든다
 3. `chapters = draft.chapters`를 `start_sec` 오름차순 · `start_sec = clamp_secs([start_sec], duration, segments)[0]` · 같은 시각이 둘이면 뒤 것을 뺀다 · 첫 챕터의 `start_sec`가 0이 아니면 0으로 당긴다(스크립트 처음이 어느 챕터에도 안 들어가는 것을 막는다)
 4. `bullets`는 2~3줄로 자른다(4개 이상이면 앞 3개)
-5. if `video.duration_sec > config.PART_THRESHOLD_SEC` → 파트 — if `draft.parts`가 있고 `len ≥ 2` → 그대로 · else → 챕터를 60분 단위로 묶어 파트를 만들고 제목은 `SummarizerPort.summary`가 아니라 첫 챕터 제목을 쓴다(미결 3) · 챕터마다 `part_seq` = 시작 시각이 속한 파트
+5. if `video.duration_sec > config.PART_THRESHOLD_SEC` → 파트 — if `draft.parts`가 있고 `len ≥ 2` → 그대로 · else → 챕터를 60분 단위로 묶어 파트를 만들고 제목은 `SummarizerPort.summary`가 아니라 첫 챕터 제목을 쓴다(미결 3) · 파트 시작 시각도 `clamp_secs`로 보정해 오름차순, 같은 시각은 하나로, **첫 파트는 0초로 당긴다**(첫 챕터가 0초라 어느 파트에도 안 드는 것을 막는다) · 챕터마다 `part_seq` = 시작 시각이 속한 파트(모델이 준 번호가 아니라 시각으로 정한다) · 챕터가 하나도 없는 파트는 빼고 번호를 다시 매긴다
    else → 파트 없음, `part_seq=None`
 6. **트랜잭션**: `DB: delete parts where video_id` · `DB: delete chapters where video_id` · `DB: parts insert ×M (video_id, seq, title, start_sec)` · `DB: chapters insert ×N (video_id, part_id, seq=1부터 영상 전체 순번, start_sec, title, bullets)`
 7. `→ None`
@@ -128,7 +128,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** [[#AnalysisService.segments_of]] · [[#AnalysisService.clamp_secs]] · `SettingsService.current_models` · `SummarizerPort.chapters`
 
-**테스트 관점** 50분 → 파트 0, 챕터 8 안팎, 첫 챕터 0초 · 150분 → 파트 ≥ 2, 챕터마다 `part_id`, 파트 시작 시각이 오름차순 · 같은 시각 챕터 둘 → 하나 · `bullets` 4개 → 3개 · 두 번 돌리면 행이 한 벌
+**테스트 관점** 50분 → 파트 0, 챕터 8 안팎, 첫 챕터 0초 · 150분 → 파트 ≥ 2, 챕터마다 `part_id`, 파트 시작 시각이 오름차순 · 모델이 첫 파트를 5분에 두어도 0초로 당겨 첫 챕터가 첫 파트에 든다 · 챕터 없는 파트는 빠진다 · 모델 파트가 하나뿐이면 60분 묶음 · 같은 시각 챕터 둘 → 하나 · `bullets` 4개 → 3개 · 두 번 돌리면 행이 한 벌
 
 ---
 
