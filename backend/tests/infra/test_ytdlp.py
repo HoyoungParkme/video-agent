@@ -97,3 +97,29 @@ async def test_download_audio_network(fake, tmp_path: Path) -> None:
     with pytest.raises(YtdlpError) as e:
         await ytdlp.download_audio("dQw4w9WgXcQ", str(tmp_path))
     assert e.value.kind == "network"
+
+
+async def test_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "YTDLP_BIN", "/없는/yt-dlp")
+    with pytest.raises(YtdlpError) as e:
+        await ytdlp.info("https://youtu.be/x")
+    assert e.value.kind == "other"
+
+
+async def test_info_not_json(fake) -> None:
+    fake.behave(stdout="<html>")
+    with pytest.raises(YtdlpError) as e:
+        await ytdlp.info("https://youtu.be/x")
+    assert e.value.kind == "other"
+
+
+async def test_cancel_kills_child(fake, tmp_path: Path) -> None:
+    """작업이 취소되면 yt-dlp가 주인 없이 돌지 않는다."""
+    assert await fake.cancelled_child_is_gone(ytdlp.info("https://youtu.be/x"), tmp_path)
+
+
+async def test_download_audio_ignores_leftover(fake, tmp_path: Path) -> None:
+    (tmp_path / "source.webm").write_text("앞 시도의 찌꺼기")
+    fake.behave(write_ext="m4a")
+    assert await ytdlp.download_audio("dQw4w9WgXcQ", str(tmp_path)) == str(tmp_path / "source.m4a")
+    assert not (tmp_path / "source.webm").exists()

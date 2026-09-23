@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import os
 import stat
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +21,9 @@ import json, os, sys, time
 args = sys.argv[1:]
 with open(os.environ["FAKE_LOG"], "a") as f:
     f.write(json.dumps(args) + "\n")
+if os.environ.get("FAKE_PIDFILE"):
+    with open(os.environ["FAKE_PIDFILE"], "w") as f:
+        f.write(str(os.getpid()))
 if os.environ.get("FAKE_SLEEP"):
     time.sleep(float(os.environ["FAKE_SLEEP"]))
 sys.stdout.write(os.environ.get("FAKE_STDOUT", ""))
@@ -51,6 +57,24 @@ class Fake:
         for name, value in env.items():
             self.monkeypatch.setenv(f"FAKE_{name.upper()}", str(value))
 
+    async def cancelled_child_is_gone(self, call: Awaitable[object], tmp: Path) -> bool:
+        """call을 띄워 자식이 뜬 것을 본 뒤 취소하고, 그 자식이 죽었는지."""
+        pidfile = tmp / "pid"
+        self.behave(sleep=30, pidfile=pidfile)
+        task = asyncio.ensure_future(call)
+        for _ in range(200):
+            if pidfile.exists() and pidfile.read_text():
+                break
+            await asyncio.sleep(0.05)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        try:
+            os.kill(int(pidfile.read_text()), 0)
+        except ProcessLookupError:
+            return True
+        return False
+
     def calls(self) -> list[list[str]]:
         if not self.log.exists():
             return []
@@ -65,7 +89,7 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Fake:
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
     log = tmp_path / "calls.jsonl"
     monkeypatch.setenv("FAKE_LOG", str(log))
-    for name in ("STDOUT", "STDERR", "EXIT", "SLEEP", "WRITE_EXT", "FILE", "WRITE_LAST"):
+    for name in ("STDOUT", "STDERR", "EXIT", "SLEEP", "WRITE_EXT", "FILE", "WRITE_LAST", "PIDFILE"):
         monkeypatch.delenv(f"FAKE_{name}", raising=False)
     for name in ("YTDLP_BIN", "FFMPEG_BIN", "FFPROBE_BIN"):
         monkeypatch.setattr(config, name, str(path))

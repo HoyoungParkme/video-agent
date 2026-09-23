@@ -79,6 +79,22 @@ async def test_cut_args(fake, tmp_path: Path) -> None:
     assert args[args.index("-c") + 1] == "copy"
 
 
+async def test_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "FFPROBE_BIN", "/없는/ffprobe")
+    with pytest.raises(FfmpegError):
+        await ffmpeg.probe("a.mp4")
+
+
+async def test_probe_not_json(fake) -> None:
+    fake.behave(stdout="")
+    with pytest.raises(FfmpegError):
+        await ffmpeg.probe("a.mp4")
+
+
+async def test_cancel_kills_child(fake, tmp_path: Path) -> None:
+    assert await fake.cancelled_child_is_gone(ffmpeg.silences("audio.mp3"), tmp_path)
+
+
 # 진짜 ffmpeg — 호스트에 없으면 건너뛴다(이미지에는 있다)
 real = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg가 없다")
 
@@ -116,6 +132,8 @@ async def test_real_extract_cut_silences(tmp_path: Path, monkeypatch: pytest.Mon
 
     part = await ffmpeg.cut(audio, 1.0, 4.0, str(tmp_path / "1.mp3"))
     assert abs(float((await ffmpeg.probe(part))["format"]["duration"]) - 3.0) <= 0.1
+    tail = await ffmpeg.cut(audio, 6.0, 100.0, str(tmp_path / "2.mp3"))  # 끝이 길이를 넘으면 끝까지
+    assert abs(float((await ffmpeg.probe(tail))["format"]["duration"]) - 2.0) <= 0.1
 
 
 @real

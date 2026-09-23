@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import glob
 import json
 import os
@@ -39,20 +40,32 @@ def _tail(stderr: str) -> str:
     return "\n".join(lines[-3:])
 
 
+async def _reap(proc: asyncio.subprocess.Process) -> None:
+    # 시간 제한 · 취소로 끝나면 자식 프로세스를 죽인다 — 주인 없이 돌며 임시 폴더에 쓰지 않게
+    if proc.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        await proc.wait()
+
+
 async def _run(*args: str) -> bytes:
     """yt-dlp 한 번. 성공하면 표준 출력, 아니면 YtdlpError. 시간 제한을 넘으면 network."""
-    proc = await asyncio.create_subprocess_exec(
-        config.YTDLP_BIN,
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            config.YTDLP_BIN,
+            *args,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as e:
+        raise YtdlpError(f"yt-dlp를 실행하지 못했습니다({type(e).__name__})", "other") from None
     try:
         out, err = await asyncio.wait_for(proc.communicate(), config.PROC_TIMEOUT_SEC)
     except TimeoutError:
-        proc.kill()
-        await proc.wait()
         raise YtdlpError("시간 제한을 넘었습니다", "network") from None
+    finally:
+        await _reap(proc)
     if proc.returncode != 0:
         text = err.decode(errors="replace")
         raise YtdlpError(_tail(text) or f"종료 코드 {proc.returncode}", _kind(text))
@@ -71,7 +84,10 @@ async def info(url: str) -> dict:
         yt-dlp의 JSON 그대로 — id · title · channel · duration · subtitles · automatic_captions 등
     """
     out = await _run("--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", url)
-    return json.loads(out)
+    try:
+        return json.loads(out)
+    except ValueError:
+        raise YtdlpError("영상 정보를 읽지 못했습니다(JSON이 아님)", "other") from None
 
 
 async def captions(video_id: str, lang: str, kind: str) -> str:
@@ -120,6 +136,8 @@ async def download_audio(video_id: str, dest: str) -> str:
     Returns:
         받은 파일 경로 — `{dest}/source.{ext}`(m4a 또는 webm)
     """
+    for leftover in glob.glob(os.path.join(dest, "source.*")):  # 앞 시도가 남긴 파일을 집지 않게
+        os.remove(leftover)
     await _run(
         "--no-playlist",
         "-f",

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -16,17 +17,31 @@ from app.infra.errors import FfmpegError
 _SILENCE = re.compile(r"silence_(start|end): (-?\d+(?:\.\d+)?)")
 
 
+async def _reap(proc: asyncio.subprocess.Process) -> None:
+    # 시간 제한 · 취소로 끝나면 자식 프로세스를 죽인다 — 주인 없이 돌며 임시 폴더에 쓰지 않게
+    if proc.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        await proc.wait()
+
+
 async def _run(*args: str) -> tuple[bytes, str]:
     """ffmpeg · ffprobe 한 번. 성공하면 (표준 출력, 표준 오류), 아니면 FfmpegError."""
-    proc = await asyncio.create_subprocess_exec(
-        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as e:
+        raise FfmpegError(f"{args[0]}를 실행하지 못했습니다({type(e).__name__})", -1) from None
     try:
         out, err = await asyncio.wait_for(proc.communicate(), config.PROC_TIMEOUT_SEC)
     except TimeoutError:
-        proc.kill()
-        await proc.wait()
         raise FfmpegError("시간 제한을 넘었습니다", -1) from None
+    finally:
+        await _reap(proc)
     text = err.decode(errors="replace")
     if proc.returncode != 0:
         tail = "\n".join([line for line in text.splitlines() if line.strip()][-3:])
@@ -55,7 +70,10 @@ async def probe(path: str) -> dict:
         "-show_streams",
         path,
     )
-    return json.loads(out)
+    try:
+        return json.loads(out)
+    except ValueError:
+        raise FfmpegError("ffprobe 출력을 읽지 못했습니다(JSON이 아님)", 0) from None
 
 
 async def extract_audio(src: str, dest: str) -> str:
