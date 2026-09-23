@@ -226,7 +226,7 @@ CHECK: `status = 'failed'`이면 `error_kind` · `error_reason`이 not null, 아
 | duration_sec | numeric(9,3) | not null | 조각 길이 | `300.000` |
 | path | varchar(500) | null 허용 | 임시 파일 경로. 받아쓰기가 끝나 파일을 지우면 null | `data/tmp/12/16.mp3` |
 | state | varchar(10) | not null, ChunkState | waiting · in_flight · done · failed | `done` |
-| attempts | smallint | not null, default 0 | 보낸 횟수. 상한(설정값 3)에 닿으면 failed | `3` |
+| attempts | smallint | not null, default 0 | 보낸 누적 횟수. 한 번 도는 동안 상한(설정값 3)만큼 보내고도 실패하면 failed — 다시 시도하면 상한을 새로 세고, 이 값은 계속 쌓인다 | `3` |
 | result | jsonb | null 허용 | 그 조각의 받아쓰기 결과 — `{start_sec, end_sec, text, language}` 배열, 오프셋을 더하기 전. `done`이 될 때 저장. 실패 뒤 재시도가 `done` 조각을 다시 보내지 않는 근거([[VA-DOM-002#AudioChunk]], 시퀀스 되먹임). 스크립트를 만든 뒤에도 남긴다 | `[{"start_sec": 0.0, "end_sec": 4.2, "text": "…", "language": "ko"}]` |
 | done_at | timestamptz | null 허용 | `done`이 된 때. 조각당 평균 시간 → 남은 시간 계산([[VA-UC-001#UC-S6]] 2번) | |
 

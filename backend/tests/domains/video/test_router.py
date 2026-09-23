@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.core.config import config
 from app.domains.job.models import JobStatus
 
 PROBLEM = "application/problem+json"
@@ -16,6 +17,39 @@ async def test_post_video_registers_with_estimate(api, key) -> None:
     assert body["video"]["source_id"] == "dQw4w9WgXcQ"
     assert body["estimate"]["needs_stt"] is False
     assert body["estimate"]["seconds"] == 60
+
+
+async def test_post_video_local_needs_stt(api, key, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "workshop_0912.mp4").write_bytes(b"recording")
+    probe.files = {"workshop_0912.mp4": (9000, True)}
+    r = await api.post("/api/videos", json={"source": "local", "path": "workshop_0912.mp4"})
+    assert r.status_code == 200
+    video, est = r.json()["video"], r.json()["estimate"]
+    assert (video["status"], video["source_kind"], video["has_captions"]) == (
+        "registered",
+        "local",
+        False,
+    )
+    assert (est["needs_stt"], est["chunks"], est["concurrency"], est["stt_minutes"]) == (
+        True,
+        15,
+        3,
+        150.0,
+    )
+    assert est["stt_cost_usd"] == 0.9
+
+
+async def test_post_video_local_without_audio(api, key, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "silent.mp4").write_bytes(b"x")
+    probe.files = {"silent.mp4": (1800, False)}
+    r = await api.post("/api/videos", json={"source": "local", "path": "silent.mp4"})
+    assert (r.status_code, r.json()["type"], r.json()["duration_sec"]) == (
+        422,
+        "urn:va:no-audio-track",
+        1800,
+    )
 
 
 async def test_post_video_existing_job_has_no_estimate(api, key, make) -> None:
@@ -66,10 +100,33 @@ async def test_get_video(api, make) -> None:
     assert (body["video"]["id"], body["job"]) == (row.id, None)
 
 
-async def test_inbox_is_empty_stub(api) -> None:
-    body = (await api.get("/api/inbox")).json()
-    assert body["files"] == []
-    assert "path" in body
+async def test_inbox_lists_files(api, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "INBOX_DISPLAY_PATH", "~/video-agent/inbox")
+    (tmp_path / "workshop_0912.mp4").write_bytes(b"mp4")
+    probe.files = {"workshop_0912.mp4": (9000, True)}
+    r = await api.get("/api/inbox")
+    assert r.status_code == 200
+    assert r.json()["path"] == "~/video-agent/inbox"
+    [f] = r.json()["files"]
+    assert (f["name"], f["duration_sec"], f["kind"], f["size_bytes"]) == (
+        "workshop_0912.mp4",
+        9000,
+        "video",
+        3,
+    )
+
+
+async def test_inbox_empty_is_200(api, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    r = await api.get("/api/inbox")
+    assert (r.status_code, r.json()["files"]) == (200, [])
+
+
+async def test_inbox_without_mount_is_internal(api, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path / "없음"))
+    r = await api.get("/api/inbox")
+    assert (r.status_code, r.json()["type"]) == (500, "urn:va:internal")
 
 
 async def test_delete_is_stub(api, make) -> None:

@@ -67,11 +67,15 @@ class Config(BaseSettings):
     # 영상 — MS-001
     MAX_DURATION_SEC: int = 10800
     PROBE_CONCURRENCY: int = 4
+    # 받는 확장자(ACCEPTED) — 영상 등록 · inbox 목록 · 파일 재기 · 단계 목록이 같이 쓴다
+    VIDEO_EXTS: list[str] = ["mp4", "mkv", "mov", "webm"]
+    AUDIO_EXTS: list[str] = ["mp3", "m4a", "wav"]
 
     # 작업 · 파이프라인 — MS-002
     CHUNK_SEC: int = 600
     STT_CONCURRENCY: int = 3
     CHUNK_MAX_ATTEMPTS: int = 3
+    CHUNK_RETRY_WAIT_SEC: float = 2  # 다시 보내기 전 첫 기다림, 다음은 두 배
     CHUNK_EST_SEC: int = 45
     TEXT_EST_SEC: int = 60
     TOKENS_PER_MIN: int = 200

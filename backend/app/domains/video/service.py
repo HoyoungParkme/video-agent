@@ -1,12 +1,16 @@
-"""VideoService — 영상 등록 · 목록 · 하나(VA-MS-001). 라우터와 main.py(load_video)가 부른다.
+"""VideoService — inbox 목록 · 영상 등록 · 목록 · 하나(VA-MS-001).
 
-세션은 부르는 쪽의 것이다. 작업 요약과 대화 수는 JobService · ChatService에 id로 묻는다 —
-같은 세션으로(VA-DOM-002 3.2).
+라우터와 main.py(load_video)가 부른다. 세션은 부르는 쪽의 것이다. 작업 요약과 대화 수는
+JobService · ChatService에 id로 묻는다 — 같은 세션으로(VA-DOM-002 3.2).
 """
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import os
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -15,8 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
 from app.core.errors import (
+    Internal,
+    NoAudioTrack,
     NotFound,
-    NotImplementedYet,
     PathOutsideInbox,
     UnsupportedFile,
     UrlInvalid,
@@ -28,9 +33,11 @@ from app.domains.job.models import JobStatus
 from app.domains.job.schemas import JobSummary
 from app.domains.job.service import JobService
 from app.domains.video import crud
-from app.domains.video.models import VideoRow
-from app.domains.video.ports import YouTubeInfoPort
+from app.domains.video.models import SourceKind, VideoRow
+from app.domains.video.ports import MediaProbePort, YouTubeInfoPort
 from app.domains.video.schemas import (
+    InboxFile,
+    InboxListing,
     RegisterRequest,
     SourceInfo,
     Video,
@@ -41,9 +48,6 @@ from app.domains.video.schemas import (
 )
 
 ACCEPTED_URLS = ["watch", "youtu.be", "shorts"]
-VIDEO_EXTS = {"mp4", "mkv", "mov", "webm"}
-AUDIO_EXTS = {"mp3", "m4a", "wav"}
-ACCEPTED = sorted(VIDEO_EXTS) + sorted(AUDIO_EXTS)
 _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 
 
@@ -65,12 +69,35 @@ def _youtube_id(url: str) -> str | None:
     return candidate if _VIDEO_ID.fullmatch(candidate) else None
 
 
+def accepted() -> list[str]:
+    """받는 확장자 — 영상 넷 · 음성 셋(MS-001 설정값 ACCEPTED)."""
+    return config.VIDEO_EXTS + config.AUDIO_EXTS
+
+
+def _ext(name: str) -> str:
+    return Path(name).suffix.lower().lstrip(".")
+
+
+def _listed(entry: os.DirEntry[str]) -> bool:
+    # inbox 바로 아래의 받는 형식 파일만 — 하위 폴더 · 숨김 파일 · 다른 확장자는 안 보인다
+    return entry.is_file() and not entry.name.startswith(".") and _ext(entry.name) in accepted()
+
+
+def _sha256(path: Path) -> str:
+    # 1MB씩 — 수 GB 파일도 메모리를 조금만 쓴다. 이벤트 루프를 막지 않게 스레드에서 부른다
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while block := f.read(1 << 20):
+            h.update(block)
+    return h.hexdigest()
+
+
 def _check_inbox_name(name: str) -> None:
     # inbox 바로 아래 파일 이름만 — 하위 폴더 · 절대 경로 · 숨김 · ..는 막는다
     if "/" in name or "\\" in name or name.startswith(".") or ".." in name:
         raise PathOutsideInbox()
-    if Path(name).suffix.lower().lstrip(".") not in VIDEO_EXTS | AUDIO_EXTS:
-        raise UnsupportedFile(reason="받지 않는 형식이에요", accepted=ACCEPTED)
+    if _ext(name) not in accepted():
+        raise UnsupportedFile(reason="받지 않는 형식이에요", accepted=accepted())
     if not (Path(config.INBOX_DIR) / name).is_file():
         raise NotFound(resource="inbox_file", id=name)
 
@@ -78,14 +105,18 @@ def _check_inbox_name(name: str) -> None:
 class VideoService:
     """영상 행과 그 응답 형태. 상태(status)를 계산하는 곳은 to_dto 하나다.
 
+    - list_inbox(): inbox 파일 목록(길이까지)
     - register(): 키 확인 → 형식 → 정보 → 길이 상한 → 중복 → 생성 또는 덮어쓰기
     - list() · get(): 작업이 있는 영상 목록(최근 순) · 영상 하나와 최근 작업
     - info_of() · to_dto(): 출처별 정보 조회 · 행 → Video
     """
 
-    def __init__(self, session: AsyncSession, youtube_info: YouTubeInfoPort) -> None:
+    def __init__(
+        self, session: AsyncSession, youtube_info: YouTubeInfoPort, media_probe: MediaProbePort
+    ) -> None:
         self.session = session
         self.youtube_info = youtube_info
+        self.media_probe = media_probe
         self.jobs = JobService(session)
         self.chats = ChatService(session)
 
@@ -129,11 +160,54 @@ class VideoService:
             chat_turn_count=chat_count,
         )
 
+    async def list_inbox(self) -> InboxListing:
+        """VA-MS-001#VideoService.list_inbox
+
+        inbox 폴더 바로 아래의 영상 · 음성 파일, 수정 시각 최근 순. 길이는 파일마다
+        `config.PROBE_CONCURRENCY`개씩 동시에 잰다 — 못 재면 None(그 파일을 고르면 등록이
+        unsupported-file을 낸다).
+
+        Returns:
+            사용자에게 보일 폴더 경로와 파일 목록. 빈 폴더면 files=[]
+
+        Raises:
+            Internal: inbox 폴더가 없거나 읽을 수 없다 — 마운트가 안 된 설치 오류(빈 폴더와 다르다)
+        """
+        try:
+            entries = [e for e in os.scandir(config.INBOX_DIR) if _listed(e)]
+        except OSError as e:
+            raise Internal("inbox 폴더를 읽을 수 없어요") from e
+        sem = asyncio.Semaphore(config.PROBE_CONCURRENCY)
+
+        async def one(entry: os.DirEntry[str]) -> InboxFile | None:
+            try:
+                stat = entry.stat()
+            except FileNotFoundError:  # 목록을 읽은 뒤 사라졌다(옮기는 중) — 그 파일만 뺀다
+                return None
+            duration: int | None = None
+            async with sem:
+                try:
+                    duration = (await self.media_probe.probe(entry.path))[0]
+                except Exception:  # 깨진 파일도 목록에는 보인다
+                    duration = None
+            return InboxFile(
+                name=entry.name,
+                size_bytes=stat.st_size,
+                duration_sec=duration,
+                kind="audio" if _ext(entry.name) in config.AUDIO_EXTS else "video",
+                modified_at=datetime.fromtimestamp(stat.st_mtime, UTC),
+            )
+
+        files = [f for f in await asyncio.gather(*(one(e) for e in entries)) if f is not None]
+        files.sort(key=lambda f: f.modified_at, reverse=True)
+        return InboxListing(path=config.INBOX_DISPLAY_PATH, files=files)
+
     async def info_of(self, req: RegisterRequest) -> SourceInfo:
         """VA-MS-001#VideoService.info_of
 
         출처에서 영상 정보를 읽는다. YouTube는 포트가 정보만 받는다(내려받지 않는다).
-        로컬 갈래는 스텁 — B2(VA-CODE-001 B1).
+        로컬 파일은 길이 · 음성 트랙을 재고 내용 SHA-256을 출처 식별자로 쓴다 — 이름을 바꿔도
+        같은 영상이다. 해시는 스레드에서 1MB씩(수 GB면 몇 초 — 화면은 버튼 대기 표시).
 
         Args:
             req: YouTube 주소 또는 inbox 파일 이름
@@ -143,17 +217,34 @@ class VideoService:
 
         Raises:
             SourceUnavailable: YouTube 정보를 못 가져왔다
-            NotImplementedYet: inbox 파일(B2)
+            UnsupportedFile: 파일을 열 수 없다(포트)
+            NoAudioTrack: 음성 트랙이 없는 파일
         """
         if isinstance(req, YouTubeSource):
             return await self.youtube_info.info(req.url)
-        raise NotImplementedYet("inbox 파일 분석은 아직 지원하지 않아요")
+        path = Path(config.INBOX_DIR) / req.path
+        duration, has_audio = await self.media_probe.probe(str(path))
+        if not has_audio:
+            raise NoAudioTrack(duration_sec=duration)
+        return SourceInfo(
+            source_kind=SourceKind.local,
+            source_id=await asyncio.to_thread(_sha256, path),
+            title=req.path,
+            channel=None,
+            duration_sec=duration,
+            origin=req.path,
+            has_captions=False,
+            caption_language=None,
+            caption_kind=None,
+        )
 
     async def register(self, req: RegisterRequest) -> Video:
         """VA-MS-001#VideoService.register
 
         영상을 등록한다 — 사전 안내 전까지. 걸리는 곳에서 멈추고, 순서가 규칙이다.
         같은 영상(출처 식별자)이 있으면 그것을 돌려주고, 작업이 없던 것이면 새 정보로 덮어쓴다.
+        로컬 파일은 작업이 있어도 이름(origin)만 지금 것으로 고친다 — 이름을 바꾼 뒤 다시 시도해도
+        파이프라인이 파일을 찾게.
 
         Args:
             req: YouTube 주소 또는 inbox 파일 이름
@@ -183,6 +274,9 @@ class VideoService:
             job = await self.jobs.latest(row.id)
             if job is None:  # 사전 안내에서 취소했던 영상 — 처음 넣은 것과 같게
                 crud.overwrite(row, info)
+                await self.session.commit()
+            elif info.source_kind == SourceKind.local and row.origin != info.origin:
+                crud.rename(row, info.origin)  # 제목은 그대로
                 await self.session.commit()
         else:
             row = await self._insert(info)

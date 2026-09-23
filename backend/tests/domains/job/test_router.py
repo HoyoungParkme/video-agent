@@ -41,8 +41,29 @@ async def test_get_job(api, make) -> None:
     assert (await api.get("/api/videos/999/job")).json()["resource"] == "video"
 
 
-async def test_retry_is_stub(api, make) -> None:
+async def test_retry(api, key, make) -> None:
     row = await make.video()
-    await make.job(row.id, JobStatus.failed)
+    job = await make.job(row.id, JobStatus.failed, stage="summarize")
     r = await api.post(f"/api/videos/{row.id}/job/retry")
-    assert (r.status_code, r.json()["type"]) == (501, "urn:va:not-implemented")
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["id"], body["status"], body["stage"], body["error"]) == (
+        job.id,
+        "queued",
+        "summarize",
+        None,
+    )
+    again = await api.post(f"/api/videos/{row.id}/job/retry")  # 이제 실패가 아니다
+    assert (again.status_code, again.json()["type"], again.json()["job_status"]) == (
+        409,
+        "urn:va:job-not-failed",
+        "queued",
+    )
+
+
+async def test_retry_missing(api, key, make) -> None:
+    row = await make.video()
+    r = await api.post(f"/api/videos/{row.id}/job/retry")
+    assert (r.status_code, r.json()["resource"]) == (404, "job")
+    r = await api.post("/api/videos/999/job/retry")
+    assert (r.status_code, r.json()["resource"]) == (404, "video")

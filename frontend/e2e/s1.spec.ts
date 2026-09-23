@@ -2,7 +2,7 @@
  * S1 — 자막 있는 YouTube 하나를 주소 → 사전 안내 → 4단계 → 결과까지(VA-SCN-001 S1 · S3, VA-CODE-001 B1).
  * 결과에서는 인사이트 칩 · 챕터 카드 · 구간 줄 어디를 눌러도 같은 이동이다(공통 1.3).
  * 같은 주소를 다른 꼴로 다시 넣으면 UI-2 없이 결과와 '이미 분석한 영상입니다'.
- * 자막 없는 영상은 B1에서 시작 불가 판 '아직 지원하지 않음'(사용자 결정 2026-09-23).
+ * 자막 없는 YouTube는 받아쓰기 필요 판이 열린다(받아쓰기 흐름은 e2e/s2.spec.ts).
  */
 import { expect, test } from "@playwright/test";
 
@@ -106,15 +106,23 @@ test("자막 있는 YouTube — 사전 안내부터 결과와 시각 이동까�
   expect(fake.chats).toBe(3); // 요약 · 챕터 · 추천 질문
 });
 
-test("자막 없는 영상 — 시작 불가 판에 '아직 지원하지 않음'", async ({ page }) => {
+test("자막 없는 YouTube — 받아쓰기 필요 판", async ({ page }) => {
   await page.goto("/");
   const input = el(page, "3.2").locator("input");
   await input.fill("https://youtu.be/e2eNoCapt01");
   await el(page, "3.3").click();
-  await expect(inDialog(page, "7.1")).toHaveText("자막 없는 영상은 아직 지원하지 않아요");
-  await expect(inDialog(page, "7.2")).toHaveText("길이 30:00");
-  await expect(inDialog(page, "6.3")).toHaveCount(0); // 분석 시작 버튼이 없다
-  await expect(inDialog(page, "7.3")).toBeFocused();
+  // 받아쓰기 필요 판 — 출처 줄은 YouTube, 전송 안내는 영상 파일 문장 대신 '영상은 전송되지 않아요'
+  await expect(inDialog(page, "2.3")).toHaveText("YouTube · E2E 채널");
+  await expect(inDialog(page, "2.4")).toHaveText("길이 30:00");
+  await expect(inDialog(page, "2.5")).toHaveText("자막 없음 · 받아쓰기 필요");
+  await expect(inDialog(page, "3.2")).toHaveText(
+    "음성을 뽑아 3개 조각으로 나누고, 3개씩 동시에 받아씁니다.",
+  );
+  await expect(inDialog(page, "4.2")).toHaveText("받아쓰기 30분 × $0.006$0.18");
+  await expect(inDialog(page, "5")).toHaveText(
+    "받아쓰기에는 음성 조각이, 요약에는 스크립트 텍스트가 OpenAI로 전송됩니다. 영상은 전송되지 않아요.",
+  );
+  await expect(inDialog(page, "6.3")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(input).toHaveValue("https://youtu.be/e2eNoCapt01"); // 넣은 주소가 그대로
@@ -122,7 +130,7 @@ test("자막 없는 영상 — 시작 불가 판에 '아직 지원하지 않음'
 
   // 입력칸에서 Enter로 열어도 닫으면 초점은 [분석](3.3)으로
   await input.press("Enter");
-  await expect(inDialog(page, "7.3")).toBeFocused();
+  await expect(inDialog(page, "6.3")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(el(page, "3.3")).toBeFocused();
 });

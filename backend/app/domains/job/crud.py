@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from app.domains.job.models import AnalysisJobRow, AudioChunkRow, ChunkState, JobStatus
+from app.domains.job.schemas import ChunkPlan
 
 Job = AnalysisJobRow
 
@@ -49,6 +50,57 @@ async def chunks(session: AsyncSession, job_id: int) -> list[AudioChunkRow]:
             .order_by(AudioChunkRow.seq)
             .options(defer(AudioChunkRow.result))
         )
+    )
+
+
+async def chunks_with_results(session: AsyncSession, job_id: int) -> list[AudioChunkRow]:
+    """작업의 조각들, 번호순 — 받아쓰기 결과까지(이어 붙일 때)."""
+    return list(
+        await session.scalars(
+            select(AudioChunkRow).where(AudioChunkRow.job_id == job_id).order_by(AudioChunkRow.seq)
+        )
+    )
+
+
+async def has_chunks(session: AsyncSession, job_id: int) -> bool:
+    """조각 행이 하나라도 있는지 — 이미 나눴으면 다시 만들지 않는다."""
+    found = await session.scalar(
+        select(AudioChunkRow.id).where(AudioChunkRow.job_id == job_id).limit(1)
+    )
+    return found is not None
+
+
+def add_chunks(session: AsyncSession, job_id: int, plans: list[ChunkPlan]) -> None:
+    """조각 행을 넣는다 — 전부 waiting, 보낸 횟수 0."""
+    session.add_all(
+        AudioChunkRow(
+            job_id=job_id,
+            seq=p.seq,
+            offset_sec=p.offset_sec,
+            duration_sec=p.duration_sec,
+            path=p.path,
+            state=ChunkState.waiting,
+            attempts=0,
+        )
+        for p in plans
+    )
+
+
+async def chunk(session: AsyncSession, job_id: int, seq: int) -> AudioChunkRow:
+    """조각 하나 — 바꿀 것이라 결과까지 읽는다."""
+    return (
+        await session.scalars(
+            select(AudioChunkRow).where(AudioChunkRow.job_id == job_id, AudioChunkRow.seq == seq)
+        )
+    ).one()
+
+
+async def raise_progress(session: AsyncSession, job_id: int, pct: int) -> None:
+    """진행률을 올린다 — 동시에 끝난 조각들이 겹쳐 써도 뒤로 가지 않게(GREATEST)."""
+    await session.execute(
+        update(Job)
+        .where(Job.id == job_id)
+        .values(progress_pct=func.greatest(Job.progress_pct, pct))
     )
 
 
@@ -105,6 +157,15 @@ async def next_queued(session: AsyncSession) -> AnalysisJobRow | None:
 async def running_all(session: AsyncSession) -> list[AnalysisJobRow]:
     """running인 작업 전부 — 서버가 죽어 남은 것."""
     return list(await session.scalars(select(Job).where(Job.status == JobStatus.running)))
+
+
+async def failed_to_waiting(session: AsyncSession, job_id: int) -> None:
+    """실패한 조각을 기다림으로 — 다시 시도가 다시 보낸다. 보낸 횟수는 그대로(누적 이력)."""
+    await session.execute(
+        update(AudioChunkRow)
+        .where(AudioChunkRow.job_id == job_id, AudioChunkRow.state == ChunkState.failed)
+        .values(state=ChunkState.waiting)
+    )
 
 
 async def in_flight_to_waiting(session: AsyncSession, job_ids: list[int]) -> None:

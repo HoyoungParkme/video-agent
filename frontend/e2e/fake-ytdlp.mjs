@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 가짜 yt-dlp — E2E의 api가 YTDLP_BIN으로 부른다(VA-MS-007 ytdlp.*). 영상 정보(JSON)와 자막(VTT)을
-// 정해 둔 대로 준다. 네트워크에 닿지 않는다. 영상 ID는 e2e/*.spec.ts와 같은 값.
+// 정해 둔 대로 준다. 음성 내려받기는 가짜 ffmpeg가 읽는 모양의 파일을 쓴다. 네트워크에 닿지 않는다.
+// 영상 ID는 e2e/*.spec.ts와 같은 값.
 import { writeFileSync } from "node:fs";
 
 const VIDEOS = {
@@ -11,8 +12,12 @@ const VIDEOS = {
   e2eCaption3: { title: "LLM 에이전트 설계 패턴", duration: 2400, subtitles: { ko: [] } },
   // 서버에 잠깐 닿지 못해도 화면이 다시 받는다 — UI-3 · UI-4
   e2eCaption4: { title: "임베딩 모델 고르기", duration: 1500, subtitles: { ko: [] } },
-  // 자막 없는 영상 — B1은 시작 불가 판 '아직 지원하지 않음'
+  // 요약 단계에서 실패 → 그 단계부터 다시 시도 — S6 4번
+  e2eCaption5: { title: "평가 세트 만드는 법", duration: 1200, subtitles: { ko: [] } },
+  // 자막 없는 영상 — 받아쓰기 필요 판(s1)
   e2eNoCapt01: { title: "자막 없는 강연", duration: 1800, subtitles: {} },
+  // 자막 없는 영상을 끝까지 — 음성 내려받기 · 추출 · 받아쓰기(대기열에서 다시 시도의 앞 영상)
+  e2eNoCapt02: { title: "자막 없는 좌담", duration: 1200, subtitles: {} },
 };
 
 const args = process.argv.slice(2);
@@ -60,6 +65,13 @@ if (args.includes("--write-subs") || args.includes("--write-auto-subs")) {
   const out = args[args.indexOf("-o") + 1].replace("%(id)s", id);
   const lang = args[args.indexOf("--sub-langs") + 1];
   writeFileSync(`${out}.${lang}.vtt`, vtt(video.duration));
+  process.exit(0);
+}
+
+if (args.includes("-f") && args[args.indexOf("-f") + 1] === "bestaudio") {
+  // 음성 내려받기 — 가짜 ffmpeg가 읽는 모양(길이를 담은 JSON)으로 source.m4a를 쓴다
+  const out = args[args.indexOf("-o") + 1].replace("%(ext)s", "m4a");
+  writeFileSync(out, JSON.stringify({ duration: video.duration, audio: true }));
   process.exit(0);
 }
 

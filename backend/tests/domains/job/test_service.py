@@ -1,4 +1,4 @@
-"""job/service — 작업 시작 · 진행 · 대기열(VA-MS-002 JobService). B1 몫 전부와 스텁 둘."""
+"""job/service — 작업 시작 · 진행 · 조각 · 다시 시도 · 대기열(VA-MS-002 JobService)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.config import config
-from app.core.errors import JobExists, KeyMissing, NotFound, NotImplementedYet
+from app.core.errors import JobExists, JobNotFailed, KeyMissing, NotFound
 from app.domains.job import crud
 from app.domains.job.models import (
     AnalysisJobRow,
@@ -21,7 +21,7 @@ from app.domains.job.models import (
     JobStage,
     JobStatus,
 )
-from app.domains.job.schemas import JobError
+from app.domains.job.schemas import ChunkPlan, JobError, SttSegment
 from app.domains.job.service import JobService
 from app.domains.video.models import SourceKind
 from app.domains.video.schemas import Video
@@ -103,16 +103,84 @@ def _row(**kw) -> AnalysisJobRow:
 
 
 def test_remaining_sec_without_chunks() -> None:
-    assert JobService.remaining_sec(_row(), []) in (46, 47)  # 60 − 3 − 10(남짓)
+    # 요약 단계 — 세 단계 몫 60초에서 요약에 쓴 10초. 앞 단계(자막 3초)는 빼지 않는다
+    assert JobService.remaining_sec(_row(), []) in (49, 50)
     late = _row(stage_started_at=datetime.now(UTC) - timedelta(seconds=300))
     assert JobService.remaining_sec(late, []) == 0  # 예상보다 오래 걸리면 0 — 화면이 비운다
     for status in (JobStatus.queued, JobStatus.failed, JobStatus.done):
         assert JobService.remaining_sec(_row(status=status), []) is None
 
 
-def test_remaining_sec_chunks_is_stub() -> None:
-    with pytest.raises(NotImplementedYet):
-        JobService.remaining_sec(_row(stage=JobStage.transcribe, stages=STT_STAGES), [])
+def test_remaining_sec_text_stages_do_not_take_leftover_time() -> None:
+    # 받아쓰기가 예상보다 빨리 끝났다 — 쓰지 않은 시간이 요약 단계로 넘어오지 않는다(UI-001 8장)
+    started = datetime.now(UTC) - timedelta(seconds=2)
+    fast = _row(
+        stages=STT_STAGES,
+        est_seconds=435,
+        stage_durations_sec={"download": 30, "transcribe": 60},
+        stage_started_at=started,
+    )
+    assert JobService.remaining_sec(fast, []) in (57, 58)  # 60 − 2 — 435 − 92가 아니다
+    # 챕터 단계 — 요약에 쓴 시간만큼 줄어 있다
+    chapter = _row(
+        stage=JobStage.chapter,
+        stages=STT_STAGES,
+        est_seconds=435,
+        stage_durations_sec={"download": 30, "transcribe": 60, "summarize": 25},
+        stage_started_at=datetime.now(UTC) - timedelta(seconds=5),
+    )
+    assert JobService.remaining_sec(chapter, []) in (29, 30)  # 60 − 25 − 5
+    # 세 단계가 예상보다 오래 걸리면 0
+    slow = _row(
+        stage=JobStage.suggest,
+        stages=STT_STAGES,
+        est_seconds=435,
+        stage_durations_sec={"summarize": 40, "chapter": 30},
+        stage_started_at=started,
+    )
+    assert JobService.remaining_sec(slow, []) == 0
+
+
+def _transcribe_row(started_ago: float) -> AnalysisJobRow:
+    return _row(
+        stage=JobStage.transcribe,
+        stages=STT_STAGES,
+        est_seconds=600,
+        stage_durations_sec={"download": 30},
+        stage_started_at=datetime.now(UTC) - timedelta(seconds=started_ago),
+    )
+
+
+def _chunks(row: AnalysisJobRow, done_now: int, done_before: int, total: int) -> list:
+    # done_now개는 이번 실행에서, done_before개는 단계 시작 전(이전 실행)에 끝났다
+    now, before = row.stage_started_at + timedelta(seconds=1), T0
+    out = [_chunk(i, ChunkState.done) for i in range(1, done_now + done_before + 1)]
+    for i, c in enumerate(out):
+        c.done_at = now if i < done_now else before
+    return out + [_chunk(i, ChunkState.waiting) for i in range(len(out) + 1, total + 1)]
+
+
+def test_remaining_sec_transcribe_from_this_run_rate() -> None:
+    row = _transcribe_row(started_ago=240)  # 12개가 4분 — 초당 0.05개
+    got = JobService.remaining_sec(row, _chunks(row, done_now=12, done_before=0, total=30))
+    assert got in (420, 421)  # 남은 18개는 6분 + 요약 세 단계 몫 1분
+
+
+def test_remaining_sec_transcribe_before_first_chunk() -> None:
+    row = _transcribe_row(started_ago=20)
+    # 30 ÷ 동시 3 × 45초 + 요약 세 단계 몫
+    assert JobService.remaining_sec(row, _chunks(row, 0, 0, 30)) == 10 * 45 + 60
+
+
+def test_remaining_sec_transcribe_after_retry_ignores_old_chunks() -> None:
+    # 다시 시도 — 이전 실행의 15개는 속도에 안 든다. 이번 실행에서 끝난 것이 없으면 예상치
+    row = _transcribe_row(started_ago=2)
+    assert JobService.remaining_sec(row, _chunks(row, 0, 15, 30)) == 5 * 45 + 60
+
+
+def test_remaining_sec_transcribe_while_splitting() -> None:
+    row = _transcribe_row(started_ago=100)  # 조각 행이 아직 없다 — 예상 전체 − 지난 시간
+    assert JobService.remaining_sec(row, []) in (469, 470)  # 600 − 30 − 100
 
 
 # --- to_job
@@ -234,6 +302,21 @@ async def test_estimate_local_150_minutes(db, make, env_file) -> None:
     assert (est.chunks, est.concurrency, est.stt_minutes, est.stt_cost_usd) == (15, 3, 150, 0.9)
     assert est.stt_price_per_min == 0.006
     assert est.seconds == 5 * 45 + 60 + 150  # 조각 · 텍스트 · 추출 몫
+
+
+async def test_estimate_local_audio_counts_conversion(db, make, env_file) -> None:
+    row = await make.video(
+        source_kind=SourceKind.local,
+        channel=None,
+        origin="call.m4a",
+        duration_sec=1800,
+        has_captions=False,
+        caption_language=None,
+        caption_kind=None,
+    )
+    est = await JobService(db).estimate(_video(row))
+    assert (est.chunks, est.stt_minutes) == (3, 30)
+    assert est.seconds == 1 * 45 + 60 + 30  # 조각 · 텍스트 · mp3 변환 몫
 
 
 async def test_estimate_none_when_job_exists(db, make, env_file) -> None:
@@ -396,6 +479,75 @@ async def test_latest_by_videos_empty(db, queries) -> None:
     assert queries == []
 
 
+# --- plan_chunks
+
+
+async def test_plan_chunks_makes_rows_once(db, make) -> None:
+    job = await make.job((await make.video()).id, JobStatus.running, stage="transcribe")
+    plans = [ChunkPlan(i, (i - 1) * 600.0, 600.0, f"/tmp/{i}.mp3") for i in range(1, 31)]
+    svc = JobService(db)
+    await svc.plan_chunks(job.id, plans)
+    await svc.plan_chunks(job.id, plans[:3])  # 다시 불러도 늘지 않는다(다시 시도)
+    rows = (await db.scalars(select(AudioChunkRow).order_by(AudioChunkRow.seq))).all()
+    assert [r.seq for r in rows] == list(range(1, 31))
+    assert {(r.state, r.attempts) for r in rows} == {(ChunkState.waiting, 0)}
+    assert (rows[1].offset_sec, rows[1].duration_sec, rows[1].path) == (600.0, 600.0, "/tmp/2.mp3")
+
+
+# --- mark_chunk
+
+
+async def _chunk_row(db, job_id: int, seq: int) -> AudioChunkRow:
+    return await db.scalar(
+        select(AudioChunkRow)
+        .where(AudioChunkRow.job_id == job_id, AudioChunkRow.seq == seq)
+        .execution_options(populate_existing=True)
+    )
+
+
+async def _transcribing(make, n: int, done: int = 0) -> AnalysisJobRow:
+    job = await make.job(
+        (await make.video()).id, JobStatus.running, stage="transcribe", stages=STT_STAGES
+    )
+    await make.chunks(job.id, [ChunkState.done] * done + [ChunkState.waiting] * (n - done))
+    return job
+
+
+async def test_mark_chunk_in_flight_counts_sends(db, make) -> None:
+    job = await _transcribing(make, 3)
+    svc = JobService(db)
+    await svc.mark_chunk(job.id, 2, ChunkState.in_flight)
+    await svc.mark_chunk(job.id, 2, ChunkState.waiting)
+    await svc.mark_chunk(job.id, 2, ChunkState.in_flight)
+    await svc.mark_chunk(job.id, 2, ChunkState.failed)  # 실패는 횟수를 올리지 않는다
+    chunk = await _chunk_row(db, job.id, 2)
+    assert (chunk.state, chunk.attempts) == (ChunkState.failed, 2)
+
+
+async def test_mark_chunk_done_keeps_result_and_raises_progress(db, make) -> None:
+    job = await _transcribing(make, 30, done=14)
+    segs = [SttSegment(0.0, 4.2, "첫 문장", "ko"), SttSegment(4.2, 9.0, "둘째", "ko")]
+    await JobService(db).mark_chunk(job.id, 15, ChunkState.done, segs)
+    chunk = await _chunk_row(db, job.id, 15)
+    assert chunk.state == ChunkState.done and chunk.path is None
+    assert (datetime.now(UTC) - chunk.done_at).total_seconds() < 5
+    assert chunk.result == [
+        {"start_sec": 0.0, "end_sec": 4.2, "text": "첫 문장", "language": "ko"},
+        {"start_sec": 4.2, "end_sec": 9.0, "text": "둘째", "language": "ko"},
+    ]
+    # 30개 중 15 완료 — 받아쓰기 몫(70)의 절반 + 앞 단계(내려받기 7.5), 내림
+    assert (await _job_row(db, job.id)).progress_pct == 42
+
+
+async def test_mark_chunk_progress_never_goes_back(db, make) -> None:
+    job = await _transcribing(make, 30, done=1)
+    row = await _job_row(db, job.id)
+    row.progress_pct = 60  # 동시에 끝난 다른 조각이 먼저 더 크게 적었다
+    await db.commit()
+    await JobService(db).mark_chunk(job.id, 2, ChunkState.done, [])
+    assert (await _job_row(db, job.id)).progress_pct == 60
+
+
 # --- mark_stage · finish · fail
 
 
@@ -423,6 +575,19 @@ async def test_mark_stage_with_transcribe(db, make) -> None:
     )
     await JobService(db).mark_stage(job.id, JobStage.summarize)
     assert (await _job_row(db, job.id)).progress_pct == 77  # 70 + 7.5 → 내림
+
+
+async def test_mark_stage_reentering_transcribe_keeps_done_share(db, make) -> None:
+    # 다시 시도 — 30개 중 15 완료에서 받아쓰기로 다시 들어가면 진행률이 앞 단계 몫으로 떨어지지 않는다
+    job = await _transcribing(make, 30, done=15)
+    row = await _job_row(db, job.id)
+    row.stage_durations_sec = {"download": 40, "transcribe": 300}
+    row.stage_started_at = datetime.now(UTC) - timedelta(seconds=2)  # claim_next가 막 적은 때
+    await db.commit()
+    await JobService(db).mark_stage(job.id, JobStage.transcribe)
+    row = await _job_row(db, job.id)
+    assert row.progress_pct == 42  # 7.5 + 70 × 15/30, 내림
+    assert row.stage_durations_sec == {"download": 40, "transcribe": 302}  # 걸린 시간은 더한다
 
 
 async def test_finish(db, make) -> None:
@@ -506,12 +671,75 @@ async def test_claim_next_empty(db) -> None:
     assert await JobService(db).claim_next() is None
 
 
-# --- 스텁
+# --- retry
 
 
-async def test_retry_is_stub(db, make) -> None:
-    with pytest.raises(NotImplementedYet):
+async def test_retry_same_row_back_in_queue(db, make, key) -> None:
+    video = await make.video(has_captions=False, caption_language=None, caption_kind=None)
+    job = await make.job(
+        video.id,
+        JobStatus.failed,
+        stage="transcribe",
+        stages=STT_STAGES,
+        at=T0,
+        error_kind=ErrorKind.network,
+        error_reason="네트워크 시간 초과",
+        error_chunk_seq=2,
+        error_attempts=3,
+    )
+    await make.chunks(job.id, [ChunkState.done, ChunkState.failed, ChunkState.waiting])
+    JobService.work_event.clear()
+    got = await JobService(db).retry(_video(video, "failed"))
+    assert (got.id, got.status, got.stage, got.error) == (
+        job.id,
+        JobStatus.queued,
+        JobStage.transcribe,
+        None,
+    )
+    assert got.queue_position == 1 and JobService.work_event.is_set()
+    row = await _job_row(db, job.id)
+    assert (row.started_at, row.stages) == (T0, STT_STAGES)  # 같은 행 — 목록 순서도 그대로
+    assert (datetime.now(UTC) - row.queued_at).total_seconds() < 5  # 대기열 끝으로 — 지금
+    assert (row.error_kind, row.error_reason, row.error_chunk_seq, row.error_attempts) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    chunks = [await _chunk_row(db, job.id, i) for i in (1, 2, 3)]
+    assert [(c.state, c.attempts) for c in chunks] == [
+        (ChunkState.done, 1),
+        (ChunkState.waiting, 1),  # 실패 조각도 다시 보낸다. 보낸 횟수는 누적 그대로
+        (ChunkState.waiting, 0),
+    ]
+
+
+async def test_retry_waits_behind_others(db, make, key) -> None:
+    await make.job((await make.video()).id, JobStatus.running)
+    await make.job((await make.video()).id, JobStatus.queued, at=datetime.now(UTC))
+    video = await make.video()
+    await make.job(video.id, JobStatus.failed, stage="summarize", at=T0)
+    got = await JobService(db).retry(_video(video, "failed"))
+    assert (got.status, got.queue_position) == (JobStatus.queued, 2)
+
+
+async def test_retry_only_failed(db, make, key) -> None:
+    video = await make.video()
+    await make.job(video.id, JobStatus.running, stage="summarize")
+    with pytest.raises(JobNotFailed) as e:
+        await JobService(db).retry(_video(video, "in_progress"))
+    assert e.value.extra == {"job_status": "running"}
+    with pytest.raises(NotFound) as e2:
         await JobService(db).retry(_video(await make.video()))
+    assert e2.value.extra["resource"] == "job"
+
+
+async def test_retry_without_key_changes_nothing(db, make, env_file) -> None:
+    video = await make.video()
+    job = await make.job(video.id, JobStatus.failed, stage="summarize")
+    with pytest.raises(KeyMissing):
+        await JobService(db).retry(_video(video, "failed"))
+    assert (await _job_row(db, job.id)).status == JobStatus.failed
 
 
 async def test_cancel_is_noop(db) -> None:

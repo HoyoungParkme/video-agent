@@ -50,7 +50,7 @@ from alembic.config import Config as AlembicConfig  # noqa: E402
 
 from app.core.config import config  # noqa: E402
 from app.core.db import SessionLocal, engine  # noqa: E402
-from app.core.errors import SourceUnavailable  # noqa: E402
+from app.core.errors import SourceUnavailable, UnsupportedFile  # noqa: E402
 from app.core.settings import settings  # noqa: E402
 from app.domains.analysis.models import TranscriptSource  # noqa: E402
 from app.domains.analysis.schemas import (  # noqa: E402
@@ -66,6 +66,7 @@ from app.domains.job.models import (  # noqa: E402
     ErrorKind,
     JobStatus,
 )
+from app.domains.job.schemas import ChunkPlan, SttSegment  # noqa: E402
 from app.domains.job.service import JobService  # noqa: E402
 from app.domains.video.models import CaptionKind, SourceKind, VideoRow  # noqa: E402
 from app.domains.video.schemas import SourceInfo  # noqa: E402
@@ -85,6 +86,12 @@ def alembic_config() -> AlembicConfig:
 async def _alembic(action: str, target: str) -> None:
     # env.py가 asyncio.run을 부르므로 다른 스레드에서
     await asyncio.to_thread(getattr(command, action), alembic_config(), target)
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_wait(monkeypatch) -> None:
+    """조각을 다시 보내기 전의 기다림(2초 · 4초)을 없앤다 — 기다림을 보는 테스트만 값을 준다."""
+    monkeypatch.setattr(config, "CHUNK_RETRY_WAIT_SEC", 0)
 
 
 @pytest.fixture(scope="session")
@@ -314,6 +321,28 @@ def youtube() -> FakeYouTube:
     return FakeYouTube()
 
 
+@dataclass
+class FakeMediaProbe:
+    """MediaProbePort 자리. 파일 이름으로 정한 (길이, 음성 유무)를 주고, 없는 이름은 default.
+    default가 None이거나 이름의 값이 None이면 열 수 없는 파일(unsupported-file)."""
+
+    files: dict[str, tuple[int, bool] | None] = field(default_factory=dict)
+    default: tuple[int, bool] | None = (1800, True)
+    calls: list[str] = field(default_factory=list)
+
+    async def probe(self, path: str) -> tuple[int, bool]:
+        self.calls.append(path)
+        got = self.files.get(Path(path).name, self.default)
+        if got is None:
+            raise UnsupportedFile(reason="영상·음성 파일이 아닙니다", accepted=[])
+        return got
+
+
+@pytest.fixture
+def probe() -> FakeMediaProbe:
+    return FakeMediaProbe()
+
+
 @pytest.fixture
 def unavailable() -> SourceUnavailable:
     return SourceUnavailable(reason="비공개 영상이에요", hint=None)
@@ -373,7 +402,8 @@ def summarizer() -> FakeSummarizer:
 
 @dataclass
 class FakeAudioSource:
-    """AudioSourcePort 자리 — 자막."""
+    """AudioSourcePort 자리 — 자막 · 음성 내려받기 · 추출. 음성은 dest에 audio.mp3를 실제로 쓴다.
+    calls는 자막을 받으러 온 영상 ID, audio_calls는 (download|extract, 원본, dest)."""
 
     result: tuple[list[CaptionLine], str, CaptionKind] | None = field(
         default_factory=lambda: (
@@ -383,7 +413,9 @@ class FakeAudioSource:
         )
     )
     error: Exception | None = None
+    audio_error: Exception | None = None
     calls: list[str] = field(default_factory=list)
+    audio_calls: list[tuple[str, str, str]] = field(default_factory=list)
 
     async def captions(self, video_id: str) -> tuple[list[CaptionLine], str, CaptionKind] | None:
         self.calls.append(video_id)
@@ -391,18 +423,94 @@ class FakeAudioSource:
             raise self.error
         return self.result
 
+    async def _audio(self, how: str, src: str, dest: str) -> str:
+        self.audio_calls.append((how, src, dest))
+        if self.audio_error:
+            raise self.audio_error
+        out = Path(dest) / "audio.mp3"
+        out.write_bytes(b"mp3")
+        return str(out)
+
+    async def download_audio(self, video_id: str, dest: str) -> str:
+        return await self._audio("download", video_id, dest)
+
+    async def extract_audio(self, src: str, dest: str) -> str:
+        return await self._audio("extract", src, dest)
+
 
 @pytest.fixture
 def audio_source() -> FakeAudioSource:
     return FakeAudioSource()
 
 
+@dataclass
+class FakeAudioSplit:
+    """AudioSplitPort 자리 — n개(각 600초)로 나눈 것처럼 dest_dir에 {seq}.mp3를 실제로 쓴다."""
+
+    n: int = 3
+    error: Exception | None = None
+    calls: list[tuple[str, str]] = field(default_factory=list)
+
+    async def split(self, path: str, dest_dir: str) -> list[ChunkPlan]:
+        self.calls.append((path, dest_dir))
+        if self.error:
+            raise self.error
+        plans = []
+        for seq in range(1, self.n + 1):
+            chunk = Path(dest_dir) / f"{seq}.mp3"
+            chunk.write_bytes(b"chunk")
+            plans.append(ChunkPlan(seq, (seq - 1) * 600.0, 600.0, str(chunk)))
+        return plans
+
+
 @pytest.fixture
-async def api(db, youtube, summarizer, monkeypatch) -> AsyncIterator[httpx.AsyncClient]:
+def audio_split() -> FakeAudioSplit:
+    return FakeAudioSplit()
+
+
+@dataclass
+class FakeStt:
+    """SttPort 자리 — 조각(파일 이름의 seq)마다 구간 둘. fail[seq]만큼 error로 실패시키고,
+    받은 조각 번호와 동시에 도는 수의 최댓값을 센다. 지연은 조각마다 줄 수 있다(delays)."""
+
+    fail: dict[int, int] = field(default_factory=dict)
+    error: Exception = field(default_factory=TimeoutError)
+    delay: float = 0
+    delays: dict[int, float] = field(default_factory=dict)
+    calls: list[int] = field(default_factory=list)
+    running: int = 0
+    peak: int = 0
+
+    async def transcribe(self, path: str, model: str) -> list[SttSegment]:
+        seq = int(Path(path).stem)
+        self.calls.append(seq)
+        self.running += 1
+        self.peak = max(self.peak, self.running)
+        try:
+            await asyncio.sleep(self.delays.get(seq, self.delay))
+            if self.fail.get(seq, 0) > 0:
+                self.fail[seq] -= 1
+                raise self.error
+            return [
+                SttSegment(0.0, 5.0, f"{seq}번 조각 첫 문장", "ko"),
+                SttSegment(5.0, 9.5, f"{seq}번 조각 둘째 문장", "ko"),
+            ]
+        finally:
+            self.running -= 1
+
+
+@pytest.fixture
+def stt() -> FakeStt:
+    return FakeStt()
+
+
+@pytest.fixture
+async def api(db, youtube, probe, summarizer, monkeypatch) -> AsyncIterator[httpx.AsyncClient]:
     """앱에 바로 붙는 클라이언트 — 시작 이벤트(워커) 없이, 어댑터는 가짜로."""
     from app.main import app
 
     monkeypatch.setattr(app.state, "youtube_info", youtube)
+    monkeypatch.setattr(app.state, "media_probe", probe)
     monkeypatch.setattr(app.state, "summarizer", summarizer)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:

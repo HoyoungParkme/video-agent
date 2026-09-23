@@ -2,8 +2,9 @@
  * VA-UI-002#UI-2 사전 안내 — UI-1 위의 다이얼로그. 1 머리(1.1 · 1.2 · 1.3 닫기) · 2 영상 카드(2.1 ~ 2.5) ·
  * 3 예상 시간(3.1 · 3.2) · 4 예상 비용(4.1 ~ 4.3) · 5 전송 안내 · 6 버튼 줄(6.1 대기 안내 · 6.2 취소 ·
  * 6.3 분석 시작) · 7 시작 불가 판(7.1 · 7.2 · 7.3).
- * 숫자는 서버가 준 값을 그대로 보인다. B1은 자막 있음 판 — 자막 없는 영상은 시작 불가 판에
- * '아직 지원하지 않음'(사용자 결정 2026-09-23, VA-CODE-001 B1). 받아쓰기 필요 판은 B2, 시작 불가 이유 넷은 B5.
+ * 숫자는 서버가 준 값을 그대로 보인다. 판은 자막 유무로 — 자막 있음 판과 받아쓰기 필요 판(자막 없는
+ * YouTube · 로컬 영상 · 로컬 음성, 2.1 · 2.3 · 2.5 · 3.2 · 4.2 · 5가 다르다).
+ * 시작 불가 판(7)은 UI-1이 로컬 파일 등록 실패에 서버가 준 이유로 연다 — 종류별 문구는 B5.
  */
 "use client";
 
@@ -20,17 +21,44 @@ import {
 import { Button } from "@/components/buttons";
 import Dialog from "@/components/Dialog";
 import { durationLabel } from "@/components/TimeChip";
-import { languageName } from "@/labels";
+import { isAudioFile, languageName } from "@/labels";
 
 interface Props {
   video: Video;
-  estimate: EstimateData | null;
+  estimate: EstimateData;
   /** 열 때 목록에 진행 중 · 대기 중 영상이 있었는가 — 대기 안내(6.1) */
   othersRunning: boolean;
   onClose: () => void;
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
+
+function FilmIcon() {
+  return (
+    <svg
+      className="icon"
+      width="28"
+      height="28"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      style={{ strokeWidth: 1.75 }}
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M7 3v18" />
+      <path d="M17 3v18" />
+      <path d="M3 7.5h4" />
+      <path d="M3 12h18" />
+      <path d="M3 16.5h4" />
+      <path d="M17 7.5h4" />
+      <path d="M17 16.5h4" />
+    </svg>
+  );
+}
+
+/** '150' · '50.2' — 서버가 준 분(소수 첫째 자리)을 그대로, 끝의 .0은 뺀다. */
+function minutes(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
 
 function PlayIcon() {
   return (
@@ -40,8 +68,19 @@ function PlayIcon() {
   );
 }
 
-/** 시작할 수 없는 영상 — 이유 · 길이 · [닫기]만(7). B1은 자막 없는 영상 하나. */
-function Blocked({ video, onClose }: { video: Video; onClose: () => void }) {
+/**
+ * 시작할 수 없는 영상 — 이유 · 길이 · [닫기]만(7). 이유(7.1)가 다이얼로그 이름이고 처음 초점은 7.3.
+ * 길이를 모르면(정보 조회 실패 · 파일 아님) 7.2가 없다.
+ */
+export function Blocked({
+  reason,
+  durationSec,
+  onClose,
+}: {
+  reason: string;
+  durationSec: number | null;
+  onClose: () => void;
+}) {
   return (
     <Dialog
       labelledBy="blk-title"
@@ -53,13 +92,15 @@ function Blocked({ video, onClose }: { video: Video; onClose: () => void }) {
       <div className="estimate" data-el="7">
         <div className="estimate-blocked">
           <h2 id="blk-title" className="dialog-title" data-el="7.1">
-            자막 없는 영상은 아직 지원하지 않아요
+            {reason}
           </h2>
-          <div className="chips">
-            <span className="chip" data-el="7.2">
-              길이 {durationLabel(video.duration_sec)}
-            </span>
-          </div>
+          {durationSec !== null && (
+            <div className="chips">
+              <span className="chip" data-el="7.2">
+                길이 {durationLabel(durationSec)}
+              </span>
+            </div>
+          )}
         </div>
         <div className="dialog-actions">
           <Button kind="secondary" el="7.3" onClick={onClose}>
@@ -71,12 +112,24 @@ function Blocked({ video, onClose }: { video: Video; onClose: () => void }) {
   );
 }
 
+/** 전송 안내(5) — 무엇이 OpenAI로 가고 무엇이 안 가는지(UI-2 규칙). */
+function sendNote(estimate: EstimateData, local: boolean, audio: boolean): string {
+  if (!estimate.needs_stt) {
+    return `요약을 만들려고 스크립트 텍스트가 OpenAI(${estimate.text_model})로 전송됩니다. 영상은 전송되지 않아요.`;
+  }
+  const sent = "받아쓰기에는 음성 조각이, 요약에는 스크립트 텍스트가 OpenAI로 전송됩니다.";
+  if (!local) return `${sent} 영상은 전송되지 않아요.`; // 자막 없는 YouTube — 영상 파일이 이 PC에 없다
+  return `${sent} ${audio ? "음성" : "영상"} 파일 자체는 이 PC 밖으로 나가지 않아요.`;
+}
+
 export default function Estimate({ video, estimate, othersRunning, onClose }: Props) {
   const router = useRouter();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!estimate || estimate.needs_stt) return <Blocked video={video} onClose={onClose} />;
+  const local = video.source_kind === "local";
+  const audio = local && isAudioFile(video.origin);
+  const stt = estimate.needs_stt;
 
   // [분석 시작]을 누른 뒤에는 어느 길로도 닫히지 않는다(UI-2 규칙)
   const close = () => {
@@ -133,22 +186,28 @@ export default function Estimate({ video, estimate, othersRunning, onClose }: Pr
 
         <div className="estimate-video" data-el="2">
           <span className="estimate-thumb" data-el="2.1">
-            <PlayIcon />
+            {local ? <FilmIcon /> : <PlayIcon />}
           </span>
           <div className="estimate-video-text">
             <span className="estimate-video-title" data-el="2.2">
               {video.title}
             </span>
             <span className="estimate-video-sub" data-el="2.3">
-              YouTube · {video.channel ?? ""}
+              {local ? "로컬 파일 · inbox" : `YouTube · ${video.channel ?? ""}`}
             </span>
             <div className="chips">
               <span className="chip" data-el="2.4">
                 길이 {durationLabel(video.duration_sec)}
               </span>
-              <span className="chip chip-teal" data-el="2.5">
-                자막 있음 · {languageName(video.caption_language)}
-              </span>
+              {stt ? (
+                <span className="chip" data-el="2.5">
+                  자막 없음 · 받아쓰기 필요
+                </span>
+              ) : (
+                <span className="chip chip-teal" data-el="2.5">
+                  자막 있음 · {languageName(video.caption_language)}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -160,7 +219,9 @@ export default function Estimate({ video, estimate, othersRunning, onClose }: Pr
               약 {Math.max(1, Math.ceil(estimate.seconds / 60))}분
             </span>
             <span className="stat-note" data-el="3.2">
-              받아쓰기 없이 자막을 가져와 바로 요약합니다.
+              {!stt
+                ? "받아쓰기 없이 자막을 가져와 바로 요약합니다."
+                : `${audio ? "" : "음성을 뽑아 "}${estimate.chunks}개 조각으로 나누고, ${estimate.concurrency}개씩 동시에 받아씁니다.`}
             </span>
           </div>
           <div className="stat" data-el="4">
@@ -170,7 +231,11 @@ export default function Estimate({ video, estimate, othersRunning, onClose }: Pr
             </span>
             <div className="stat-lines">
               <span className="stat-line" data-el="4.2">
-                <span>받아쓰기 (자막 사용)</span>
+                <span>
+                  {stt
+                    ? `받아쓰기 ${minutes(estimate.stt_minutes ?? 0)}분 × $${estimate.stt_price_per_min}`
+                    : "받아쓰기 (자막 사용)"}
+                </span>
                 <span className="mono">{usd(estimate.stt_cost_usd)}</span>
               </span>
               <span className="stat-line" data-el="4.3">
@@ -193,10 +258,7 @@ export default function Estimate({ video, estimate, othersRunning, onClose }: Pr
             <path d="M12 16v-4" />
             <path d="M12 8h.01" />
           </svg>
-          <span>
-            요약을 만들려고 스크립트 텍스트가 OpenAI({estimate.text_model})로 전송됩니다. 영상은
-            전송되지 않아요.
-          </span>
+          <span>{sendNote(estimate, local, audio)}</span>
         </div>
 
         {error && <p className="field-error">{error}</p>}

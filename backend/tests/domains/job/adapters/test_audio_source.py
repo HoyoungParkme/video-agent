@@ -1,14 +1,20 @@
-"""job/adapters/audio_source — 자막 → 줄 목록(VA-MS-006 audio_source.captions). infra는 가짜로."""
+"""job/adapters/audio_source — 자막 · 음성 확보(VA-MS-006 audio_source). infra는 가짜로.
+
+진짜 ffmpeg가 있어야 하는 형식 확인 하나는 호스트에 ffmpeg가 없으면 건너뛴다(이미지에는 있다).
+"""
 
 from __future__ import annotations
 
+import asyncio
+import shutil
 from pathlib import Path
 
 import pytest
 
+from app.core.config import config
 from app.domains.job.adapters.audio_source import AudioSourceAdapter
-from app.infra import ytdlp
-from app.infra.errors import YtdlpError
+from app.infra import ffmpeg, ytdlp
+from app.infra.errors import FfmpegError, YtdlpError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -127,3 +133,82 @@ async def test_ytdlp_error_goes_up(monkeypatch) -> None:
     monkeypatch.setattr(ytdlp, "info", info)
     with pytest.raises(YtdlpError):
         await AudioSourceAdapter().captions("abcdefghijk")
+
+
+@pytest.fixture
+def fake_media(monkeypatch):
+    """ytdlp.download_audio · ffmpeg.extract_audio 자리 — 작은 파일을 실제로 쓴다. error를 넣으면 던진다."""
+    state: dict = {"calls": [], "download_error": None, "extract_error": None}
+
+    async def download_audio(video_id: str, dest: str) -> str:
+        state["calls"].append(("download", video_id, dest))
+        if state["download_error"]:
+            raise state["download_error"]
+        path = Path(dest) / "source.m4a"
+        path.write_bytes(b"m4a")
+        return str(path)
+
+    async def extract_audio(src: str, dest: str) -> str:
+        state["calls"].append(("extract", src, dest))
+        if state["extract_error"]:
+            raise state["extract_error"]
+        out = Path(dest) / "audio.mp3"
+        out.write_bytes(b"mp3")
+        return str(out)
+
+    monkeypatch.setattr(ytdlp, "download_audio", download_audio)
+    monkeypatch.setattr(ffmpeg, "extract_audio", extract_audio)
+    return state
+
+
+async def test_download_audio_leaves_only_mp3(fake_media, tmp_path: Path) -> None:
+    path = await AudioSourceAdapter().download_audio("abcdefghijk", str(tmp_path))
+    assert path == str(tmp_path / "audio.mp3")
+    assert [p.name for p in tmp_path.iterdir()] == ["audio.mp3"]  # 내려받은 원본이 남지 않는다
+    assert [c[0] for c in fake_media["calls"]] == ["download", "extract"]
+
+
+async def test_download_failure_goes_up(fake_media, tmp_path: Path) -> None:
+    fake_media["download_error"] = YtdlpError("Video unavailable", "unavailable")
+    with pytest.raises(YtdlpError):
+        await AudioSourceAdapter().download_audio("abcdefghijk", str(tmp_path))
+
+
+async def test_convert_failure_removes_download(fake_media, tmp_path: Path) -> None:
+    fake_media["extract_error"] = FfmpegError("Invalid data", 1)
+    with pytest.raises(FfmpegError):
+        await AudioSourceAdapter().download_audio("abcdefghijk", str(tmp_path))
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_extract_audio_reads_src_only(fake_media, tmp_path: Path) -> None:
+    src = tmp_path / "inbox" / "talk.wav"
+    src.parent.mkdir()
+    src.write_bytes(b"wav")
+    before = (src.stat().st_mtime_ns, src.stat().st_size)
+    out = await AudioSourceAdapter().extract_audio(str(src), str(tmp_path))
+    assert out == str(tmp_path / "audio.mp3")
+    assert (src.stat().st_mtime_ns, src.stat().st_size) == before
+
+
+real = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg가 없다")
+
+
+@real
+async def test_real_extract_audio_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("FFMPEG_BIN", "FFPROBE_BIN"):
+        monkeypatch.setattr(config, name, name.split("_")[0].lower())
+    src = tmp_path / "talk.wav"  # 스테레오 44.1kHz wav
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=5",
+        "-ac", "2", "-ar", "44100", str(src),
+    )  # fmt: skip
+    assert await proc.wait() == 0
+    before = (src.stat().st_mtime_ns, src.stat().st_size)
+    out = await AudioSourceAdapter().extract_audio(str(src), str(tmp_path))
+    streams = (await ffmpeg.probe(out))["streams"]
+    assert [(s["codec_name"], s["channels"], s["sample_rate"]) for s in streams] == [
+        ("mp3", 1, "16000")
+    ]
+    assert int(streams[0]["bit_rate"]) == 64000
+    assert (src.stat().st_mtime_ns, src.stat().st_size) == before

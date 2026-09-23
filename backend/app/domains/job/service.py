@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
+from dataclasses import asdict
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import PurePath
@@ -19,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
-from app.core.errors import JobExists, NotFound, NotImplementedYet
+from app.core.errors import JobExists, JobNotFailed, NotFound
 from app.core.settings import Models, settings
 from app.domains.job import crud
 from app.domains.job.models import (
@@ -30,17 +31,26 @@ from app.domains.job.models import (
     JobStage,
     JobStatus,
 )
-from app.domains.job.schemas import Chunk, Chunks, Estimate, Job, JobError, JobSummary
+from app.domains.job.schemas import (
+    Chunk,
+    ChunkPlan,
+    Chunks,
+    Estimate,
+    Job,
+    JobError,
+    JobSummary,
+    SttSegment,
+)
 
 if TYPE_CHECKING:
     from app.domains.video.schemas import Video
 
-# 로컬 음성 파일 — 음성 추출 단계가 없다(UC-H2 2b)
-AUDIO_EXTS = {"mp3", "m4a", "wav"}
 # 받아쓰기가 있는 작업에서 받아쓰기 몫. 나머지 단계가 100에서 이것을 뺀 몫을 똑같이 나눈다(0장)
 TRANSCRIBE_WEIGHT = 70
 # 서버가 죽어 running인 채 남은 작업의 실패 이유
 ORPHAN_REASON = "서버가 다시 시작됨"
+# 요약 세 단계 — 예상 몫은 셋을 합쳐 config.TEXT_EST_SEC 하나다(남은 시간)
+TEXT_STAGES = (JobStage.summarize, JobStage.chapter, JobStage.suggest)
 
 
 def _weights(stages: list[str]) -> dict[str, float]:
@@ -57,14 +67,21 @@ def _done_pct(stages: list[str], stage: str) -> int:
     return int(sum(w[s] for s in stages[: stages.index(stage)]))
 
 
+def _transcribe_pct(stages: list[str], done: int, total: int) -> int:
+    # 받아쓰기 앞 단계들의 몫 + 받아쓰기 몫 × 완료 비율 — 내림
+    w = _weights(stages)
+    base = sum(w[s] for s in stages[: stages.index(JobStage.transcribe.value)])
+    return int(base + w[JobStage.transcribe.value] * done / total)
+
+
 def _elapsed(since: datetime) -> float:
     return (datetime.now(UTC) - since).total_seconds()
 
 
 def _is_audio(video: Video) -> bool:
-    # 로컬 음성 판정은 파일 이름(origin)의 확장자
+    # 로컬 음성 판정은 파일 이름(origin)의 확장자 — 음성 파일은 추출 단계가 없다(UC-H2 2b)
     suffix = PurePath(video.origin).suffix.lower().lstrip(".")
-    return video.source_kind == "local" and suffix in AUDIO_EXTS
+    return video.source_kind == "local" and suffix in config.AUDIO_EXTS
 
 
 class JobService:
@@ -74,7 +91,8 @@ class JobService:
     - latest() · latest_by_videos(): 영상에 붙는 최근 작업 요약
     - mark_stage() · finish() · fail(): 파이프라인이 단계마다 부른다
     - fail_orphans() · claim_next() · wake() · wait_for_work(): 서버 시작 정리와 대기열
-    - retry() · cancel(): 스텁 — B2 · B4에서 채운다(VA-CODE-001 B1)
+    - plan_chunks() · mark_chunk(): 받아쓰기 조각 행
+    - retry(): 실패한 작업을 같은 행으로 대기열 끝에 · cancel(): 스텁 — B4(VA-CODE-001)
     """
 
     # 도는 파이프라인 태스크(영상 id → 태스크). 워커가 넣고 빼며, 삭제가 취소한다(B4)
@@ -110,8 +128,13 @@ class JobService:
     def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None:
         """VA-MS-002#JobService.remaining_sec
 
-        남은 시간. 조각이 없는 단계는 예상 전체 시간에서 지난 시간을 뺀다(0 아래로 가지 않는다).
-        받아쓰기 단계(조각 갈래)는 스텁 — B2(VA-CODE-001 B1).
+        남은 시간 — 작업 전체가 끝날 때까지. 끝난 단계가 예상보다 빨랐거나 늦었던 차이는 뒤로
+        넘기지 않는다(넘기면 받아쓰기가 빨리 끝났을 때 요약 단계의 남은 시간이 거꾸로 는다).
+        받아쓰기는 남은 조각 수 ÷ 이번 실행의 속도에 요약 세 단계 몫을 더한다 — 이번 실행에서
+        끝난 조각(단계 시작 뒤에 끝난 것)만 센다. 다시 시도 뒤 이전 실행의 조각까지 세면 속도가
+        부푼다. 아직 끝난 조각이 없으면 조각당 예상 시간으로. 요약 세 단계는 그 몫에서 세 단계에
+        쓴 시간을 빼고, 그 앞 단계(와 조각을 나누는 중)는 예상 전체에서 지난 시간을 뺀다.
+        0 아래로 가지 않는다.
 
         Args:
             row: 작업 행
@@ -122,8 +145,21 @@ class JobService:
         """
         if row.status != JobStatus.running:
             return None
-        if row.stage == JobStage.transcribe:
-            raise NotImplementedYet("받아쓰기의 남은 시간은 아직 지원하지 않아요")
+        text = config.TEXT_EST_SEC
+        if row.stage == JobStage.transcribe and chunks:
+            left = sum(1 for c in chunks if c.state != ChunkState.done)
+            now_done = sum(
+                1
+                for c in chunks
+                if c.state == ChunkState.done and c.done_at and c.done_at >= row.stage_started_at
+            )
+            if not now_done:
+                return math.ceil(left / row.concurrency) * config.CHUNK_EST_SEC + text
+            rate = now_done / max(_elapsed(row.stage_started_at), 1.0)  # 초당 조각
+            return math.ceil(left / rate) + text
+        if row.stage in TEXT_STAGES:
+            spent = sum(row.stage_durations_sec.get(s.value, 0) for s in TEXT_STAGES)
+            return max(round(text - spent - _elapsed(row.stage_started_at)), 0)
         spent = sum(row.stage_durations_sec.values()) + _elapsed(row.stage_started_at)
         return max(round(row.est_seconds - spent), 0)
 
@@ -252,8 +288,9 @@ class JobService:
             stt_price = models.stt.price.per_min_usd or 0.0
             stt_cost = stt_minutes * stt_price
             seconds += math.ceil(chunks / concurrency) * config.CHUNK_EST_SEC
-            if not _is_audio(video):  # YouTube 내려받기 · 로컬 영상 추출 몫 — 길이(분)만큼의 초
-                seconds += math.ceil(video.duration_sec / 60)
+            # 내려받기 · 추출 · 로컬 음성 변환 몫 — 길이(분)만큼의 초. 로컬 음성도 받아쓰기 단계가
+            # 조각을 나누기 전에 mp3로 바꾼다
+            seconds += math.ceil(video.duration_sec / 60)
         # 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 6천 토큰으로 본다
         in_tokens = video.duration_sec / 60 * config.TOKENS_PER_MIN
         text_cost = (
@@ -418,6 +455,7 @@ class JobService:
         """VA-MS-002#JobService.mark_stage
 
         단계 전환 — 끝난 단계의 걸린 시간, 새 단계의 시작 시각, 진행률(앞선 단계 가중치 합).
+        받아쓰기로 다시 들어가면(다시 시도) 이미 끝난 조각 몫까지 넣는다 — 진행률이 뒤로 가지 않게.
 
         Args:
             job_id: 작업 id
@@ -428,14 +466,68 @@ class JobService:
         row.stage = stage
         row.stage_started_at = datetime.now(UTC)
         row.progress_pct = _done_pct(row.stages, stage)
+        if stage == JobStage.transcribe:
+            counts = (await crud.chunk_counts(self.session, [job_id])).get(job_id)
+            if counts:
+                row.progress_pct = _transcribe_pct(row.stages, *counts)
         await self.session.commit()
 
     @staticmethod
     def _close_stage(row: AnalysisJobRow) -> None:
-        # 처음(pending)에서 넘어갈 때는 걸린 시간이 없다
+        # 처음(pending)에서 넘어갈 때는 걸린 시간이 없다. 다시 시도로 같은 단계를 또 돌면 더한다
         if row.stage != JobStage.pending:
             took = round(_elapsed(row.stage_started_at))
-            row.stage_durations_sec = {**row.stage_durations_sec, row.stage.value: took}
+            key = row.stage.value
+            row.stage_durations_sec = {
+                **row.stage_durations_sec,
+                key: row.stage_durations_sec.get(key, 0) + took,
+            }
+
+    async def plan_chunks(self, job_id: int, plans: list[ChunkPlan]) -> None:
+        """VA-MS-002#JobService.plan_chunks
+
+        조각 행을 만든다 — 전부 waiting. 이미 있으면(다시 시도) 만들지 않는다.
+
+        Args:
+            job_id: 작업 id
+            plans: 자른 조각들(seq 순)
+        """
+        if await crud.has_chunks(self.session, job_id):
+            return
+        crud.add_chunks(self.session, job_id, plans)
+        await self.session.commit()
+
+    async def mark_chunk(
+        self, job_id: int, seq: int, state: ChunkState, result: list[SttSegment] | None = None
+    ) -> None:
+        """VA-MS-002#JobService.mark_chunk
+
+        조각 상태 전이. in_flight로 바꿀 때 보낸 횟수를 올린다. done이면 끝난 때 · 결과를 적고
+        경로를 비운다(파일은 파이프라인이 지운다) — 진행률은 완료 조각 비율로 올리기만 한다.
+        waiting(다시 보낼 차례) · failed는 상태만.
+
+        Args:
+            job_id: 작업 id
+            seq: 조각 번호
+            state: 바꿀 상태
+            result: done일 때의 받아쓰기 구간들(오프셋을 더하기 전)
+        """
+        chunk = await crud.chunk(self.session, job_id, seq)
+        if state == ChunkState.in_flight:
+            chunk.attempts += 1
+        elif state == ChunkState.done:
+            chunk.done_at = datetime.now(UTC)
+            chunk.result = [asdict(s) for s in result or []]
+            chunk.path = None
+        chunk.state = state
+        if state == ChunkState.done:
+            await self.session.flush()
+            row = await crud.by_id(self.session, job_id)
+            done, total = (await crud.chunk_counts(self.session, [job_id]))[job_id]
+            await crud.raise_progress(
+                self.session, job_id, _transcribe_pct(row.stages, done, total)
+            )
+        await self.session.commit()
 
     async def finish(self, job_id: int) -> None:
         """VA-MS-002#JobService.finish
@@ -516,12 +608,40 @@ class JobService:
     async def retry(self, video: Video) -> Job:
         """VA-MS-002#JobService.retry
 
-        실패한 작업을 같은 행으로 대기열 끝에. 스텁 — B2에서 채운다(VA-CODE-001 B1).
+        실패한 작업을 같은 행으로 대기열 끝에 넣고 워커를 깨운다. `id` · `started_at` · 단계 목록 ·
+        모델은 그대로이고 `queued_at`만 지금으로 — 다른 영상이 돌고 있으면 끝에서 기다린다.
+        `stage`가 실패한 단계 그대로라 워커가 resume으로 돌린다. 실패 조각은 다시 보내도록
+        waiting으로 — 보낸 횟수는 누적 이력이라 그대로 두고 상한은 다음 실행에서 새로 센다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받아 넘긴 영상
+
+        Returns:
+            같은 작업. 워커가 벌써 꺼냈으면 running, 아니면 queued와 차례
 
         Raises:
-            NotImplementedYet: 아직 없다
+            KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다
+            NotFound: 작업이 없다(resource=job)
+            JobNotFailed: 실패한 작업이 아니다
         """
-        raise NotImplementedYet("다시 시도는 아직 지원하지 않아요")
+        await settings.require_key()
+        row = await crud.latest(self.session, video.id)
+        if row is None:
+            raise NotFound(resource="job", id=video.id)
+        if row.status != JobStatus.failed:
+            raise JobNotFailed(job_status=row.status.value)
+        row.status = JobStatus.queued
+        row.queued_at = datetime.now(UTC)
+        row.error_kind = row.error_reason = None
+        row.error_chunk_seq = row.error_attempts = None
+        await crud.failed_to_waiting(self.session, row.id)
+        await self.session.commit()
+        self.wake()
+        await asyncio.sleep(0)  # start와 같다 — 도는 작업이 없으면 워커가 곧 꺼낸다(보장은 아니다)
+        await self.session.refresh(row)
+        return self.to_job(
+            row, await crud.chunks(self.session, row.id), await self.queue_position(row)
+        )
 
     async def cancel(self, video_id: int) -> None:
         """VA-MS-002#JobService.cancel

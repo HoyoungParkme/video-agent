@@ -13,7 +13,9 @@ from app.core.config import config
 from app.core.db import SessionLocal
 from app.core.settings import settings
 from app.domains.job import pipeline
-from app.domains.job.models import AnalysisJobRow, ErrorKind, JobStatus
+from app.domains.job.models import AnalysisJobRow, AudioChunkRow, ChunkState, ErrorKind, JobStatus
+from app.domains.job.service import JobService
+from app.domains.video.service import VideoService
 from app.infra.openai import KeyState
 from app.main import app, load_video
 
@@ -82,6 +84,68 @@ async def test_restart_fails_running_and_continues_queued(
     )
     assert done_row.status == JobStatus.done
     assert "멈춘 작업 1개를 실패로 되돌렸다" in caplog.text
+
+
+async def test_restart_during_transcription_then_retry(
+    db, make, key, audio_source, audio_split, stt, summarizer, verify, monkeypatch, tmp_path
+) -> None:
+    """받아쓰기 도중 서버가 죽었다 — 다시 뜨면 failed(보내던 조각은 waiting), 다시 시도하면
+    끝난 조각은 다시 보내지 않고 이어서 끝난다."""
+    for name, port in [
+        ("audio_source", audio_source),
+        ("audio_split", audio_split),
+        ("stt", stt),
+        ("summarizer", summarizer),
+    ]:
+        monkeypatch.setattr(pipeline, name, port)
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "last_check", settings.last_check)
+    video = await make.video(has_captions=False, caption_language=None, caption_kind=None)
+    stages = ["download", "transcribe", "summarize", "chapter", "suggest"]
+    job = await make.job(
+        video.id, JobStatus.running, stage="transcribe", stages=stages, stt_model="whisper-1"
+    )
+    tmp = tmp_path / "tmp" / str(video.id)
+    tmp.mkdir(parents=True)
+    done = [{"start_sec": 0.0, "end_sec": 5.0, "text": "끝난 조각", "language": "ko"}]
+    for seq, state in [(1, ChunkState.done), (2, ChunkState.in_flight), (3, ChunkState.waiting)]:
+        (tmp / f"{seq}.mp3").write_bytes(b"chunk")
+        db.add(
+            AudioChunkRow(
+                job_id=job.id,
+                seq=seq,
+                offset_sec=(seq - 1) * 600,
+                duration_sec=600,
+                path=None if state == ChunkState.done else str(tmp / f"{seq}.mp3"),
+                state=state,
+                attempts=1 if state != ChunkState.waiting else 0,
+                result=done if state == ChunkState.done else None,
+            )
+        )
+    await db.commit()
+
+    async with app.router.lifespan_context(app):  # 다시 뜬다 — 죽은 작업은 failed
+        pass
+    row = await _status(job.id)
+    assert (row.status, row.stage, row.error_reason) == (
+        JobStatus.failed,
+        "transcribe",
+        "서버가 다시 시작됨",
+    )
+    async with SessionLocal() as s:
+        states = list(await s.scalars(select(AudioChunkRow.state).order_by(AudioChunkRow.seq)))
+    assert states == [ChunkState.done, ChunkState.waiting, ChunkState.waiting]
+
+    async with SessionLocal() as s:  # 다시 시도 — 워커가 resume으로 이어 간다
+        await JobService(s).retry((await VideoService(s, None, None).get(video.id)).video)
+    async with app.router.lifespan_context(app):
+        for _ in range(250):
+            if (await _status(job.id)).status == JobStatus.done:
+                break
+            await asyncio.sleep(0.02)
+    assert (await _status(job.id)).status == JobStatus.done
+    assert sorted(stt.calls) == [2, 3]  # 끝난 1번은 다시 보내지 않는다
+    assert audio_split.calls == []  # 조각 행이 있어 다시 나누지 않는다
 
 
 async def test_lifespan_stops_worker(db, env_file, verify, monkeypatch) -> None:

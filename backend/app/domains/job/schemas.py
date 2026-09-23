@@ -1,10 +1,11 @@
-"""작업 묶음의 응답 형태 — VA-API-001 4장 그대로.
+"""작업 묶음의 응답 형태 — VA-API-001 4장 그대로 — 와 API에 나가지 않는 내부 타입(VA-DOM-002 2.6).
 
-Job · JobSummary · Chunks · Chunk · JobError · Estimate.
+Job · JobSummary · Chunks · Chunk · JobError · Estimate · ChunkPlan · SttSegment.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from pydantic import BaseModel
@@ -91,3 +92,23 @@ class Job(BaseModel):
     stage_durations_sec: dict[str, int]
     started_at: datetime
     finished_at: datetime | None
+
+
+@dataclass(frozen=True)
+class ChunkPlan:
+    """자른 조각 하나 — AudioSplitPort.split이 만들고 JobService.plan_chunks가 행으로 쓴다."""
+
+    seq: int
+    offset_sec: float
+    duration_sec: float
+    path: str
+
+
+@dataclass(frozen=True)
+class SttSegment:
+    """받아쓰기 구간 하나 — 조각 안 상대 시각. 조각 행의 result에 이 모양으로 남는다."""
+
+    start_sec: float
+    end_sec: float
+    text: str
+    language: str

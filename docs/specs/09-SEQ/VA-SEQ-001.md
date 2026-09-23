@@ -341,7 +341,7 @@ sequenceDiagram
         AU->>FS: mp3 64kbps 모노 쓰기 (inbox는 읽기만)
         AU-->>PL: 경로
     else 로컬 음성 (S2 1c)
-        Note over PL: 추출 없이 inbox 파일을 그대로 쓴다
+        Note over PL: 추출 단계는 없다. 받아쓰기 단계가 조각을 나누기 전에 extract_audio로 data/tmp/{video_id}/audio.mp3를 만든다. inbox는 읽기만
     end
     alt 내려받기·추출 실패 (S2 1d)
         PL->>FS: data/tmp/{video_id} 지우기
@@ -366,11 +366,11 @@ sequenceDiagram
                 PL->>JS: mark_chunk(job_id, seq, done)
                 JS->>DB: state = done · done_at · progress_pct
                 PL->>FS: 조각 파일 삭제
-            else 실패, attempts < 상한 (S3 3a1)
+            else 실패, 이번 실행에서 보낸 횟수 < 상한 (S3 3a1)
                 ST-->>PL: 예외
                 PL->>JS: mark_chunk(job_id, seq, waiting)
                 Note over PL: 같은 조각을 다시 보낸다
-            else 실패, attempts = 상한 (S3 3a2)
+            else 실패, 이번 실행에서 보낸 횟수 = 상한 (S3 3a2)
                 ST-->>PL: 예외
                 PL->>JS: mark_chunk(job_id, seq, failed)
                 PL->>PL: 나머지 in_flight가 끝나기를 기다린다
@@ -392,7 +392,7 @@ sequenceDiagram
 
 **읽을 때 볼 것**
 - 조각 상태 넷과 `attempts`는 전부 DB에 있다. 서버가 죽어도 어디까지 됐는지 남는다([[VA-DOM-002]] 5장 6). 화면의 격자([[VA-UI-002#UI-3]])가 이 행을 그대로 그린다
-- 자동 재시도는 조각 단위다. 상한(설정값, 첫 값 3)에 닿은 조각 하나가 작업 전체를 `failed`로 만들고, **돌고 있던 다른 조각은 끝까지 기다린다** — 그래야 완료 수(j)가 정확하고, 재시도가 보내는 첫 조각(r)이 실패한 조각(k)과 다를 수 있다는 화면 규칙이 맞는다
+- 자동 재시도는 조각 단위다. 상한(설정값, 첫 값 3)은 한 번 도는 동안 보낸 횟수다 — 다시 시도하면 새로 센다(`attempts`는 누적). 상한에 닿은 조각 하나가 작업 전체를 `failed`로 만들고, **돌고 있던 다른 조각은 끝까지 기다린다** — 그래야 완료 수(j)가 정확하고, 재시도가 보내는 첫 조각(r)이 실패한 조각(k)과 다를 수 있다는 화면 규칙이 맞는다
 - 조각 파일은 조각이 `done`이 될 때마다 지운다. 실패한 작업은 `waiting` · `failed` 조각 파일만 남는다 — 재개용이다([[VA-INFRA-001]] 6절)
 - 이어 붙이기는 메모리에서 한다. 조각의 결과 텍스트는 DB에 두지 않는다 — 재시도가 이미 `done`인 조각을 다시 보내지 않으려면 결과가 있어야 하는데, 지금 설계는 **조각 결과를 잃는다** → 되먹일 것 #1
 - `mark_chunk(in_flight)`가 `attempts`를 올리고 `mark_chunk(done)`이 `progress_pct`를 갱신한다. 클래스 명세의 시그니처는 그대로이고 규칙만 더한다 → 되먹일 것 #2
@@ -441,7 +441,7 @@ sequenceDiagram
 ```
 
 **읽을 때 볼 것**
-- 읽기만 한다. 파이프라인이 쓴 행을 `JobService`가 응답 형태로 만든다. `remaining_sec`은 받아쓰기 단계면 미완료 조각 수 × `done_at` 간격의 평균, 다른 단계면 예상 전체 시간 − 지난 시간이다. 0이면 화면이 남은 시간을 비우고, `running`이 아니면 null이다([[VA-API-001#GET/api/videos/{id}/job]])
+- 읽기만 한다. 파이프라인이 쓴 행을 `JobService`가 응답 형태로 만든다. `remaining_sec`은 작업 전체가 끝날 때까지다 — 받아쓰기 단계면 미완료 조각 수 × `done_at` 간격의 평균에 요약 세 단계 몫을 더하고, 요약 세 단계면 그 몫 − 세 단계에 쓴 시간, 그 앞 단계면 예상 전체 시간 − 지난 시간이다(끝난 단계의 오차는 넘기지 않는다). 0이면 화면이 남은 시간을 비우고, `running`이 아니면 null이다([[VA-API-001#GET/api/videos/{id}/job]])
 - 대기 중에도 같은 폴링이다. `queue_position`이 줄어들다가 `status`가 `running`으로 바뀌면 같은 화면이 진행 상태가 된다 — 화면을 새로 열지 않는다([[VA-UI-002#UI-3]] 규칙)
 - 화면은 계산하지 않는다. 표의 값을 그대로 쓴다([[VA-API-001#GET/api/videos/{id}/job]]의 요소 ↔ 필드 표)
 - 폴링이 `done`을 보면 UI-4로 넘긴다. 서버가 화면을 밀어 주는 길(SSE)은 없다([[VA-INFRA-001]] 3절)

@@ -1,16 +1,19 @@
-"""AudioSourcePort 구현 — YouTube 자막을 받아 줄 목록으로(VA-MS-006 audio_source). B1은 자막만.
+"""AudioSourcePort 구현 — 자막 · 음성 확보(VA-MS-006 audio_source).
 
-고르는 규칙은 등록(youtube_info)과 같은 captions.pick 하나다 — 등록 때 알린 자막을 받는다.
+YouTube 자막을 줄 목록으로, YouTube 음성을 내려받아 mp3로, 영상 · 음성 파일을 mp3로.
+자막 고르는 규칙은 등록(youtube_info)과 같은 captions.pick 하나다 — 등록 때 알린 자막을 받는다.
 """
 
 from __future__ import annotations
 
+import contextlib
 import html
+import os
 import re
 
 from app.domains.analysis.schemas import CaptionLine
 from app.domains.video.models import CaptionKind
-from app.infra import ytdlp
+from app.infra import ffmpeg, ytdlp
 from app.shared import captions as picker
 
 # 00:01:02.345 또는 01:02.345(시가 없는 표기도 WebVTT에 맞다)
@@ -63,7 +66,7 @@ def _unroll(cues: list[CaptionLine]) -> list[CaptionLine]:
 
 
 class AudioSourceAdapter:
-    """YouTube 자막(B1). 음성 내려받기 · 추출은 B2."""
+    """자막 · 음성 확보. 음성은 늘 `config.AUDIO_FORMAT`의 mp3로 준다(조각으로 자를 수 있게)."""
 
     async def captions(self, video_id: str) -> tuple[list[CaptionLine], str, CaptionKind] | None:
         """VA-MS-006#audio_source.captions
@@ -90,3 +93,43 @@ class AudioSourceAdapter:
             cues = _unroll(cues)
         lines = [CaptionLine(c.start_sec, c.end_sec, " ".join(c.text.split("\n"))) for c in cues]
         return lines, lang, CaptionKind(kind)
+
+    async def download_audio(self, video_id: str, dest: str) -> str:
+        """VA-MS-006#audio_source.download_audio
+
+        가장 좋은 음성 스트림만 내려받아 mp3로 바꾼다. 내려받은 원본(m4a · webm)은 지운다.
+
+        Args:
+            video_id: YouTube 영상 ID
+            dest: 임시 폴더(`data/tmp/{video_id}`)
+
+        Returns:
+            dest 안 mp3 경로
+
+        Raises:
+            YtdlpError · FfmpegError: 그대로 — 파이프라인이 접고 임시 폴더를 지운다
+        """
+        src = await ytdlp.download_audio(video_id, dest)
+        try:
+            return await ffmpeg.extract_audio(src, dest)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(src)
+
+    async def extract_audio(self, src: str, dest: str) -> str:
+        """VA-MS-006#audio_source.extract_audio
+
+        영상에서 음성을 뽑거나 음성 파일을 바꿔 mp3 64kbps 모노 16kHz로 쓴다. src는 읽기만 한다.
+        로컬 음성은 추출 단계가 없어 받아쓰기 단계가 조각을 나누기 전에 부른다.
+
+        Args:
+            src: inbox 안 영상 · 음성 파일
+            dest: 임시 폴더
+
+        Returns:
+            dest 안 mp3 경로
+
+        Raises:
+            FfmpegError: 그대로
+        """
+        return await ffmpeg.extract_audio(src, dest)

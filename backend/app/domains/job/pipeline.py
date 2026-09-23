@@ -8,25 +8,28 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import errno
 import logging
+import os
+import re
 import shutil
 import socket
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from openai import APIConnectionError, OpenAIError
+from openai import APIConnectionError, APITimeoutError, OpenAIError
 
 from app.core.config import config
 from app.core.db import SessionLocal
-from app.core.errors import NotImplementedYet
 from app.domains.analysis.models import TranscriptSource
 from app.domains.analysis.ports import SummarizerPort
+from app.domains.analysis.schemas import CaptionLine
 from app.domains.analysis.service import AnalysisService
 from app.domains.job import crud
-from app.domains.job.models import ErrorKind, JobStage
-from app.domains.job.ports import AudioSourcePort
+from app.domains.job.models import AudioChunkRow, ChunkState, ErrorKind, JobStage
+from app.domains.job.ports import AudioSourcePort, AudioSplitPort, SttPort
 from app.domains.job.schemas import JobError
 from app.domains.job.service import JobService
 from app.infra.errors import FfmpegError, OpenAIOutputError, YtdlpError
@@ -38,13 +41,43 @@ log = logging.getLogger(__name__)
 
 # main.py가 시작 때 넣는다(VA-DOM-002 6장 서비스 조립). 테스트는 가짜로 바꿔 끼운다
 audio_source: AudioSourcePort | None = None
+audio_split: AudioSplitPort | None = None
+stt: SttPort | None = None
 summarizer: SummarizerPort | None = None
 
+# 내려받기 · 추출 · 로컬 음성 변환이 쓰는 이름(infra/ffmpeg.extract_audio)
+AUDIO_NAME = "audio.mp3"
+_HANGUL = re.compile(r"[가-힣]")
+# yt-dlp 실패 종류 → 이유 한 줄(실패 알림 본문의 '왜')
+_YTDLP_REASONS = {
+    "private": "비공개 영상",
+    "unavailable": "삭제되었거나 볼 수 없는 영상",
+    "geo": "이 지역에서 볼 수 없는 영상",
+    "network": "YouTube 연결 실패",
+    "extractor": "yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트",
+    "other": "yt-dlp 오류",
+}
 
-def _ports() -> tuple[AudioSourcePort, SummarizerPort]:
-    if audio_source is None or summarizer is None:
-        raise RuntimeError("파이프라인의 포트가 조립되지 않았다(main.py)")
-    return audio_source, summarizer
+
+def _need[P](port: P | None, name: str) -> P:
+    if port is None:
+        raise RuntimeError(f"파이프라인의 포트 {name}가 조립되지 않았다(main.py)")
+    return port
+
+
+class JobFailure(Exception):
+    """조각 상한을 넘은 받아쓰기 — 조각 번호 · 보낸 횟수를 채운 JobError를 run에 넘긴다."""
+
+    def __init__(self, error: JobError) -> None:
+        super().__init__(error.reason)
+        self.error = error
+
+
+class _ChunkFailed(Exception):
+    # 조각 하나가 이번 실행에서 상한만큼 보내고도 실패했다
+    def __init__(self, seq: int, sent: int, cause: Exception) -> None:
+        super().__init__(seq)
+        self.seq, self.sent, self.cause = seq, sent, cause
 
 
 def error_kind(e: BaseException) -> ErrorKind:
@@ -72,21 +105,146 @@ def error_kind(e: BaseException) -> ErrorKind:
     return ErrorKind.unknown
 
 
-async def transcribe_stage(job_id: int, video: Video, audio: str, tmp: str) -> None:
-    """VA-MS-002#pipeline.transcribe_stage
+def reason_of(e: BaseException) -> str:
+    """VA-MS-002#pipeline.reason_of
 
-    조각 병렬 받아쓰기. 스텁 — B2(VA-CODE-001 B1). 자막 없는 영상은 화면이 시작 전에 막는다.
+    예외 → 실패 이유 한 줄(한국어). 화면 실패 알림 본문의 '왜'다. 메시지 첫 줄에 한글이 있으면
+    앱이 만든 문장이라 그대로, 없으면(영어 SDK · yt-dlp 문구) 종류별 표로 바꾼다. 어댑터는 예외를
+    그대로 올린다 — 감싸 바꾸면 error_kind가 종류를 가를 수 없다.
 
-    Raises:
-        NotImplementedYet: 아직 없다
+    Args:
+        e: 단계에서 난 예외
+
+    Returns:
+        한 줄
     """
-    raise NotImplementedYet("받아쓰기는 아직 지원하지 않아요")
+    line = _first_line(e)
+    if _HANGUL.search(line):
+        return line
+    kind = error_kind(e)
+    if kind == ErrorKind.network:
+        timeout = isinstance(e, TimeoutError | APITimeoutError)
+        return "네트워크 시간 초과" if timeout else "네트워크에 연결할 수 없음"
+    if kind == ErrorKind.openai:
+        return _openai_reason(e)
+    if kind == ErrorKind.youtube:
+        return _YTDLP_REASONS.get(getattr(e, "kind", "other"), _YTDLP_REASONS["other"])
+    if kind == ErrorKind.ffmpeg:
+        return "ffmpeg 처리 실패"
+    if kind == ErrorKind.disk:
+        return "저장 공간 부족"
+    return f"알 수 없는 오류({type(e).__name__})"
+
+
+def _openai_reason(e: BaseException) -> str:
+    status = getattr(e, "status_code", None)
+    if status == 401:
+        return "API 키 인증 실패"
+    if status == 403:
+        return "OpenAI 권한 없음"
+    if status == 429:
+        quota = getattr(e, "code", None) == "insufficient_quota"
+        return "OpenAI 잔액 부족" if quota else "OpenAI 요청 한도 초과"
+    if isinstance(status, int) and status >= 500:
+        return "OpenAI 서버 오류"
+    if isinstance(status, int):
+        return f"OpenAI가 요청을 거절함({status})"
+    return "OpenAI 오류"
 
 
 def _first_line(e: BaseException) -> str:
-    # 실패 이유 한 줄 — 한국어 문구는 어댑터 · 서비스가 만든다
     text = str(e).strip()
-    return text.splitlines()[0] if text else type(e).__name__
+    return text.splitlines()[0].strip() if text else type(e).__name__
+
+
+async def transcribe_stage(job_id: int, video: Video, audio: str | None, tmp: str) -> None:
+    """VA-MS-002#pipeline.transcribe_stage
+
+    조각 병렬 받아쓰기. 조각 행이 없으면 음성을 나눠 만든다. done이 아닌 조각만 동시 수만큼
+    보내고, 조각마다 이번 실행에서 상한만큼 자동으로 다시 보낸다(다시 시도하면 새로 센다).
+    다시 보내기 전에는 2초 · 4초 기다린다 — SDK 재시도를 꺼서 바로 보내면 요청 한도 · 일시
+    오류에 세 번이 1초 안에 끝난다. 하나가 상한을 넘으면 새 조각은 시작하지 않고 돌던 조각만
+    끝까지 기다린다 — 완료 수와 다음 조각 번호가 맞게(UC-S3 3a2). 다 끝나면 조각 결과에
+    오프셋을 더해 이어 붙여 스크립트로 저장한다.
+
+    Args:
+        job_id: 작업 id
+        video: 영상
+        audio: 나눌 음성(tmp 안 mp3). 조각 행이 이미 있으면(다시 시도) 쓰지 않는다
+        tmp: 임시 폴더 — 조각 파일을 쓴다
+
+    Raises:
+        JobFailure: 조각 하나가 상한을 넘었다 — 가장 작은 번호의 조각으로
+    """
+    split_port, stt_port = _need(audio_split, "audio_split"), _need(stt, "stt")
+    async with SessionLocal() as s:
+        row = await crud.by_id(s, job_id)
+        concurrency, model = row.concurrency, row.stt_model or ""
+        chunks = await crud.chunks(s, job_id)
+    if not chunks:
+        plans = await split_port.split(_need(audio, "audio"), tmp)
+        async with SessionLocal() as s:
+            await JobService(s).plan_chunks(job_id, plans)
+            chunks = await crud.chunks(s, job_id)
+    sem = asyncio.Semaphore(concurrency)
+    stop = asyncio.Event()  # 한 조각이 상한을 넘었다 — 새 조각은 시작하지 않는다
+
+    async def one(c: AudioChunkRow) -> None:
+        sent = 0  # 이번 실행에서 보낸 횟수
+        async with sem:
+            if stop.is_set():
+                return  # 보내지 않는다 — 조각은 waiting 그대로
+            while True:
+                async with SessionLocal() as s:
+                    await JobService(s).mark_chunk(job_id, c.seq, ChunkState.in_flight)
+                sent += 1
+                try:
+                    segments = await stt_port.transcribe(_need(c.path, "조각 파일"), model)
+                except Exception as e:
+                    state = ChunkState.waiting
+                    if sent >= config.CHUNK_MAX_ATTEMPTS:
+                        state = ChunkState.failed
+                    async with SessionLocal() as s:
+                        await JobService(s).mark_chunk(job_id, c.seq, state)
+                    if state == ChunkState.failed:
+                        stop.set()
+                        raise _ChunkFailed(c.seq, sent, e) from e
+                    await asyncio.sleep(config.CHUNK_RETRY_WAIT_SEC * 2 ** (sent - 1))
+                    continue
+                async with SessionLocal() as s:
+                    await JobService(s).mark_chunk(job_id, c.seq, ChunkState.done, segments)
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(c.path)
+                return
+
+    todo = [c for c in chunks if c.state != ChunkState.done]
+    results = await asyncio.gather(*(one(c) for c in todo), return_exceptions=True)
+    failed = sorted((r for r in results if isinstance(r, _ChunkFailed)), key=lambda f: f.seq)
+    if failed:
+        f = failed[0]
+        reason, kind = reason_of(f.cause), error_kind(f.cause)
+        raise JobFailure(JobError(kind=kind, reason=reason, chunk_seq=f.seq, attempts=f.sent))
+    for r in results:
+        if isinstance(r, BaseException):
+            raise r
+    await _save_stt(job_id, video, model)
+
+
+async def _save_stt(job_id: int, video: Video, model: str) -> None:
+    # 조각 순서대로, 결과 시각에 조각 오프셋을 더해 이어 붙인다. 언어는 처음 나온 조각의 것
+    async with SessionLocal() as s:
+        rows = await crud.chunks_with_results(s, job_id)
+    lines: list[CaptionLine] = []
+    language = ""
+    for c in rows:
+        for seg in c.result or []:
+            language = language or seg.get("language", "")
+            start, end = c.offset_sec + seg["start_sec"], c.offset_sec + seg["end_sec"]
+            lines.append(CaptionLine(start, end, seg["text"]))
+    async with SessionLocal() as s:
+        await AnalysisService(s, _need(summarizer, "summarizer")).save_transcript(
+            video.id, TranscriptSource.stt, language or "und", model, lines
+        )
 
 
 async def run(job_id: int, video: Video) -> None:
@@ -94,80 +252,126 @@ async def run(job_id: int, video: Video) -> None:
 
     첫 단계부터 끝까지. 워커가 띄운 태스크 안에서 돈다. 단계마다 mark_stage 뒤 실행하고,
     끝나면 finish와 임시 폴더 정리. 실패하면 fail로 접고, 취소되면 아무것도 쓰지 않는다.
-    B1은 자막 갈래만 — 음성 내려받기 · 추출 · 받아쓰기는 스텁(VA-CODE-001 B1).
 
     Args:
         job_id: 작업 id
         video: 영상(load_video가 준 것)
     """
-    tmp = Path(config.DATA_DIR) / "tmp" / str(video.id)
-    stage: JobStage | None = None
-    try:
-        async with SessionLocal() as s:
-            stages = (await crud.by_id(s, job_id)).stages
-        tmp.mkdir(parents=True, exist_ok=True)
-        for name in stages:
-            stage = JobStage(name)
-            async with SessionLocal() as s:
-                await JobService(s).mark_stage(job_id, stage)
-            await _stage(stage, job_id, video, tmp)
-        async with SessionLocal() as s:
-            await JobService(s).finish(job_id)
-        shutil.rmtree(tmp, ignore_errors=True)
-    except asyncio.CancelledError:
-        raise  # 삭제 · 서버 종료 — 행은 그대로 둔다
-    except Exception as e:
-        log.warning("작업 %d이 %s 단계에서 실패: %s", job_id, stage, type(e).__name__)
-        error = JobError(kind=error_kind(e), reason=_first_line(e), chunk_seq=None, attempts=1)
-        async with SessionLocal() as s:
-            await JobService(s).fail(job_id, error)
-        if stage in (None, JobStage.download, JobStage.extract):  # 임시 파일이 쓸모없다
-            shutil.rmtree(tmp, ignore_errors=True)
-
-
-async def _stage(stage: JobStage, job_id: int, video: Video, tmp: Path) -> None:
-    # 단계 하나. 서비스 호출마다 짧은 세션
-    source_port, summarizer_port = _ports()
-    if stage == JobStage.download:
-        if not video.has_captions:
-            raise NotImplementedYet("자막 없는 영상의 음성 내려받기는 아직 지원하지 않아요")
-        got = await source_port.captions(video.source_id)
-        if got is None:  # 등록 뒤 자막이 사라졌다 — 단계 목록에 받아쓰기가 없다
-            raise YtdlpError("자막을 찾지 못했습니다", "unavailable")
-        lines, lang, kind = got
-        source = (
-            TranscriptSource.caption_manual if kind == "manual" else TranscriptSource.caption_auto
-        )
-        async with SessionLocal() as s:
-            await AnalysisService(s, summarizer_port).save_transcript(
-                video.id, source, lang, None, lines
-            )
-    elif stage == JobStage.extract:
-        raise NotImplementedYet("영상 파일의 음성 추출은 아직 지원하지 않아요")
-    elif stage == JobStage.transcribe:
-        audio = str(Path(config.INBOX_DIR) / video.origin)  # 로컬 음성 파일(B2가 갈래를 채운다)
-        await transcribe_stage(job_id, video, audio, str(tmp))
-    else:
-        async with SessionLocal() as s:
-            analysis = AnalysisService(s, summarizer_port)
-            if stage == JobStage.summarize:
-                await analysis.generate_summary(video)
-            elif stage == JobStage.chapter:
-                await analysis.generate_chapters(video)
-            elif stage == JobStage.suggest:
-                await analysis.generate_questions(video)
+    await _drive(job_id, video, resume=False)
 
 
 async def resume(job_id: int, video: Video) -> None:
     """VA-MS-002#pipeline.resume
 
-    실패한 단계부터 이어서. 스텁 — B2(VA-CODE-001 B1). 다시 시도가 501이라 B1에서는
-    stage가 pending이 아닌 작업이 대기열에 들어오지 않는다.
+    다시 시도한 작업을 행의 단계(실패한 단계)부터. 내려받기 · 추출에서 멈췄으면 처음부터와
+    같다(임시 파일이 지워졌다). 받아쓰기에서 멈췄으면 조각 행이 있을 때 done이 아닌 조각만
+    보낸다. 조각 행이 없으면 음성을 다시 마련한다 — 로컬 음성은 늘 다시 바꾸고(반쯤 쓴 파일일
+    수 있다), 그 밖은 앞 단계가 쓴 음성이 있으면 그것, 없으면 앞 단계부터. 요약 이후는 스크립트가
+    있으므로 그 단계부터. 마무리 · 실패 처리는 run과 같다.
 
-    Raises:
-        NotImplementedYet: 아직 없다
+    Args:
+        job_id: 작업 id
+        video: 영상
     """
-    raise NotImplementedYet("이어서 다시 시도는 아직 지원하지 않아요")
+    await _drive(job_id, video, resume=True)
+
+
+async def _drive(job_id: int, video: Video, resume: bool) -> None:
+    # run과 resume의 몸 — 어디서 시작하는지만 다르다
+    tmp = Path(config.DATA_DIR) / "tmp" / str(video.id)
+    stage: JobStage | None = None
+    try:
+        async with SessionLocal() as s:
+            row = await crud.by_id(s, job_id)
+            stages = [JobStage(name) for name in row.stages]
+            has_chunks = await crud.has_chunks(s, job_id)
+        start = _resume_at(stages, row.stage, has_chunks, tmp) if resume else 0
+        tmp.mkdir(parents=True, exist_ok=True)
+        audio: str | None = None
+        for stage in stages[start:]:
+            async with SessionLocal() as s:
+                await JobService(s).mark_stage(job_id, stage)
+            audio = await _stage(stage, job_id, video, stages, tmp, audio)
+        async with SessionLocal() as s:
+            await JobService(s).finish(job_id)
+        shutil.rmtree(tmp, ignore_errors=True)
+    except asyncio.CancelledError:
+        raise  # 삭제 · 서버 종료 — 행과 조각 파일은 그대로 둔다
+    except Exception as e:
+        log.warning("작업 %d이 %s 단계에서 실패: %s", job_id, stage, type(e).__name__)
+        error = e.error if isinstance(e, JobFailure) else _error_of(e)
+        async with SessionLocal() as s:
+            await JobService(s).fail(job_id, error)
+        # 내려받기 · 추출에서 멈췄으면 임시 파일이 쓸모없다. 첫 단계 전에 멈춘 이어하기는 둔다 —
+        # 받아쓰기에서 멈춘 작업의 조각 파일이 있다(지우면 조각 행만 남아 매번 실패한다)
+        if stage in (JobStage.download, JobStage.extract) or (stage is None and not resume):
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _resume_at(stages: list[JobStage], failed: JobStage, has_chunks: bool, tmp: Path) -> int:
+    # 다시 시도가 시작할 단계의 자리
+    at = stages.index(failed)
+    if failed != JobStage.transcribe or has_chunks or _local_audio(stages):
+        return at
+    if (tmp / AUDIO_NAME).exists():  # 앞 단계가 다 쓴 음성 — 나누다 멈췄다
+        return at
+    return max(i for i, s in enumerate(stages[:at]) if s in (JobStage.download, JobStage.extract))
+
+
+def _local_audio(stages: list[JobStage]) -> bool:
+    # 로컬 음성은 내려받기 · 추출 단계가 없다(UC-H2 2b)
+    return JobStage.download not in stages and JobStage.extract not in stages
+
+
+async def _stage(
+    stage: JobStage, job_id: int, video: Video, stages: list[JobStage], tmp: Path, audio: str | None
+) -> str | None:
+    # 단계 하나. 서비스 호출마다 짧은 세션. 음성을 마련한 단계는 그 경로를 돌려준다
+    source = _need(audio_source, "audio_source")
+    if stage == JobStage.download:
+        if video.has_captions:
+            got = await source.captions(video.source_id)
+            if got is None:  # 등록 뒤 자막이 사라졌다 — 단계 목록에 받아쓰기가 없다
+                raise YtdlpError("자막을 찾지 못했습니다", "unavailable")
+            lines, lang, kind = got
+            src = (
+                TranscriptSource.caption_manual
+                if kind == "manual"
+                else TranscriptSource.caption_auto
+            )
+            async with SessionLocal() as s:
+                await AnalysisService(s, _need(summarizer, "summarizer")).save_transcript(
+                    video.id, src, lang, None, lines
+                )
+            return None
+        return await source.download_audio(video.source_id, str(tmp))
+    if stage == JobStage.extract:
+        return await source.extract_audio(str(Path(config.INBOX_DIR) / video.origin), str(tmp))
+    if stage == JobStage.transcribe:
+        if audio is None:
+            async with SessionLocal() as s:
+                has_chunks = await crud.has_chunks(s, job_id)
+            if not has_chunks and _local_audio(stages):
+                # 로컬 음성 — 추출 단계가 없어 여기서 mp3로 바꾼다. inbox 원본은 읽기만 한다
+                inbox = str(Path(config.INBOX_DIR) / video.origin)
+                audio = await source.extract_audio(inbox, str(tmp))
+            elif not has_chunks:
+                audio = str(tmp / AUDIO_NAME)  # 다시 시도 — 앞 단계가 다 써 둔 음성
+        await transcribe_stage(job_id, video, audio, str(tmp))
+        return None
+    async with SessionLocal() as s:
+        analysis = AnalysisService(s, _need(summarizer, "summarizer"))
+        if stage == JobStage.summarize:
+            await analysis.generate_summary(video)
+        elif stage == JobStage.chapter:
+            await analysis.generate_chapters(video)
+        elif stage == JobStage.suggest:
+            await analysis.generate_questions(video)
+    return None
+
+
+def _error_of(e: Exception) -> JobError:
+    return JobError(kind=error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1)
 
 
 async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
@@ -221,8 +425,7 @@ async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
 
 async def _fail_quietly(job_id: int, e: Exception) -> None:
     try:
-        error = JobError(kind=error_kind(e), reason=_first_line(e), chunk_seq=None, attempts=1)
         async with SessionLocal() as s:
-            await JobService(s).fail(job_id, error)
+            await JobService(s).fail(job_id, _error_of(e))
     except Exception:
         log.exception("작업 %d을 실패로 적지 못했다 — 다음 시작 때 fail_orphans가 되돌린다", job_id)
