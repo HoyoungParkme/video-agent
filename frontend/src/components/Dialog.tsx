@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 interface Props {
@@ -39,6 +39,10 @@ export default function Dialog({
   children,
 }: Props) {
   const box = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -47,25 +51,31 @@ export default function Dialog({
     return () => opener?.focus();
   }, [initialFocus]);
 
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      onClose();
-      return;
+  // 문서 전체에서 듣는다 — 덮개를 눌러 초점이 body로 빠져도 Esc와 초점 가두기가 산다
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close.current();
+        return;
+      }
+      if (e.key !== "Tab" || !box.current) return;
+      const items = Array.from(box.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const inside = box.current.contains(document.activeElement);
+      if (!inside || (e.shiftKey && document.activeElement === first)) {
+        e.preventDefault();
+        (e.shiftKey && inside ? last : first).focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
-    if (e.key !== "Tab" || !box.current) return;
-    const items = Array.from(box.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return createPortal(
     <div
@@ -83,7 +93,6 @@ export default function Dialog({
         aria-modal="true"
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
-        onKeyDown={onKeyDown}
       >
         {children}
       </div>

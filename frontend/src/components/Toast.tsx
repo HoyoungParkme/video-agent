@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 interface Props {
   message: string;
@@ -14,10 +14,15 @@ interface Props {
 }
 
 export default function Toast({ message, onDone, ms = 4000 }: Props) {
+  // onDone이 그릴 때마다 새 함수여도 시계를 다시 맞추지 않는다
+  const done = useRef(onDone);
   useEffect(() => {
-    const timer = setTimeout(onDone, ms);
+    done.current = onDone;
+  });
+  useEffect(() => {
+    const timer = setTimeout(() => done.current(), ms);
     return () => clearTimeout(timer);
-  }, [message, onDone, ms]);
+  }, [message, ms]);
   return (
     <div role="status" className="toast">
       {message}

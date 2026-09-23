@@ -19,16 +19,29 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   el?: string;
 }
 
-export function Button({ kind, blocked, busy, tall, el, className, children, ...rest }: Props) {
-  const classes = ["btn", `btn-${kind}`, tall && "btn-tall", className].filter(Boolean).join(" ");
+export function Button({
+  kind,
+  blocked,
+  busy,
+  tall,
+  el,
+  className,
+  onClick,
+  children,
+  ...rest
+}: Props) {
+  const classes = ["btn", `btn-${kind}`, tall && "btn-tall", blocked && "is-blocked", className]
+    .filter(Boolean)
+    .join(" ");
   return (
     <button
       type="button"
       className={classes}
-      aria-disabled={blocked ? "true" : undefined}
+      // 막힘 · 기다림 모두 aria-disabled — disabled면 초점이 body로 빠져 돌아갈 곳을 잃는다
+      aria-disabled={blocked || busy ? "true" : undefined}
       aria-busy={busy ? "true" : undefined}
-      disabled={busy}
       data-el={el}
+      onClick={busy ? undefined : onClick}
       {...rest}
     >
       <span className={busy ? "va-pulse" : undefined}>{children}</span>

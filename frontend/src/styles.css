@@ -157,7 +157,8 @@ h1, h2, p { margin: 0; }
 .btn-secondary:hover { color: var(--c-ink); }
 .btn-danger { padding: 0 var(--space-22); background: var(--c-danger); color: var(--c-card); }
 /* 막힌 주 버튼 — 초점을 받고 누르면 설정으로. disabled를 쓰지 않는다 */
-.btn-primary[aria-disabled="true"] { background: var(--c-line); color: var(--c-ink-3); }
+.btn-primary.is-blocked { background: var(--c-line); color: var(--c-ink-3); }
+.btn[aria-busy="true"] { cursor: progress; }
 .btn-banner {
   height: 40px; padding: 0 var(--space-16); flex-shrink: 0; display: flex; align-items: center;
   border-radius: var(--radius-8); background: var(--c-danger-deep); color: var(--c-card);
@@ -166,7 +167,6 @@ h1, h2, p { margin: 0; }
 .btn-banner:hover { color: var(--c-card); }
 .btn-tall { height: var(--field-h); }
 .btn-wide { padding: 0 var(--space-18); }
-.btn:disabled { cursor: default; }
 
 /* 입력칸 · select · 값 상자 — VA-UI-001 4.2 */
 .field { display: flex; flex-direction: column; gap: var(--space-8); }
@@ -279,7 +279,8 @@ h1, h2, p { margin: 0; }
 .data-table td:first-child { padding-left: 0; font-weight: 600; }
 .data-table td:last-child { padding-right: 0; color: var(--c-ink-2); }
 .data-table tr:last-child td { border-bottom: 0; }
-.settings-actions { display: flex; justify-content: flex-end; gap: var(--space-10); }
+.settings-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-10); }
+.settings-actions .field-error { margin-right: auto; }
 
 /* 창이 좁으면 양옆에 여백만 남긴다 — 좁은 창 디자인은 아직 없다(VA-UI-001 8장) */
 @media (max-width: 1200px) {
