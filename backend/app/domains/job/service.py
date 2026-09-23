@@ -424,3 +424,18 @@ class JobService:
         if row.stage != JobStage.pending:
             took = round(_elapsed(row.stage_started_at))
             row.stage_durations_sec = {**row.stage_durations_sec, row.stage.value: took}
+
+    async def finish(self, job_id: int) -> None:
+        """VA-MS-002#JobService.finish
+
+        완료 — 마지막 단계의 걸린 시간, 진행률 100, 끝난 시각(= 영상의 분석 완료 시각).
+
+        Args:
+            job_id: 작업 id
+        """
+        row = await crud.by_id(self.session, job_id)
+        self._close_stage(row)
+        row.status = JobStatus.done
+        row.progress_pct = 100
+        row.finished_at = datetime.now(UTC)
+        await self.session.commit()

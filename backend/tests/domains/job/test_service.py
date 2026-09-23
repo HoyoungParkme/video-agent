@@ -405,3 +405,13 @@ async def test_mark_stage_with_transcribe(db, make) -> None:
     )
     await JobService(db).mark_stage(job.id, JobStage.summarize)
     assert (await _job_row(db, job.id)).progress_pct == 77  # 70 + 7.5 → 내림
+
+
+async def test_finish(db, make) -> None:
+    video = await make.video()
+    job = await make.job(video.id, JobStatus.running, stage="suggest")
+    await JobService(db).finish(job.id)
+    row = await _job_row(db, job.id)
+    assert (row.status, row.progress_pct) == (JobStatus.done, 100)
+    assert "suggest" in row.stage_durations_sec  # 마지막 단계의 걸린 시간
+    assert (datetime.now(UTC) - row.finished_at).total_seconds() < 5
