@@ -81,28 +81,54 @@ def test_client_keeps_one_pair() -> None:
     assert openai.client(KEY) is not a  # 한 쌍만 둔다 — 옛 키면 또 새 객체
 
 
-async def test_verify_format_without_request(server: FakeServer) -> None:
-    check = await openai.verify_key("abc")
+@pytest.mark.parametrize(
+    "key",
+    [
+        "abc",
+        KEY + "\u200b",
+        "\ufeff" + KEY,
+        "sk-키가아닌글자000000000000",
+        "sk-with space 000000000000",
+    ],
+)
+async def test_verify_format_without_request(server: FakeServer, key: str) -> None:
+    check = await openai.verify_key(key)
     assert (check.state, check.reason_kind) == (KeyState.invalid, ReasonKind.format)
     assert server.requests == []
 
 
 @pytest.mark.parametrize(
-    ("reply", "kind"),
+    ("reply", "kind", "reason"),
     [
-        (_error(401, "invalid_api_key"), ReasonKind.auth),
-        (_error(429, "insufficient_quota"), ReasonKind.quota),
-        (_error(429, "rate_limit_exceeded"), ReasonKind.auth),
-        (_error(500, "server_error"), ReasonKind.auth),
-        (httpx2.ConnectError("연결 거부"), ReasonKind.network),
-        (httpx2.ReadTimeout("시간 초과"), ReasonKind.network),
+        (_error(401, "invalid_api_key"), ReasonKind.auth, "인증에 실패했습니다"),
+        (_error(403, "unsupported_country"), ReasonKind.auth, "이 키로는 쓸 수 없습니다"),
+        (_error(404, "not_found"), ReasonKind.auth, "OpenAI가 키를 받지 않았습니다(404)"),
+        (_error(429, "insufficient_quota"), ReasonKind.quota, "잔액이 없습니다"),
+        # 잠깐의 실패 — 다시 확인하면 풀릴 수 있어 막지 않는다(API-001 ReasonKind)
+        (
+            _error(429, "rate_limit_exceeded"),
+            ReasonKind.network,
+            "OpenAI가 잠시 답하지 못했습니다(429)",
+        ),
+        (_error(500, "server_error"), ReasonKind.network, "OpenAI가 잠시 답하지 못했습니다(500)"),
+        (_error(503, "overloaded"), ReasonKind.network, "OpenAI가 잠시 답하지 못했습니다(503)"),
+        (_error(408, "timeout"), ReasonKind.network, "OpenAI가 잠시 답하지 못했습니다(408)"),
+        (httpx2.ConnectError("연결 거부"), ReasonKind.network, "연결하지 못했습니다"),
+        (httpx2.ReadTimeout("시간 초과"), ReasonKind.network, "연결하지 못했습니다"),
+        (
+            httpx2.Response(200, text="<html>점검 중</html>"),
+            ReasonKind.network,
+            "응답을 읽지 못했습니다",
+        ),
     ],
 )
-async def test_verify_failures(server: FakeServer, reply: Any, kind: ReasonKind) -> None:
+async def test_verify_failures(
+    server: FakeServer, reply: Any, kind: ReasonKind, reason: str
+) -> None:
     server.reply = reply
     check = await openai.verify_key(KEY)
-    assert (check.state, check.reason_kind) == (KeyState.invalid, kind)
-    assert check.reason and check.checked_at
+    assert (check.state, check.reason_kind, check.reason) == (KeyState.invalid, kind, reason)
+    assert check.checked_at
 
 
 async def test_verify_ok(server: FakeServer) -> None:

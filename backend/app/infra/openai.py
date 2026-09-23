@@ -17,6 +17,7 @@ from openai import (
     APIStatusError,
     AsyncOpenAI,
     AuthenticationError,
+    PermissionDeniedError,
     RateLimitError,
 )
 
@@ -81,36 +82,51 @@ def _invalid(kind: ReasonKind, reason: str) -> KeyCheck:
     return KeyCheck(KeyState.invalid, kind, reason, datetime.now(UTC))
 
 
+def _format_ok(key: str) -> bool:
+    # HTTP 헤더에 넣을 수 없는 글자(한글 · 보이지 않는 U+200B · U+FEFF 등)와 공백을 여기서 거른다
+    return (
+        key.startswith("sk-")
+        and len(key) >= 20
+        and key.isascii()
+        and key.isprintable()
+        and " " not in key
+    )
+
+
 async def verify_key(key: str) -> KeyCheck:
     """VA-MS-007#openai.verify_key
 
     모델 목록을 한 번 조회해 키를 확인한다. 던지지 않는다 — 결과를 상태로 준다.
+    실패는 둘로 가른다 — 키 탓(format · auth · quota, 다시 확인해도 같다)과
+    잠깐의 실패(network, 다시 확인하면 풀릴 수 있다).
 
     Args:
         key: 확인할 키
 
     Returns:
-        ok, 또는 invalid와 이유(format · auth · quota · network)
+        ok, 또는 invalid와 이유(한국어 한 줄)
     """
-    if not key.startswith("sk-") or len(key) < 20:
+    if not _format_ok(key):
         return _invalid(ReasonKind.format, "키 형식이 아닙니다")
     try:
         await client(key).models.list(timeout=config.KEY_CHECK_TIMEOUT_SEC)
     except AuthenticationError:
         return _invalid(ReasonKind.auth, "인증에 실패했습니다")
+    except PermissionDeniedError:
+        return _invalid(ReasonKind.auth, "이 키로는 쓸 수 없습니다")
     except RateLimitError as e:
         if e.code == "insufficient_quota":
             return _invalid(ReasonKind.quota, "잔액이 없습니다")
-        return _invalid(ReasonKind.auth, f"{e.status_code} {_first_line(e.message)}")
+        return _invalid(ReasonKind.network, f"OpenAI가 잠시 답하지 못했습니다({e.status_code})")
     except APIConnectionError:  # 시간 초과(APITimeoutError)도 여기
         return _invalid(ReasonKind.network, "연결하지 못했습니다")
     except APIStatusError as e:
-        return _invalid(ReasonKind.auth, f"{e.status_code} {_first_line(e.message)}")
+        if e.status_code in (408, 409) or e.status_code >= 500:
+            return _invalid(ReasonKind.network, f"OpenAI가 잠시 답하지 못했습니다({e.status_code})")
+        return _invalid(ReasonKind.auth, f"OpenAI가 키를 받지 않았습니다({e.status_code})")
+    except Exception:  # 응답을 읽지 못함 등 — 던지지 않는다
+        return _invalid(ReasonKind.network, "응답을 읽지 못했습니다")
     return KeyCheck(KeyState.ok, None, None, datetime.now(UTC))
-
-
-def _first_line(message: str) -> str:
-    return message.strip().splitlines()[0] if message.strip() else ""
 
 
 async def transcribe(client: AsyncOpenAI, path: str, model: str) -> dict:
