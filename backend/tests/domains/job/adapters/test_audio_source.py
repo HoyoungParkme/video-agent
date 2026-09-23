@@ -93,6 +93,27 @@ async def test_same_text_in_a_row_merges(fake_ytdlp, monkeypatch) -> None:
     ]
 
 
+async def test_new_line_starting_like_previous_keeps_words(fake_ytdlp, monkeypatch) -> None:
+    # 되풀이는 줄 단위다 — 앞 텍스트와 같은 글자로 시작하는 새 줄은 자르지 않는다
+    vtt = (
+        "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n \n네\n\n"
+        "00:00:02.000 --> 00:00:04.000\n \n네 맞습니다\n\n"
+        "00:00:04.000 --> 00:00:06.000\n네 맞습니다\n그래서 시작합니다\n"
+    )
+    fake_ytdlp["raw"] = {
+        "id": "abcdefghijk",
+        "subtitles": {},
+        "automatic_captions": {"ko-orig": []},
+    }
+
+    async def captions(video_id: str, lang: str, kind: str) -> str:
+        return vtt
+
+    monkeypatch.setattr(ytdlp, "captions", captions)
+    lines, _, _ = await AudioSourceAdapter().captions("abcdefghijk")
+    assert [line.text for line in lines] == ["네", "네 맞습니다", "그래서 시작합니다"]
+
+
 async def test_no_captions(fake_ytdlp) -> None:
     fake_ytdlp["raw"] = {"id": "abcdefghijk", "subtitles": {}, "automatic_captions": {}}
     assert await AudioSourceAdapter().captions("abcdefghijk") is None

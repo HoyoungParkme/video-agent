@@ -46,16 +46,17 @@ def _cues(vtt: str) -> list[CaptionLine]:
 
 
 def _unroll(cues: list[CaptionLine]) -> list[CaptionLine]:
-    # 자동 자막은 앞 큐의 줄을 다음 큐 첫 줄로 되풀이한다 — 겹친 앞부분을 떼고, 비면 빼고,
-    # 같은 텍스트가 잇달아 오면 하나로(끝 시각은 뒤 것)
+    # 자동 자막은 앞 큐의 줄을 다음 큐 첫 줄로 되풀이한다 — 그 줄을 떼고, 비면 빼고,
+    # 같은 텍스트가 잇달아 오면 하나로(끝 시각은 뒤 것). 줄 단위로 견준다 — 글자로 견주면
+    # 앞이 '네'이고 새 줄이 '네 맞습니다'일 때 '맞습니다'로 잘린다
     out: list[CaptionLine] = []
     for cue in cues:
         text = cue.text
         if out and text == out[-1].text:
             out[-1] = CaptionLine(out[-1].start_sec, cue.end_sec, text)
             continue
-        if out and text.startswith(out[-1].text):
-            text = text[len(out[-1].text) :].strip()
+        if out and text.startswith(out[-1].text + "\n"):
+            text = text[len(out[-1].text) + 1 :].strip()
         if text:
             out.append(CaptionLine(cue.start_sec, cue.end_sec, text))
     return out
