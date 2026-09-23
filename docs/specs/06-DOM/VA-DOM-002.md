@@ -55,7 +55,7 @@ video-agent/                    저장소 = 프로젝트
 ├── Dockerfile                  backend 이미지 — python + ffmpeg + yt-dlp + deno(yt-dlp의 YouTube 풀이용) (INFRA C8)
 ├── Dockerfile.web              frontend 이미지. 같은 종류가 둘이라 뒤에 용도를 붙였다
 ├── docker-compose.yml          web · api · db 셋 (INFRA 8절)
-├── docker-compose.dev.yml      개발용 덧씌우기 — db를 127.0.0.1:5432에 연다. 호스트에서 도는 api와 테스트가 붙는다 (INFRA 8절)
+├── docker-compose.dev.yml      개발용 덧씌우기 — db를 127.0.0.1:5433에 연다(5432는 다른 PostgreSQL이 흔히 쓴다). 호스트에서 도는 api와 테스트가 붙는다 (INFRA 8절)
 ├── .env.example                필요한 환경 변수의 이름만. 값은 비운다. `.env`는 커밋하지 않는다 (INFRA C6)
 │                               compose가 `.env`를 api 컨테이너에 읽기·쓰기로 마운트한다 — 앱이 키·모델 줄을 고친다 (4.5)
 ├── .gitignore · .dockerignore

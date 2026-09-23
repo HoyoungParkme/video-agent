@@ -18,7 +18,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 **예외 클래스** — `infra/errors.py`에 둘: `YtdlpError(reason, kind)`(`kind` ∈ `private` · `unavailable` · `geo` · `network` · `extractor` · `other`), `FfmpegError(reason, returncode)`. OpenAI는 SDK 예외를 그대로 낸다(`APIConnectionError` · `APIStatusError` · `APITimeoutError`). 어댑터 · 파이프라인이 이것으로 `ErrorKind`를 정한다([[VA-MS-002#pipeline.error_kind]]).
 
-**자식 프로세스** — yt-dlp · ffmpeg는 `asyncio.create_subprocess_exec`로 띄운다(셸 없이, 인자 목록으로 — 경로에 공백 · 특수 문자가 있어도 안전). 표준 오류는 모아서 예외 `reason`에 마지막 3줄을 넣는다. 시간 제한은 `config.PROC_TIMEOUT_SEC`(첫 값 1800 — 3시간 영상 추출도 30분이면 끝난다).
+**자식 프로세스** — yt-dlp · ffmpeg는 `asyncio.create_subprocess_exec`로 띄운다(셸 없이, 인자 목록으로 — 경로에 공백 · 특수 문자가 있어도 안전). 표준 입력은 닫는다(`DEVNULL` — ffmpeg가 터미널 입력을 읽지 않게). 표준 오류는 모아서 예외 `reason`에 마지막 3줄을 넣는다. 시간 제한은 `config.PROC_TIMEOUT_SEC`(첫 값 1800 — 3시간 영상 추출도 30분이면 끝난다). **시간 제한을 넘거나 부른 쪽이 취소하면**(작업 취소 · 서버 끄기) 자식 프로세스를 죽이고 끝나기를 기다린다 — 주인 없이 돌며 임시 폴더에 쓰지 않게. 실행 파일을 띄우지 못하거나(없음 · 권한) JSON이어야 할 출력이 JSON이 아니면 그 모듈의 예외(`YtdlpError(kind=other)` · `FfmpegError`)로 낸다.
 
 **설정값(첫 값)**
 
@@ -60,14 +60,14 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 **처리**
 1. `PROC: yt-dlp --dump-single-json --skip-download --no-playlist --no-warnings {url}` — 정보만. 재생 목록 주소면 그 영상 하나만
-2. if 종료 코드 ≠ 0 → 표준 오류에서 종류를 가른다: `Private video` → `private` · `Video unavailable` · `removed` → `unavailable` · `not available in your country` → `geo` · `Unable to download webpage` · `getaddrinfo` · `timed out` → `network` · `Unsupported URL` · `Unable to extract` → `extractor` · 그 밖 → `other` · `! YtdlpError(reason=마지막 줄, kind)`
+2. if 종료 코드 ≠ 0 → 표준 오류에서 종류를 가른다(대소문자 무시, **앞의 것이 이긴다** — YouTube는 비공개 · 지역 제한도 `Video unavailable.`로 시작한다): `Private video` · `video is private` → `private` · `available in your country` · `geo restriction` → `geo` · `Video unavailable` · `removed` → `unavailable` · `Unable to download webpage` · `getaddrinfo` · `timed out` → `network` · `Unsupported URL` · `Unable to extract` → `extractor` · 그 밖 → `other` · `! YtdlpError(reason=표준 오류 끝 3줄, kind)`
 3. `→ json.loads(표준 출력)` — `id` · `title` · `channel` · `uploader` · `duration` · `subtitles` · `automatic_captions` · `is_live`를 쓴다
 
 **출력** yt-dlp의 JSON 그대로(dict)
 
 **예외** `YtdlpError`
 
-**테스트 관점** 고정 JSON을 내는 가짜 실행 파일로: 필드가 그대로 · 종료 코드 1 + 'Private video' → `kind=private` · 'Unable to extract' → `extractor` · 시간 제한 초과 → `YtdlpError(kind=network)` · 셸을 거치지 않는다(인자에 `;`가 있어도 명령이 안 된다)
+**테스트 관점** 고정 JSON을 내는 가짜 실행 파일로: 필드가 그대로 · 종료 코드 1 + 'Private video' → `kind=private` · 'Video unavailable. The uploader has not made this video available in your country' → `geo` · 'Unable to extract' → `extractor` · 시간 제한 초과 → `YtdlpError(kind=network)` · 셸을 거치지 않는다(인자에 `;`가 있어도 명령이 안 된다) · 실행 파일이 없음 · 표준 출력이 JSON이 아님 → `YtdlpError(kind=other)` · 부른 쪽이 취소하면 자식 프로세스가 죽는다
 
 ---
 
@@ -89,9 +89,9 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 근거: [[VA-UC-001#UC-S2]] 1a · [[VA-MS-006#audio_source.download_audio]]
 
-**처리** `PROC: yt-dlp --no-playlist -f bestaudio -o {dest}/source.%(ext)s https://www.youtube.com/watch?v={video_id}` · 실패 → `! YtdlpError` · `→ {dest}/source.{ext}` (m4a 또는 webm/opus. 변환은 어댑터가 `ffmpeg.extract_audio`로)
+**처리** `FS: {dest}/source.*`를 지운다(앞 시도가 남긴 파일을 집지 않게) · `PROC: yt-dlp --no-playlist -f bestaudio -o {dest}/source.%(ext)s https://www.youtube.com/watch?v={video_id}` · 실패 → `! YtdlpError` · `→ {dest}/source.{ext}` (m4a 또는 webm/opus. 변환은 어댑터가 `ffmpeg.extract_audio`로)
 
-**테스트 관점** 반환 경로에 파일이 있다 · 영상 스트림을 받지 않는다(`-f bestaudio`) · 네트워크 끊김 → `kind=network`
+**테스트 관점** 반환 경로에 파일이 있다 · 영상 스트림을 받지 않는다(`-f bestaudio`) · 네트워크 끊김 → `kind=network` · 앞 시도의 `source.webm`이 남아 있어도 새 파일을 돌려준다
 
 ---
 
@@ -165,14 +165,20 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 근거: [[VA-SEQ-001#SEQ-12]] 5~11번 · [[VA-SEQ-001#SEQ-13]] 4~6번 · [[VA-UC-001#UC-H8]] 3번, 3a · [[VA-MS-005#SettingsService.set_key]] · [[VA-MS-005#SettingsService.check_stored_key]]
 
 **처리**
-1. if `not key.startswith("sk-") or len(key) < 20` → `→ KeyCheck(invalid, format, '키 형식이 아닙니다', now)` — 요청 없이
+1. if `not key.startswith("sk-") or len(key) < 20` 또는 ASCII로 찍히는 글자가 아닌 것(공백 · 한글 · 보이지 않는 U+200B · U+FEFF 등)이 있음 → `→ KeyCheck(invalid, format, '키 형식이 아닙니다', now)` — 요청 없이. HTTP 헤더에 넣을 수 없는 글자는 여기서 거른다
 2. `c = client(key)` · `EXT: c.models.list()` — 가장 가벼운 인증 요청. `config.KEY_CHECK_TIMEOUT_SEC` 안에
-3. if `AuthenticationError`(401) → `KeyCheck(invalid, auth, '인증에 실패했습니다', now)` · `RateLimitError`이고 본문에 `insufficient_quota` → `KeyCheck(invalid, quota, '잔액이 없습니다', now)` · `APIConnectionError` · `APITimeoutError` → `KeyCheck(invalid, network, '연결하지 못했습니다', now)` · 그 밖 `APIStatusError` → `KeyCheck(invalid, auth, 상태 코드와 한 줄, now)`
+3. 실패를 둘로 가른다 — **키 탓**(다시 확인해도 같다: `format` · `auth` · `quota`)과 **잠깐의 실패**(다시 확인하면 풀릴 수 있다: `network`). 이유는 한국어 한 줄이다
+   - `AuthenticationError`(401) → `auth` '인증에 실패했습니다' · `PermissionDeniedError`(403) → `auth` '이 키로는 쓸 수 없습니다'
+   - `RateLimitError`이고 `code == insufficient_quota` → `quota` '잔액이 없습니다'
+   - `APIConnectionError` · `APITimeoutError` → `network` '연결하지 못했습니다'
+   - 그 밖 `RateLimitError`(요청 한도) · 408 · 409 · 5xx → `network` 'OpenAI가 잠시 답하지 못했습니다({상태 코드})'
+   - 그 밖 `APIStatusError` → `auth` 'OpenAI가 키를 받지 않았습니다({상태 코드})'
+   - 그 밖 예외(응답을 읽지 못함 등) → `network` '응답을 읽지 못했습니다' — 던지지 않는다
 4. `→ KeyCheck(ok, None, None, now)`
 
 **출력** `KeyCheck`. 던지지 않는다 — 호출자가 상태로 판단한다. `KeyCheck`는 [[VA-DOM-002]] 2.6의 DTO를 `infra`가 만드는 유일한 예외이고 도메인 개념이 아니라 허용한다
 
-**테스트 관점** `abc` → `format`, 요청 0회 · 가짜 401 → `auth` · 429 + `insufficient_quota` → `quota` · 연결 예외 → `network` · 200 → `ok`, `checked_at` 있음
+**테스트 관점** `abc` → `format`, 요청 0회 · 끝에 U+200B가 붙은 키 → `format`, 요청 0회 · 가짜 401 → `auth` · 403 → `auth` · 429 + `insufficient_quota` → `quota` · 429 요청 한도 · 503 → `network` · 연결 예외 · 시간 초과 → `network` · 200인데 JSON이 아님 → `network`, 던지지 않는다 · 200 → `ok`, `checked_at` 있음 · 이유가 한국어 한 줄이다(SDK 원문이 아니다)
 
 ---
 
@@ -206,3 +212,4 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 - [ ] `ffmpeg.cut`의 `-c copy` 오차 — mp3 프레임 경계라 수십 ms. 받아쓰기 시각에는 무시할 수준이지만, 재인코딩(`-c:a libmp3lame`)으로 바꾸면 정확해지는 대신 15조각에 수십 초가 든다. 첫 버전은 `-c copy`
 - [ ] OpenAI 사용량 로그를 작업 행에 모아 실제 비용을 보여 줄지 — 사전 안내 예상치와 비교하는 화면이 요구에 없어 첫 버전은 로그만
 - [ ] `verify_key`의 `format` 검사(`sk-` 접두)가 앞으로의 키 형식과 맞는지 — 형식이 바뀌면 이 검사만 풀고 요청으로 판정
+- [x] 키 확인의 실패 가르기(카드 A 코드 리뷰, 2026-09-23) — 앞 판은 401 · quota 말고는 모두 `auth`라, OpenAI가 잠깐 5xx를 내면 멀쩡한 키가 막힌 채 다시 확인되지 않았다(`require_key`는 `network`만 다시 확인한다). 잠깐의 실패를 `network`로 옮기고 이유를 한국어 한 줄로 고정했다. [[VA-API-001]] v4 `ReasonKind` 설명을 함께 고쳤다
