@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from alembic import context
 from app.core.config import config
 from app.core.db import Base
 from app.domains.analysis import models as _analysis  # noqa: F401 — 테이블을 metadata에 올린다

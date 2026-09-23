@@ -37,6 +37,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.ruff.lint.isort]
 # DEV-4 — 모든 모듈에. list[...] 표기가 MINISPEC과 같게
 required-imports = ["from __future__ import annotations"]
+# 마이그레이션 폴더 이름이 alembic이라 패키지와 헷갈리지 않게
+known-third-party = ["alembic"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E501"]
