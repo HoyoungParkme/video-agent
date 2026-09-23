@@ -46,8 +46,10 @@ export default function Settings() {
   const settings = useSettings();
   const [newKey, setNewKey] = useState("");
   const [checking, setChecking] = useState(false);
-  // 2.4가 실패한 직후에만 새로 넣은 키의 결과를 보인다. 다시 열면 저장된 키의 결과로 돌아간다
-  const [keyError, setKeyError] = useState<string | null>(null);
+  // 2.4가 실패한 직후에만 새로 넣은 키의 결과를 보인다. 다시 열면 저장된 키의 결과로 돌아간다.
+  // rejected — 키 탓(형식 · 인증 · 잔액)이면 2.1을 '확인 실패'로. 연결 실패는 이유만(SEQ-12)
+  const [keyError, setKeyError] = useState<{ text: string; rejected: boolean } | null>(null);
+  const [modelsError, setModelsError] = useState<string | null>(null);
   // 고른 모델. 고르기 전에는 저장된 모델이 골라져 있다
   const [stt, setStt] = useState<string | null>(null);
   const [text, setText] = useState<string | null>(null);
@@ -57,8 +59,8 @@ export default function Settings() {
 
   const key = settings.key;
   const stored = key.state === "invalid" ? `키를 확인하지 못했어요 — ${key.reason}` : null;
-  const failed = keyError !== null || key.state === "invalid";
-  const error = keyError ?? stored;
+  const failed = keyError?.rejected || key.state === "invalid";
+  const error = keyError?.text ?? stored;
   const sttOption = pick(settings.model_options.stt, stt ?? settings.models.stt);
   const textOption = pick(settings.model_options.text, text ?? settings.models.text);
 
@@ -71,8 +73,9 @@ export default function Settings() {
       setNewKey("");
       setKeyError(null);
     } catch (e) {
+      const rejected = e instanceof ApiError && ["key-rejected", "validation"].includes(e.kind);
       const reason = e instanceof ApiError ? e.reason : "서버에 닿지 못했습니다";
-      setKeyError(`키를 확인하지 못했어요 — ${reason}`);
+      setKeyError({ text: `키를 확인하지 못했어요 — ${reason}`, rejected });
     } finally {
       setChecking(false);
     }
@@ -81,10 +84,14 @@ export default function Settings() {
   async function saveModels() {
     if (!sttOption || !textOption || saving) return;
     setSaving(true);
+    setModelsError(null);
     try {
       publishSettings(await api.saveModels(sttOption.id, textOption.id));
       router.push("/");
-    } catch {
+    } catch (e) {
+      // 오류는 생긴 자리에 보인다(VA-UI-001 4.5). 모양은 디자인 보강 전 임시
+      const reason = e instanceof ApiError ? e.message : "서버에 닿지 못했습니다";
+      setModelsError(`모델 선택을 저장하지 못했어요 — ${reason}`);
       setSaving(false);
     }
   }
@@ -148,8 +155,8 @@ export default function Settings() {
                 className="field-input"
                 placeholder="sk-로 시작하는 키를 붙여 넣으세요"
                 value={newKey}
-                disabled={checking}
-                aria-invalid={keyError ? "true" : undefined}
+                readOnly={checking}
+                aria-invalid={keyError?.rejected ? "true" : undefined}
                 aria-describedby={error ? "key-error" : undefined}
                 autoComplete="off"
                 onChange={(e) => setNewKey(e.target.value)}
@@ -281,6 +288,11 @@ export default function Settings() {
       </section>
 
       <div className="settings-actions" data-el="6">
+        {modelsError && (
+          <span role="alert" className="field-error">
+            {modelsError}
+          </span>
+        )}
         {/* 모델 변경을 버린다. 키는 2.4에서 이미 저장됐으므로 되돌리지 않는다 */}
         <Button kind="secondary" el="6.1" onClick={() => router.push("/")}>
           취소
