@@ -3,6 +3,7 @@
  * 3.3 퍼센트 · 3.4 막대) · 4 단계 목록(4.1 행 · 4.2 표시 · 4.3 이름 · 4.4 메모 · 4.5 연결선) ·
  * 6 카드 아래 줄(6.1 전송 표시 · 6.2 떠나기 안내).
  * 1초마다 진행을 새로 받는다. 끝나면 UI-4로(방문 기록을 바꿔치기), 작업 · 영상이 없으면 UI-1로.
+ * 서버에 잠깐 닿지 못하면 영상 정보도 진행도 1초 뒤 다시 받는다 — 빈 화면으로 멈추지 않게.
  * 대기 상태도 같은 화면이다. 화면은 계산하지 않는다 — 서버 값을 그대로 쓴다.
  * B1이 채우지 않은 것: 조각 격자와 범례(4.6 ~ 4.8, B2) · 실패 알림 상자와 다시 시도(5, B2).
  * 실패하면 폴링을 멈추고 헤드라인 · 부제 · 단계 표시만 실패 모양으로 바꾼다.
@@ -95,15 +96,20 @@ export default function Progress({ id }: { id: number }) {
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let videoTimer: ReturnType<typeof setTimeout> | undefined;
     const gone = (e: unknown) => e instanceof ApiError && (e.status === 404 || e.status === 422);
-    void (async () => {
+    const loadVideo = async () => {
       try {
         const detail = await api.video(id);
         if (alive) setVideo(detail.video);
       } catch (e) {
-        if (alive && gone(e)) router.replace("/"); // 영상이 없으면 UI-1로
+        if (!alive) return;
+        if (gone(e))
+          router.replace("/"); // 영상이 없으면 UI-1로
+        else videoTimer = setTimeout(loadVideo, POLL_MS); // 잠깐 닿지 못하면 다시
       }
-    })();
+    };
+    void loadVideo();
     const poll = async () => {
       try {
         const next = await api.job(id);
@@ -128,6 +134,7 @@ export default function Progress({ id }: { id: number }) {
     return () => {
       alive = false;
       clearTimeout(timer);
+      clearTimeout(videoTimer);
     };
   }, [id, router]);
 
