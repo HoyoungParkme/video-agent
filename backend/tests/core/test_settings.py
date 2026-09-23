@@ -62,3 +62,44 @@ def test_read_env_rules(svc, env_file) -> None:
         "STT_MODEL": "whisper-1",
         "TEXT_MODEL": "gpt-5-mini",  # 같은 이름이면 뒤의 것
     }
+
+
+# write_env
+
+
+def test_write_env_changes_only_that_line(svc, env_file) -> None:
+    before = _write(env_file, "sk-" + "x" * 40)
+    svc.write_env({"OPENAI_API_KEY": KEY})
+    after = env_file.read_text()
+    assert after == before.replace("sk-" + "x" * 40, KEY)  # 짧아져도 찌꺼기가 없다
+    assert svc.read_env()["OPENAI_API_KEY"] == KEY
+
+
+def test_write_env_appends_missing_line(svc, env_file) -> None:
+    env_file.write_text("POSTGRES_USER=va")  # 끝에 줄바꿈이 없는 파일
+    svc.write_env({"STT_MODEL": "whisper-1"})
+    assert env_file.read_text() == "POSTGRES_USER=va\nSTT_MODEL=whisper-1\n"
+
+
+def test_write_env_creates_file(svc, env_file) -> None:
+    svc.write_env({"OPENAI_API_KEY": KEY})
+    assert env_file.read_text() == f"OPENAI_API_KEY={KEY}\n"
+
+
+def test_write_env_last_of_duplicates(svc, env_file) -> None:
+    env_file.write_text("TEXT_MODEL=a\nexport TEXT_MODEL=b\n")
+    svc.write_env({"TEXT_MODEL": "gpt-5.4"})
+    assert env_file.read_text() == "TEXT_MODEL=a\nTEXT_MODEL=gpt-5.4\n"
+
+
+def test_write_env_rejects_other_names(svc, env_file) -> None:
+    with pytest.raises(ValueError):
+        svc.write_env({"POSTGRES_PASSWORD": "x"})
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root는 읽기 전용 파일도 쓴다")
+def test_write_env_read_only(svc, env_file) -> None:
+    _write(env_file)
+    env_file.chmod(0o444)
+    with pytest.raises(OSError):
+        svc.write_env({"OPENAI_API_KEY": NEW})

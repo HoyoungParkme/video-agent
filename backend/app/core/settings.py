@@ -126,5 +126,37 @@ class SettingsService:
                 out[parsed[0]] = parsed[1]
         return out
 
+    def write_env(self, values: dict[str, str]) -> None:
+        """VA-MS-005#SettingsService.write_env
+
+        그 이름의 마지막 줄만 `이름=값`으로 바꾸고, 없으면 끝에 더한다.
+        다른 줄 · 주석 · 순서는 그대로다. 파일을 제자리에서 쓴다 —
+        바인드 마운트한 파일은 rename으로 바꿀 수 없다(EBUSY).
+
+        Args:
+            values: OPENAI_API_KEY · STT_MODEL · TEXT_MODEL 중에서만. 다른 이름이면 ValueError
+
+        Raises:
+            OSError: 파일을 쓰지 못했다(읽기 전용 마운트 등). 부르는 쪽이 internal로 접는다
+        """
+        unknown = set(values) - set(NAMES)
+        if unknown:
+            raise ValueError(f".env에 쓸 수 없는 이름: {sorted(unknown)}")
+        with self._lock:
+            path = Path(config.ENV_PATH)
+            exists = path.exists()
+            lines = path.read_text(encoding="utf-8").splitlines() if exists else []
+            for name, value in values.items():
+                found = [i for i, line in enumerate(lines) if (_parse(line) or ("",))[0] == name]
+                if found:
+                    lines[found[-1]] = f"{name}={value}"
+                else:
+                    lines.append(f"{name}={value}")
+            with open(path, "r+" if exists else "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+                f.truncate()
+                f.flush()
+                os.fsync(f.fileno())
+
 
 settings = SettingsService()
