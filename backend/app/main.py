@@ -16,12 +16,14 @@ from app.core import errors, settings_router
 from app.core.settings import settings
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """시작할 때 저장된 키를 한 번 확인한다(VA-SEQ-001 SEQ-13). 실패해도 서버는 뜬다."""
-    await settings.check_stored_key()
+    status = await settings.check_stored_key()
+    log.info("키 확인: %s %s", status.state.value, status.reason or "")
     yield
 
 

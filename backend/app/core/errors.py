@@ -6,11 +6,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+log = logging.getLogger(__name__)
 
 MEDIA_TYPE = "application/problem+json"
 
@@ -144,6 +147,8 @@ def _response(problem: Problem) -> JSONResponse:
 
 async def _on_problem(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, Problem)
+    if exc.status >= 500:  # 원인(from e)은 로그로만 — 응답에는 고정 문구뿐
+        log.error("%s: %s", exc.kind, exc.detail, exc_info=exc)
     return _response(exc)
 
 

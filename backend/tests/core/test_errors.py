@@ -53,6 +53,13 @@ def _app() -> FastAPI:
     def ask(body: Body) -> None:
         return None
 
+    @app.get("/write")
+    def write() -> None:
+        try:
+            raise PermissionError(13, "Permission denied", "/app/.env")
+        except OSError as e:
+            raise errors.Internal("키를 .env에 쓰지 못했어요") from e
+
     @app.get("/boom")
     def boom() -> None:
         raise RuntimeError("내부 사정 — 밖으로 나가면 안 된다")
@@ -91,3 +98,12 @@ async def test_catch_all_is_internal() -> None:
     assert r.headers["content-type"] == "application/problem+json"
     assert r.json()["type"] == "urn:va:internal"
     assert "내부 사정" not in r.text
+
+
+async def test_internal_cause_goes_to_log(caplog) -> None:
+    """응답에는 고정 문구, 원인(OSError)은 로그에만(API-001 2장)."""
+    r = await _call("GET", "/write")
+    assert r.status_code == 500
+    assert r.json()["detail"] == "키를 .env에 쓰지 못했어요"
+    assert "Permission denied" not in r.text
+    assert "PermissionError" in caplog.text
