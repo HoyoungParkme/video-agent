@@ -341,7 +341,7 @@ sequenceDiagram
         AU->>FS: mp3 64kbps 모노 쓰기 (inbox는 읽기만)
         AU-->>PL: 경로
     else 로컬 음성 (S2 1c)
-        Note over PL: 추출 없이 inbox 파일을 그대로 쓴다
+        Note over PL: 추출 단계는 없다. 받아쓰기 단계가 조각을 나누기 전에 extract_audio로 data/tmp/{video_id}/audio.mp3를 만든다. inbox는 읽기만
     end
     alt 내려받기·추출 실패 (S2 1d)
         PL->>FS: data/tmp/{video_id} 지우기
@@ -366,11 +366,11 @@ sequenceDiagram
                 PL->>JS: mark_chunk(job_id, seq, done)
                 JS->>DB: state = done · done_at · progress_pct
                 PL->>FS: 조각 파일 삭제
-            else 실패, attempts < 상한 (S3 3a1)
+            else 실패, 이번 실행에서 보낸 횟수 < 상한 (S3 3a1)
                 ST-->>PL: 예외
                 PL->>JS: mark_chunk(job_id, seq, waiting)
                 Note over PL: 같은 조각을 다시 보낸다
-            else 실패, attempts = 상한 (S3 3a2)
+            else 실패, 이번 실행에서 보낸 횟수 = 상한 (S3 3a2)
                 ST-->>PL: 예외
                 PL->>JS: mark_chunk(job_id, seq, failed)
                 PL->>PL: 나머지 in_flight가 끝나기를 기다린다
@@ -392,7 +392,7 @@ sequenceDiagram
 
 **읽을 때 볼 것**
 - 조각 상태 넷과 `attempts`는 전부 DB에 있다. 서버가 죽어도 어디까지 됐는지 남는다([[VA-DOM-002]] 5장 6). 화면의 격자([[VA-UI-002#UI-3]])가 이 행을 그대로 그린다
-- 자동 재시도는 조각 단위다. 상한(설정값, 첫 값 3)에 닿은 조각 하나가 작업 전체를 `failed`로 만들고, **돌고 있던 다른 조각은 끝까지 기다린다** — 그래야 완료 수(j)가 정확하고, 재시도가 보내는 첫 조각(r)이 실패한 조각(k)과 다를 수 있다는 화면 규칙이 맞는다
+- 자동 재시도는 조각 단위다. 상한(설정값, 첫 값 3)은 한 번 도는 동안 보낸 횟수다 — 다시 시도하면 새로 센다(`attempts`는 누적). 상한에 닿은 조각 하나가 작업 전체를 `failed`로 만들고, **돌고 있던 다른 조각은 끝까지 기다린다** — 그래야 완료 수(j)가 정확하고, 재시도가 보내는 첫 조각(r)이 실패한 조각(k)과 다를 수 있다는 화면 규칙이 맞는다
 - 조각 파일은 조각이 `done`이 될 때마다 지운다. 실패한 작업은 `waiting` · `failed` 조각 파일만 남는다 — 재개용이다([[VA-INFRA-001]] 6절)
 - 이어 붙이기는 메모리에서 한다. 조각의 결과 텍스트는 DB에 두지 않는다 — 재시도가 이미 `done`인 조각을 다시 보내지 않으려면 결과가 있어야 하는데, 지금 설계는 **조각 결과를 잃는다** → 되먹일 것 #1
 - `mark_chunk(in_flight)`가 `attempts`를 올리고 `mark_chunk(done)`이 `progress_pct`를 갱신한다. 클래스 명세의 시그니처는 그대로이고 규칙만 더한다 → 되먹일 것 #2
