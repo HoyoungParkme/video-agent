@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
+from dataclasses import asdict
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import PurePath
@@ -38,6 +39,7 @@ from app.domains.job.schemas import (
     Job,
     JobError,
     JobSummary,
+    SttSegment,
 )
 
 if TYPE_CHECKING:
@@ -61,6 +63,13 @@ def _done_pct(stages: list[str], stage: str) -> int:
     # 앞선 단계들의 가중치 합을 내림한다 — 7.5 + 70 = 77(마지막은 finish가 100으로 맞춘다)
     w = _weights(stages)
     return int(sum(w[s] for s in stages[: stages.index(stage)]))
+
+
+def _transcribe_pct(stages: list[str], done: int, total: int) -> int:
+    # 받아쓰기 앞 단계들의 몫 + 받아쓰기 몫 × 완료 비율 — 내림
+    w = _weights(stages)
+    base = sum(w[s] for s in stages[: stages.index(JobStage.transcribe.value)])
+    return int(base + w[JobStage.transcribe.value] * done / total)
 
 
 def _elapsed(since: datetime) -> float:
@@ -455,6 +464,38 @@ class JobService:
         if await crud.has_chunks(self.session, job_id):
             return
         crud.add_chunks(self.session, job_id, plans)
+        await self.session.commit()
+
+    async def mark_chunk(
+        self, job_id: int, seq: int, state: ChunkState, result: list[SttSegment] | None = None
+    ) -> None:
+        """VA-MS-002#JobService.mark_chunk
+
+        조각 상태 전이. in_flight로 바꿀 때 보낸 횟수를 올린다. done이면 끝난 때 · 결과를 적고
+        경로를 비운다(파일은 파이프라인이 지운다) — 진행률은 완료 조각 비율로 올리기만 한다.
+        waiting(다시 보낼 차례) · failed는 상태만.
+
+        Args:
+            job_id: 작업 id
+            seq: 조각 번호
+            state: 바꿀 상태
+            result: done일 때의 받아쓰기 구간들(오프셋을 더하기 전)
+        """
+        chunk = await crud.chunk(self.session, job_id, seq)
+        if state == ChunkState.in_flight:
+            chunk.attempts += 1
+        elif state == ChunkState.done:
+            chunk.done_at = datetime.now(UTC)
+            chunk.result = [asdict(s) for s in result or []]
+            chunk.path = None
+        chunk.state = state
+        if state == ChunkState.done:
+            await self.session.flush()
+            row = await crud.by_id(self.session, job_id)
+            done, total = (await crud.chunk_counts(self.session, [job_id]))[job_id]
+            await crud.raise_progress(
+                self.session, job_id, _transcribe_pct(row.stages, done, total)
+            )
         await self.session.commit()
 
     async def finish(self, job_id: int) -> None:

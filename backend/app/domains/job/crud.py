@@ -77,6 +77,24 @@ def add_chunks(session: AsyncSession, job_id: int, plans: list[ChunkPlan]) -> No
     )
 
 
+async def chunk(session: AsyncSession, job_id: int, seq: int) -> AudioChunkRow:
+    """조각 하나 — 바꿀 것이라 결과까지 읽는다."""
+    return (
+        await session.scalars(
+            select(AudioChunkRow).where(AudioChunkRow.job_id == job_id, AudioChunkRow.seq == seq)
+        )
+    ).one()
+
+
+async def raise_progress(session: AsyncSession, job_id: int, pct: int) -> None:
+    """진행률을 올린다 — 동시에 끝난 조각들이 겹쳐 써도 뒤로 가지 않게(GREATEST)."""
+    await session.execute(
+        update(Job)
+        .where(Job.id == job_id)
+        .values(progress_pct=func.greatest(Job.progress_pct, pct))
+    )
+
+
 async def chunk_counts(session: AsyncSession, job_ids: list[int]) -> dict[int, tuple[int, int]]:
     """작업마다 (완료 조각 수, 전체 조각 수) — 한 쿼리. 조각이 없는 작업은 키가 없다."""
     rows = await session.execute(

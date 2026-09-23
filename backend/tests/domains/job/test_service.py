@@ -21,7 +21,7 @@ from app.domains.job.models import (
     JobStage,
     JobStatus,
 )
-from app.domains.job.schemas import ChunkPlan, JobError
+from app.domains.job.schemas import ChunkPlan, JobError, SttSegment
 from app.domains.job.service import JobService
 from app.domains.video.models import SourceKind
 from app.domains.video.schemas import Video
@@ -409,6 +409,60 @@ async def test_plan_chunks_makes_rows_once(db, make) -> None:
     assert [r.seq for r in rows] == list(range(1, 31))
     assert {(r.state, r.attempts) for r in rows} == {(ChunkState.waiting, 0)}
     assert (rows[1].offset_sec, rows[1].duration_sec, rows[1].path) == (600.0, 600.0, "/tmp/2.mp3")
+
+
+# --- mark_chunk
+
+
+async def _chunk_row(db, job_id: int, seq: int) -> AudioChunkRow:
+    return await db.scalar(
+        select(AudioChunkRow)
+        .where(AudioChunkRow.job_id == job_id, AudioChunkRow.seq == seq)
+        .execution_options(populate_existing=True)
+    )
+
+
+async def _transcribing(make, n: int, done: int = 0) -> AnalysisJobRow:
+    job = await make.job(
+        (await make.video()).id, JobStatus.running, stage="transcribe", stages=STT_STAGES
+    )
+    await make.chunks(job.id, [ChunkState.done] * done + [ChunkState.waiting] * (n - done))
+    return job
+
+
+async def test_mark_chunk_in_flight_counts_sends(db, make) -> None:
+    job = await _transcribing(make, 3)
+    svc = JobService(db)
+    await svc.mark_chunk(job.id, 2, ChunkState.in_flight)
+    await svc.mark_chunk(job.id, 2, ChunkState.waiting)
+    await svc.mark_chunk(job.id, 2, ChunkState.in_flight)
+    await svc.mark_chunk(job.id, 2, ChunkState.failed)  # 실패는 횟수를 올리지 않는다
+    chunk = await _chunk_row(db, job.id, 2)
+    assert (chunk.state, chunk.attempts) == (ChunkState.failed, 2)
+
+
+async def test_mark_chunk_done_keeps_result_and_raises_progress(db, make) -> None:
+    job = await _transcribing(make, 30, done=14)
+    segs = [SttSegment(0.0, 4.2, "첫 문장", "ko"), SttSegment(4.2, 9.0, "둘째", "ko")]
+    await JobService(db).mark_chunk(job.id, 15, ChunkState.done, segs)
+    chunk = await _chunk_row(db, job.id, 15)
+    assert chunk.state == ChunkState.done and chunk.path is None
+    assert (datetime.now(UTC) - chunk.done_at).total_seconds() < 5
+    assert chunk.result == [
+        {"start_sec": 0.0, "end_sec": 4.2, "text": "첫 문장", "language": "ko"},
+        {"start_sec": 4.2, "end_sec": 9.0, "text": "둘째", "language": "ko"},
+    ]
+    # 30개 중 15 완료 — 받아쓰기 몫(70)의 절반 + 앞 단계(내려받기 7.5), 내림
+    assert (await _job_row(db, job.id)).progress_pct == 42
+
+
+async def test_mark_chunk_progress_never_goes_back(db, make) -> None:
+    job = await _transcribing(make, 30, done=1)
+    row = await _job_row(db, job.id)
+    row.progress_pct = 60  # 동시에 끝난 다른 조각이 먼저 더 크게 적었다
+    await db.commit()
+    await JobService(db).mark_chunk(job.id, 2, ChunkState.done, [])
+    assert (await _job_row(db, job.id)).progress_pct == 60
 
 
 # --- mark_stage · finish · fail
