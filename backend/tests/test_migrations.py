@@ -229,8 +229,17 @@ async def test_delete_video_cascades(conn: AsyncConnection) -> None:
         {"v": v},
     )
     await conn.execute(text("DELETE FROM videos WHERE id = :v"), {"v": v})
-    for table in ("analysis_jobs", "audio_chunks", "summaries", "insights", "chat_turns"):
-        assert await conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0
+    # 이 영상의 것만 센다 — 앞서 돈 테스트 · E2E가 같은 DB에 남긴 행과 섞이지 않게
+    left = {
+        "analysis_jobs": ("video_id", v),
+        "audio_chunks": ("job_id", j),
+        "summaries": ("video_id", v),
+        "insights": ("summary_id", s),
+        "chat_turns": ("video_id", v),
+    }
+    for table, (column, owner) in left.items():
+        count = f"SELECT count(*) FROM {table} WHERE {column} = :o"
+        assert await conn.scalar(text(count), {"o": owner}) == 0
 
 
 async def test_downgrade_then_upgrade(
