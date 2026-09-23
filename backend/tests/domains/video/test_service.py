@@ -102,3 +102,115 @@ async def test_info_of_youtube_unavailable(db, youtube, unavailable) -> None:
 async def test_info_of_local_is_stub(db, youtube) -> None:
     with pytest.raises(NotImplementedYet):
         await VideoService(db, youtube).info_of(LocalSource(source="local", path="a.mp4"))
+
+
+# --- register
+
+
+async def test_register_without_key_touches_nothing(db, youtube, env_file, verify) -> None:
+    with pytest.raises(KeyMissing):
+        await VideoService(db, youtube).register(yt())
+    assert youtube.calls == []  # YouTube에 닿지 않는다
+    assert await _count(db) == 0
+
+
+async def test_register_checks_key_each_time(db, youtube, key, verify) -> None:
+    await VideoService(db, youtube).register(yt())
+    assert len(verify.calls) == 1  # 분석 버튼을 누를 때 확인한다
+
+
+async def test_register_new_video(db, youtube, key) -> None:
+    video = await VideoService(db, youtube).register(yt())
+    assert (video.status, video.source_id, video.title) == (
+        "registered",
+        "dQw4w9WgXcQ",
+        "자막 있는 강의",
+    )
+    assert (video.has_captions, video.caption_language, video.caption_kind) == (
+        True,
+        "ko",
+        "manual",
+    )
+    assert video.created_at is not None
+    assert video.chat_turn_count == 0
+
+
+async def test_register_same_video_other_url(db, youtube, key) -> None:
+    svc = VideoService(db, youtube)
+    first = await svc.register(yt("https://youtu.be/dQw4w9WgXcQ"))
+    second = await svc.register(yt(WATCH))
+    shorts = await svc.register(yt("https://m.youtube.com/shorts/dQw4w9WgXcQ"))
+    assert first.id == second.id == shorts.id
+    assert await _count(db) == 1
+
+
+async def test_register_url_invalid(db, youtube, key) -> None:
+    for url in [
+        "https://vimeo.com/123456",
+        "https://www.youtube.com/watch?v=short",
+        "",
+        "ftp://youtu.be/dQw4w9WgXcQ",
+    ]:
+        with pytest.raises(UrlInvalid) as e:
+            await VideoService(db, youtube).register(yt(url))
+        assert e.value.extra == {"accepted": ["watch", "youtu.be", "shorts"]}
+    assert youtube.calls == []
+
+
+async def test_register_url_without_scheme(db, youtube, key) -> None:
+    video = await VideoService(db, youtube).register(yt("youtu.be/dQw4w9WgXcQ"))
+    assert video.source_id == "dQw4w9WgXcQ"
+
+
+async def test_register_local_name_checks(db, youtube, key, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "notes.txt").write_text("x")
+    svc = VideoService(db, youtube)
+    for name in ["../etc/passwd", "sub/a.mp4", ".hidden.mp4", "a\\b.mp4"]:
+        with pytest.raises(PathOutsideInbox):
+            await svc.register(LocalSource(source="local", path=name))
+    with pytest.raises(UnsupportedFile):
+        await svc.register(LocalSource(source="local", path="notes.txt"))
+    with pytest.raises(NotFound) as e:
+        await svc.register(LocalSource(source="local", path="gone.mp4"))
+    assert e.value.extra == {"resource": "inbox_file", "id": "gone.mp4"}
+    (tmp_path / "talk.MP4").write_text("x")
+    with pytest.raises(NotImplementedYet):  # 형식은 통과, 정보 조회는 B2
+        await svc.register(LocalSource(source="local", path="talk.MP4"))
+
+
+async def test_register_too_long(db, youtube, key) -> None:
+    youtube.duration = 10801
+    with pytest.raises(VideoTooLong) as e:
+        await VideoService(db, youtube).register(yt())
+    assert e.value.extra == {"duration_sec": 10801, "max_sec": 10800}
+    assert await _count(db) == 0  # 행이 안 생긴다
+
+
+async def test_register_again_after_cancel_overwrites(db, youtube, key) -> None:
+    svc = VideoService(db, youtube)
+    first = await svc.register(yt())
+    youtube.title = "제목이 바뀐 강의"
+    again = await svc.register(yt())
+    assert again.id == first.id
+    assert (again.title, again.status) == ("제목이 바뀐 강의", "registered")
+    assert again.created_at == first.created_at
+
+
+async def test_register_again_with_job_keeps_row(db, youtube, key, make) -> None:
+    svc = VideoService(db, youtube)
+    first = await svc.register(yt())
+    await make.job(first.id, JobStatus.running)
+    youtube.title = "다른 제목"
+    again = await svc.register(yt())
+    assert (again.title, again.status) == ("자막 있는 강의", "in_progress")  # 작업을 따른다
+
+
+async def test_register_twice_at_once_makes_one_row(db, youtube, key) -> None:
+    async def one() -> int:
+        async with SessionLocal() as s:
+            return (await VideoService(s, youtube).register(yt())).id
+
+    ids = await asyncio.gather(one(), one())
+    assert ids[0] == ids[1]
+    assert await _count(db) == 1

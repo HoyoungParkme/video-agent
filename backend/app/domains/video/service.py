@@ -148,3 +148,58 @@ class VideoService:
         if isinstance(req, YouTubeSource):
             return await self.youtube_info.info(req.url)
         raise NotImplementedYet("inbox 파일 분석은 아직 지원하지 않아요")
+
+    async def register(self, req: RegisterRequest) -> Video:
+        """VA-MS-001#VideoService.register
+
+        영상을 등록한다 — 사전 안내 전까지. 걸리는 곳에서 멈추고, 순서가 규칙이다.
+        같은 영상(출처 식별자)이 있으면 그것을 돌려주고, 작업이 없던 것이면 새 정보로 덮어쓴다.
+
+        Args:
+            req: YouTube 주소 또는 inbox 파일 이름
+
+        Returns:
+            영상. status는 registered · in_progress · failed · analyzed 중 하나
+
+        Raises:
+            KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다
+            UrlInvalid · PathOutsideInbox · UnsupportedFile · NotFound: 형식
+            SourceUnavailable · NoAudioTrack: 정보 조회(info_of)
+            VideoTooLong: 3시간 초과
+        """
+        await settings.check_stored_key()  # 분석 버튼을 누를 때 확인한다(UI-5 규칙)
+        await settings.require_key()
+        if isinstance(req, YouTubeSource):
+            if _youtube_id(req.url) is None:
+                raise UrlInvalid(accepted=ACCEPTED_URLS)
+        else:
+            _check_inbox_name(req.path)
+        info = await self.info_of(req)
+        if info.duration_sec > config.MAX_DURATION_SEC:
+            raise VideoTooLong(duration_sec=info.duration_sec, max_sec=config.MAX_DURATION_SEC)
+        row = await crud.by_source_id(self.session, info.source_id)
+        job: JobSummary | None = None
+        if row is not None:
+            job = await self.jobs.latest(row.id)
+            if job is None:  # 사전 안내에서 취소했던 영상 — 처음 넣은 것과 같게
+                crud.overwrite(row, info)
+                await self.session.commit()
+        else:
+            row = await self._insert(info)
+            job = await self.jobs.latest(row.id)
+        count = (await self.chats.count_by_videos([row.id])).get(row.id, 0)
+        return self.to_dto(row, job, count)
+
+    async def _insert(self, info: SourceInfo) -> VideoRow:
+        # 같은 영상을 동시에 두 번 넣으면 둘째가 unique 위반 — 다시 읽어 그 행으로(한 번만)
+        try:
+            row = crud.insert(self.session, info)
+            await self.session.commit()
+        except IntegrityError:
+            await self.session.rollback()
+            found = await crud.by_source_id(self.session, info.source_id)
+            if found is None:
+                raise
+            return found
+        await self.session.refresh(row)  # created_at은 DB가 채운다
+        return row
