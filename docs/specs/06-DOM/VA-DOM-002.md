@@ -161,7 +161,9 @@ app/
 frontend/
 ├── package.json · tsconfig.json · next.config.ts   화면만 설정하므로 여기. next.config.ts가 `/api/*`를 api로 넘긴다 — 브라우저는 web 하나만 본다
 ├── playwright.config.ts · e2e/   E2E. 와이어프레임 요소 번호(data-el)로 누르고, 가짜 OpenAI 서버(e2e/fake-openai.mjs)를 함께 띄운다.
-│                              yt-dlp도 가짜(e2e/fake-ytdlp.mjs — 정해 둔 정보 · 자막)라 YouTube에 닿지 않는다. 시작 때 테스트 DB를 비운다
+│                              yt-dlp도 가짜(e2e/fake-ytdlp.mjs — 정해 둔 정보 · 자막)라 YouTube에 닿지 않는다. 시작 때 테스트 DB를 비운다.
+│                              ffmpeg · ffprobe도 가짜(e2e/fake-ffmpeg.mjs — inbox 파일 이름으로 길이 · 음성 유무, 추출 · 자르기는 길이만 담은 작은 파일)이고
+│                              inbox는 시작 때 만드는 임시 폴더다
 ├── public/                    그대로 서빙 — favicon
 └── src/
     ├── app/                   Next.js App Router — 라우팅. 기본형의 main.tsx · App.tsx 몫
@@ -287,7 +289,7 @@ classDiagram
 관계
 - `AudioChunk` * — 1 `AnalysisJob` (job_id)
 
-`seq`는 1부터. `path`는 `data/tmp/{video_id}/{seq}.mp3`이고 받아쓰기가 끝나 파일을 지우면 null. `state`는 waiting · in_flight · done · failed 넷([[VA-UI-002#UI-3]] 조각 격자). `attempts`는 그 조각을 보낸 횟수 — 자동 재시도 상한(설정값, 첫 값 3)에 닿으면 `failed`. `done_at`으로 조각당 평균 시간을 재서 남은 시간을 계산한다([[VA-UC-001#UC-S6]] 2번). **`result`는 그 조각의 받아쓰기 결과**(`SttSegment` 목록, 오프셋을 더하기 전)다. 조각이 `done`이 될 때 저장하고, 스크립트를 만든 뒤에도 남긴다 — 실패 뒤 재시도가 `done` 조각을 다시 보내지 않으려면 결과가 행에 있어야 한다([[VA-UC-001#UC-H0]] 최소 보장 「이미 받아쓴 조각은 버려지지 않는다」, 시퀀스 되먹임). 작업이 끝나도 행은 남긴다([[VA-DOM-001]] 5장 2).
+`seq`는 1부터. `path`는 `data/tmp/{video_id}/{seq}.mp3`이고 받아쓰기가 끝나 파일을 지우면 null. `state`는 waiting · in_flight · done · failed 넷([[VA-UI-002#UI-3]] 조각 격자). `attempts`는 그 조각을 보낸 누적 횟수다. 한 번 도는 동안 자동 재시도 상한(설정값, 첫 값 3)만큼 보내고도 실패하면 `failed` — 다시 시도하면 상한을 새로 센다. `done_at`으로 조각당 평균 시간을 재서 남은 시간을 계산한다([[VA-UC-001#UC-S6]] 2번). **`result`는 그 조각의 받아쓰기 결과**(`SttSegment` 목록, 오프셋을 더하기 전)다. 조각이 `done`이 될 때 저장하고, 스크립트를 만든 뒤에도 남긴다 — 실패 뒤 재시도가 `done` 조각을 다시 보내지 않으려면 결과가 행에 있어야 한다([[VA-UC-001#UC-H0]] 최소 보장 「이미 받아쓴 조각은 버려지지 않는다」, 시퀀스 되먹임). 작업이 끝나도 행은 남긴다([[VA-DOM-001]] 5장 2).
 
 ### 2.3 analysis
 
@@ -743,7 +745,7 @@ classDiagram
 | `wake` | `start` · `retry` · video/router(삭제 뒤) | [[VA-UC-001#UC-H0]] 3b · [[VA-UC-001#UC-H6]] 4 | |
 
 **규칙이 사는 곳**
-- `estimate`: 작업이 있으면 null. 자막 있음이면 `needs_stt = false` · 약 60초 · 받아쓰기 비용 0. 받아쓰기 필요면 조각 수 = 길이 ÷ 조각 길이(설정값), 동시 수 = 설정값, 받아쓰기 비용 = 분 × 단가(설정값 — `SettingsService.current_models`의 모델 단가), 예상 시간 = 조각 수 ÷ 동시 수 × 조각당 예상 시간. 텍스트 모델 비용 추정식은 7장. 화면은 이 숫자를 그대로 보인다([[VA-UI-002#UI-2]] 규칙)
+- `estimate`: 작업이 있으면 null. 자막 있음이면 `needs_stt = false` · 약 60초 · 받아쓰기 비용 0. 받아쓰기 필요면 조각 수 = 길이 ÷ 조각 길이(설정값), 동시 수 = 설정값, 받아쓰기 비용 = 분 × 단가(설정값 — `SettingsService.current_models`의 모델 단가), 예상 시간 = 조각 수 ÷ 동시 수 × 조각당 예상 시간(+ 내려받기 · 추출 · 로컬 음성 변환 몫). 텍스트 모델 비용 추정식은 7장. 화면은 이 숫자를 그대로 보인다([[VA-UI-002#UI-2]] 규칙)
 - `start`: `SettingsService.require_key` → 이 영상에 작업이 있으면 `job-exists` → `stages_for(video)`로 단계 목록, 설정에서 모델 · 동시 수를 복사해 행 생성(`queued` · `pending` · `queued_at = 지금`) → 워커를 깨운다. **늘 `queued`로 넣는다** — 도는 작업이 없으면 워커가 곧바로 `running`으로 바꾸므로 시작하는 길이 하나다. 응답의 `status`는 그 순간의 값이라 `queued`일 수도 `running`일 수도 있다([[VA-API-001#POST/api/videos/{id}/job]] 3번)
 - `stages_for`: 자막 있는 YouTube [download, summarize, chapter, suggest] · 자막 없는 YouTube [download, transcribe, summarize, chapter, suggest] · 로컬 영상 [extract, transcribe, summarize, chapter, suggest] · 로컬 음성 [transcribe, summarize, chapter, suggest]([[VA-UC-001#UC-S2]], [[VA-UC-001#UC-H2]] 2b)
 - `retry`: `status`가 `failed`가 아니면 `job-not-failed`. `error_*`를 비우고 `queued`로 되돌리고 `queued_at`을 지금으로 적은 뒤 워커를 깨운다 — 같은 행, 같은 `id`, `stage`는 실패한 단계 그대로. 도는 작업이 있으면 대기열 끝에서 기다린다
@@ -752,7 +754,8 @@ classDiagram
 - `wake`: 그 신호를 켠다. 부르는 곳은 셋 — `start` · `retry`(커밋 뒤)와 삭제 라우터(`VideoService.delete` 뒤). `finish` · `fail` · `cancel`은 깨우지 않는다 — 워커가 도는 태스크를 직접 기다리므로 끝나면 스스로 다음으로 간다
 - `queue_position`: `queued`인 행 중 `queued_at`이 자기보다 이른 것의 수 + 1. `queued`가 아니면 None. 도는 작업이 하나 있고 자기가 대기열 맨 앞이면 1이고, 그때 화면의 '앞 영상 1개'와 '1번째'가 같은 수다([[VA-API-001]] 5장 8)
 - `cancel`: 태스크 핸들이 있으면 취소하고 기다린다. 행은 지우지 않는다(cascade가 지운다). 없으면(대기 중 · 실패 · 완료) 아무것도 안 한다 — 대기 중인 작업은 행이 지워지면 대기열에서 빠진 것이다. 워커는 깨우지 않는다 — 삭제 라우터가 행을 지운 뒤에 `wake`를 부른다
-- `progress` · `to_job`: `remaining_sec` = 받아쓰기 단계면 미완료 조각 수 × 지금까지 조각당 평균(`done_at` 차이), 다른 단계는 예상 전체 시간 − 지난 시간(0 아래로 내려가지 않는다), `running`이 아니면 null. `queue_position`은 위 규칙대로. `chunks.next_seq`는 `done`이 아닌 첫 조각. `Chunks`의 집계(done · in_flight · failed · waiting)는 조각 행에서 센다. `progress_pct`는 파이프라인이 단계 가중치로 갱신한 값을 그대로
+- `progress` · `to_job`: `remaining_sec` = 받아쓰기 단계면 미완료 조각 수 × 이번 실행에서 끝난 조각의 조각당 평균(`done_at`이 단계 시작 뒤인 것만 — 다시 시도 뒤 이전 실행의 조각은 세지 않는다. 조각 행이 아직 없으면 다른 단계처럼), 다른 단계는 예상 전체 시간 − 지난 시간(0 아래로 내려가지 않는다), `running`이 아니면 null. `queue_position`은 위 규칙대로. `chunks.next_seq`는 `done`이 아닌 첫 조각. `Chunks`의 집계(done · in_flight · failed · waiting)는 조각 행에서 센다. `progress_pct`는 파이프라인이 단계 가중치로 갱신한 값을 그대로
+- `mark_stage`: 끝난 단계의 걸린 시간을 적고(다시 시도로 같은 단계를 또 돌면 더한다) 새 단계의 시작 시각과 진행률(앞선 단계 가중치 합)을 적는다. 받아쓰기로 다시 들어가면 이미 끝난 조각 몫까지 넣는다 — 진행률이 뒤로 가지 않게
 - `mark_chunk`: `in_flight`로 바꿀 때 `attempts`를 1 올린다. `done`으로 바꿀 때 `done_at` · `result`를 저장하고 `progress_pct`를 완료 조각 비율로 갱신한다. `waiting`(재시도 대기) · `failed`는 상태만 바꾼다
 - `fail_orphans`: 시작 때 `running`인 작업을 `failed`(kind `unknown`, reason '서버가 다시 시작됨')로, `queued`는 그대로 둔다(워커가 뜨면 이어서 돈다). 되돌린 작업의 `in_flight` 조각을 `waiting`으로 돌린다. 핸들이 없는 작업은 돌지 않는데 화면에는 도는 것처럼 보이기 때문이다(5장 8)
 - `running`은 프로세스 전체에 하나 — 동시 분석 하나([[VA-INFRA-001]] 3절). 나머지는 `queued`이고 순서는 `queued_at`이다
@@ -772,21 +775,22 @@ resume(job_id: int, video: Video) -> None       worker가 띄운다(다시 시�
   mark_stage(job_id, stage)                     시작 시각 기록 → 끝나면 stage_durations_sec에 걸린 시간
   download   자막 있음: AudioSourcePort.captions → AnalysisService.save_transcript(caption_manual|caption_auto)
              자막 없음: AudioSourcePort.download_audio → data/tmp/{video_id}/audio
-  extract    AudioSourcePort.extract_audio (로컬 영상 → mp3 64kbps 모노). 로컬 음성은 그대로
+  extract    AudioSourcePort.extract_audio (로컬 영상 → mp3 64kbps 모노). 로컬 음성은 이 단계가 없고, transcribe가 조각을 나누기 전에
+             같은 함수로 mp3로 바꾼다 — cut은 다시 인코딩하지 않아 wav · m4a를 그대로 못 자르고, inbox 원본은 읽기만 한다
   transcribe AudioSplitPort.split → plan_chunks · done이 아닌 조각을 동시 수만큼 병렬로 SttPort.transcribe
              성공하면 mark_chunk(done, result) · 조각 파일 삭제
-             조각마다 attempts ≤ 상한(3)까지 자동 재시도(waiting으로 되돌려 다시), 넘으면 mark_chunk(failed)
+             조각마다 이번 실행에서 상한(3)번까지 자동 재시도(waiting으로 되돌려 다시), 다 보내고도 실패하면 mark_chunk(failed)
              → 돌고 있던 다른 조각이 끝나기를 기다린 뒤 fail (완료 수와 다음 조각 번호가 화면 규칙과 맞도록)
              전부 done이면 조각 행의 result를 순서대로 오프셋을 더해 이어 붙여 AnalysisService.save_transcript(stt)
   summarize  AnalysisService.generate_summary(video)
   chapter    AnalysisService.generate_chapters(video)
   suggest    AnalysisService.generate_questions(video) → finish(job_id) → data/tmp/{video_id} 삭제
 
-실패:  어느 단계든 예외 → fail(job_id, JobError(kind, reason, chunk_seq, attempts)). 완료한 조각 · 저장된 스크립트는 그대로
+실패:  어느 단계든 예외 → fail(job_id, JobError(error_kind(e), reason_of(e), chunk_seq, attempts)). 완료한 조각 · 저장된 스크립트는 그대로
 취소:  CancelledError → 조각 파일은 두고 즉시 끝난다. 행 삭제는 cascade
 ```
 
-단계 실패는 HTTP 에러가 아니다 — `Job.error`로 나간다([[VA-API-001]] 2장). `ErrorKind`는 예외 종류로 정한다: 네트워크 예외 → `network`, OpenAI SDK 예외 → `openai`, yt-dlp 실패 → `youtube`, ffmpeg 종료 코드 → `ffmpeg`, 디스크 부족 → `disk`, 그 밖 → `unknown`. 병렬 수 · 조각 길이 · 재시도 상한은 `core/config.py` 설정값이고 첫 값은 MINISPEC에서 정한다([[VA-INFRA-001]] 9절).
+단계 실패는 HTTP 에러가 아니다 — `Job.error`로 나간다([[VA-API-001]] 2장). `ErrorKind`는 예외 종류로 정한다: 네트워크 예외 → `network`, OpenAI SDK 예외 → `openai`, yt-dlp 실패 → `youtube`, ffmpeg 종료 코드 → `ffmpeg`, 디스크 부족 → `disk`, 그 밖 → `unknown`. 이유(`reason`)는 한국어 한 줄이고 `reason_of`가 만든다 — 앱이 만든 한국어 문장이면 그대로, 아니면 종류별 표(MINISPEC 작업 서비스 `pipeline.reason_of`). 화면 실패 알림의 '왜'다. 병렬 수 · 조각 길이 · 재시도 상한은 `core/config.py` 설정값이고 첫 값은 MINISPEC에서 정한다([[VA-INFRA-001]] 9절).
 
 ### 4.3 analysis
 
