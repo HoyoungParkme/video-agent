@@ -90,3 +90,26 @@ class AnalysisService:
         return [
             Segment(seq=r.seq, start_sec=r.start_sec, end_sec=r.end_sec, text=r.text) for r in rows
         ]
+
+    async def chapters_of(self, video_id: int) -> list[Chapter]:
+        """VA-MS-003#AnalysisService.chapters_of
+
+        영상의 챕터 목록, 번호순. 파트 번호를 같이 채운다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            챕터들. 파트가 없는 영상은 part_seq가 모두 None
+        """
+        rows = await crud.chapters_with_part_seq(self.session, video_id)
+        return [
+            Chapter(
+                seq=c.seq,
+                part_seq=part_seq,
+                start_sec=c.start_sec,
+                title=c.title,
+                bullets=c.bullets,
+            )
+            for c, part_seq in rows
+        ]

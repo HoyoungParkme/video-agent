@@ -52,3 +52,12 @@ async def test_segments_of(db, make, summarizer) -> None:
         (2, 10, "둘"),
         (3, 20, "셋"),
     ]
+
+
+async def test_chapters_of_without_parts(db, make, summarizer) -> None:
+    row = await make.video()
+    await crud.replace_chapters(db, row.id, [(i * 360.0, f"챕터 {i}", ["a"]) for i in range(8)])
+    await db.commit()
+    chapters = await AnalysisService(db, summarizer).chapters_of(row.id)
+    assert [c.seq for c in chapters] == list(range(1, 9))
+    assert all(c.part_seq is None for c in chapters)
