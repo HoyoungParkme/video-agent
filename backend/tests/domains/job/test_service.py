@@ -376,3 +376,32 @@ async def test_latest_by_videos_constant_queries(db, make, queries) -> None:
 async def test_latest_by_videos_empty(db, queries) -> None:
     assert await JobService(db).latest_by_videos([]) == {}
     assert queries == []
+
+
+# --- mark_stage · finish · fail
+
+
+async def test_mark_stage_captions(db, make) -> None:
+    job = await make.job((await make.video()).id, JobStatus.running)
+    await JobService(db).mark_stage(job.id, JobStage.download)
+    row = await _job_row(db, job.id)
+    assert row.stage_durations_sec == {}  # pending에서 첫 단계로 — 걸린 시간 없음
+    assert row.progress_pct == 0
+    row.stage_started_at -= timedelta(seconds=3)
+    await db.commit()
+    await JobService(db).mark_stage(job.id, JobStage.summarize)
+    row = await _job_row(db, job.id)
+    assert row.stage_durations_sec == {"download": 3}
+    assert row.progress_pct == 25
+    assert (row.stage, (datetime.now(UTC) - row.stage_started_at).total_seconds() < 5) == (
+        JobStage.summarize,
+        True,
+    )
+
+
+async def test_mark_stage_with_transcribe(db, make) -> None:
+    job = await make.job(
+        (await make.video()).id, JobStatus.running, stage="transcribe", stages=STT_STAGES
+    )
+    await JobService(db).mark_stage(job.id, JobStage.summarize)
+    assert (await _job_row(db, job.id)).progress_pct == 77  # 70 + 7.5 → 내림

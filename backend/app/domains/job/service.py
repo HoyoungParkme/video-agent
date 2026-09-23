@@ -401,3 +401,26 @@ class JobService:
             r.video_id: self._summary(r, *counts.get(r.id, (None, None)), positions.get(r.id))
             for r in rows
         }
+
+    async def mark_stage(self, job_id: int, stage: JobStage) -> None:
+        """VA-MS-002#JobService.mark_stage
+
+        단계 전환 — 끝난 단계의 걸린 시간, 새 단계의 시작 시각, 진행률(앞선 단계 가중치 합).
+
+        Args:
+            job_id: 작업 id
+            stage: 이제 시작하는 단계
+        """
+        row = await crud.by_id(self.session, job_id)
+        self._close_stage(row)
+        row.stage = stage
+        row.stage_started_at = datetime.now(UTC)
+        row.progress_pct = _done_pct(row.stages, stage)
+        await self.session.commit()
+
+    @staticmethod
+    def _close_stage(row: AnalysisJobRow) -> None:
+        # 처음(pending)에서 넘어갈 때는 걸린 시간이 없다
+        if row.stage != JobStage.pending:
+            took = round(_elapsed(row.stage_started_at))
+            row.stage_durations_sec = {**row.stage_durations_sec, row.stage.value: took}
