@@ -20,7 +20,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 
 **커밋 규격** — `code(슬라이스): 함수명 — 요약`. 함수 하나 = 커밋 하나, docstring 첫 줄 = MINISPEC 항목 ID. PR = 슬라이스 하나. **커밋 메시지와 PR 본문에 에이전트 표시(`Co-Authored-By` · 세션 링크 · 「Generated with」)를 넣지 않는다** — 제목과 본문만 쓴다(싱크독 규약 STD-001 1.10, 사용자 결정 2026-09-22).
 
-**진행 상황**: 카드 7장. 아직 시작 전. 3장의 결정 일곱은 끝났고(2026-09-21), 1번의 남은 정리가 끝나면 A부터 시작한다.
+**진행 상황**: 카드 7장. 아직 시작 전. 3장이 모두 끝났다(2026-09-23) — 다음은 카드 A이고, 첫 작업은 모델 단가와 프레임워크 버전 고정이다.
 
 ---
 
@@ -34,11 +34,11 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 | 구현 | **시작할 때 먼저**: 텍스트 모델 단가(`gpt-5.4-mini` · `gpt-5.4`)와 Next.js · FastAPI · PostgreSQL 버전을 그날 값으로 고정한다(3장 5) · 저장소 루트 — `backend/` · `frontend/` · `Dockerfile` · `Dockerfile.web` · `docker-compose.yml`(api · web · db, inbox 읽기 전용 · data 쓰기 · **`.env` 파일 하나를 api에 읽기·쓰기** 마운트, [[VA-INFRA-001#C6]]) · `.env.example` · `.gitignore` · `.dockerignore` · `README.md` · `AGENTS.md`(+ `CLAUDE.md` 한 줄) · **backend**: `pyproject.toml`(FastAPI · SQLAlchemy 2 async · asyncpg · Alembic · openai · httpx · pydantic-settings, `uv`) · `app/main.py`(앱 조립 · lifespan · `/health`) · `core/config.py`(설정값 전부 — MS 문서들의 「설정값(첫 값)」 표. 키와 고른 모델은 두지 않고 `.env` 경로만, [[VA-MS-005]] 0장) · `core/db.py` · `core/errors.py`(problem+json 17종 → 예외 17개 + 핸들러 · 포괄 `internal`) · `domains/*/models.py` 11개 · `infra/errors.py` · `app/prompts/`(`summary.md` · `chapters.md` · `questions.md` · `answer.md` 첫 판 — [[VA-MS-006]] 0장 표의 자리 표시 · 반드시 들어갈 규칙 · 출력 형식을 지킨다 · `__init__.py`) · `shared/timecode.py` · **frontend**: Next.js App Router · `styles.css`([[VA-UI-001]] 3장 전사) · `next/font` 로컬 글꼴 · `components/Header` · `KeyBanner` · `Dialog` · `Toast` · `EmptyBox` · buttons · `api/client.ts`(problem+json → 예외) · `app/layout.tsx` |
 | DB | Alembic `0001_initial` — 테이블 11개 + 인덱스 · 제약(부분 unique · 복합 FK · CHECK) 전부([[VA-DOM-003]] 3장). `analysis_jobs`의 `status`에 `queued`, `queued_at` 컬럼, 대기열 부분 인덱스까지 · `downgrade` |
 | infra | [[VA-MS-007#ytdlp.info]] · [[VA-MS-007#ytdlp.captions]] · [[VA-MS-007#ytdlp.download_audio]] · [[VA-MS-007#ffmpeg.probe]] · [[VA-MS-007#ffmpeg.extract_audio]] · [[VA-MS-007#ffmpeg.silences]] · [[VA-MS-007#ffmpeg.cut]] · [[VA-MS-007#openai.client]] · [[VA-MS-007#openai.verify_key]] · [[VA-MS-007#openai.transcribe]] · [[VA-MS-007#openai.chat]] — 11개 |
-| 설정 | [[VA-MS-005#SettingsService.get]] · [[VA-MS-005#SettingsService.set_key]] · [[VA-MS-005#SettingsService.set_models]] · [[VA-MS-005#SettingsService.check_stored_key]] · [[VA-MS-005#SettingsService.require_key]] · [[VA-MS-005#SettingsService.current_models]] · [[VA-MS-005#SettingsService.read_env]] · [[VA-MS-005#SettingsService.write_env]] — 8개 · `core/settings_router.py` |
+| 설정 | [[VA-MS-005#SettingsService.get]] · [[VA-MS-005#SettingsService.set_key]] · [[VA-MS-005#SettingsService.set_models]] · [[VA-MS-005#SettingsService.check_stored_key]] · [[VA-MS-005#SettingsService.require_key]] · [[VA-MS-005#SettingsService.current_models]] · [[VA-MS-005#SettingsService.read_env]] · [[VA-MS-005#SettingsService.write_env]] · [[VA-MS-005#SettingsService.api_key]] — 9개 · `core/settings_router.py`. `api_key`를 부르는 `client_for`는 어댑터를 조립하는 B1에서 `main.py`가 만든다 |
 | 공용 조각 | [[VA-MS-006#prompts.render]] · [[VA-MS-006#timecode.label]] · [[VA-MS-006#timecode.parse]] — 3개. 어댑터가 B1 · B3에서, 내보내기가 B4에서 쓴다 |
 | API | [[VA-API-001#GET/api/settings]] · [[VA-API-001#POST/api/settings/key]] · [[VA-API-001#PUT/api/settings/models]] |
 | 화면 | [[VA-UI-002#UI-5]] 설정(키 카드 · 모델 카드 · 폴더 · 데이터 표) · 공통 1.1 헤더 · 1.4 키 없음 배너(문구 셋 — 키 없음 · 확인 실패 · 연결을 확인하지 못함. 연결 문구일 때는 [키 넣으러 가기]가 없고 버튼을 막지 않는다) · [[VA-UI-002#UI-1]]의 첫 실행 상태(배너 + 막힌 버튼 + 빈 상태 상자 — 입력 카드 동작은 B1 · B2) |
-| 테스트 | 마이그레이션 up/down · `infra`는 가짜 실행 파일 · 가짜 OpenAI 클라이언트로 11개 테스트 관점 · 설정 8개 테스트 관점(`.env` 제자리 쓰기 — 다른 줄 · 주석 보존, 연결 실패 뒤 한 번 다시 확인) · 공용 조각 3개 테스트 관점(프롬프트 파일 넷 검사 포함) · `GET/POST/PUT /api/settings*` · 프런트 `tsc` · `build` · **E2E**: 빈 상태로 앱을 열면 배너 → 설정에서 키 저장(가짜 OpenAI) → 배너 사라짐([[VA-SCN-001#S6]] 1번) |
+| 테스트 | 마이그레이션 up/down · `infra`는 가짜 실행 파일 · 가짜 OpenAI 클라이언트로 11개 테스트 관점 · 설정 9개 테스트 관점(`.env` 제자리 쓰기 — 다른 줄 · 주석 보존, 연결 실패 뒤 한 번 다시 확인) · 공용 조각 3개 테스트 관점(프롬프트 파일 넷 검사 포함) · `GET/POST/PUT /api/settings*` · 프런트 `tsc` · `build` · **E2E**: 빈 상태로 앱을 열면 배너 → 설정에서 키 저장(가짜 OpenAI) → 배너 사라짐([[VA-SCN-001#S6]] 1번) |
 | 스텁 | `main.py` lifespan은 키 확인만 한다. 죽은 작업 되돌리기(`fail_orphans`)와 대기열 워커는 B1에서 넣는다 · 도메인 라우터 넷은 아직 없다(B1부터) |
 | 선행 | 없음 |
 | 완료 | — |
@@ -141,7 +141,7 @@ E2E는 가짜 yt-dlp · ffmpeg · OpenAI로 돈다(C에서만 진짜). 테스트
 
 | # | 무엇 | 결정 | 반영한 곳 |
 |---|---|---|---|
-| 1 | **상위 문서 갱신 요청 정리** — 화면 설계 8장의 「상위 문서 갱신 요청」 16건과 그 뒤 되먹임을 위 문서부터 한 문서씩 반영 | 진행 중. 남은 것은 [[VA-MS-004]] 3장의 연결 문구 미결과, 모아 닫을 되먹임 — 클래스 명세(대기열 워커 · `wake` · `.env` 읽고 쓰기 · 프롬프트와 시각 표기 파일 자리), [[VA-MS-003]](시각 표기), [[VA-MS-005]](키를 주는 공개 함수), [[VA-MS-007]](키마다 클라이언트 캐시) | PRD v5 · SCN v3 · UC v2 · INFRA v3 · 도메인 모델 v3 · 화면 설계 v4 · 와이어프레임 v3 · API v2 · 클래스 명세 v11 · ERD v4 · 시퀀스 v2 · [[VA-MS-002]] v2 · [[VA-MS-005]] v2 · [[VA-MS-006]] v2 |
+| 1 | **상위 문서 갱신 요청 정리** — 화면 설계 8장의 「상위 문서 갱신 요청」 16건과 그 뒤 되먹임을 위 문서부터 한 문서씩 반영 | 끝났다(2026-09-23). 열린 되먹임이 없다 | PRD v5 · SCN v3 · UC v2 · INFRA v3 · 도메인 모델 v3 · 클래스 명세 v12 · ERD v4 · 화면 설계 v6 · 와이어프레임 v4 · API v3 · 시퀀스 v3 · [[VA-MS-002]] v3 · [[VA-MS-003]] v2 · [[VA-MS-004]] v2 · [[VA-MS-005]] v3 · [[VA-MS-006]] v3 · [[VA-MS-007]] v2 |
 | 2 | **키 저장 위치** | `.env` 파일 하나. 화면에서 넣은 키도 앱이 그 줄을 제자리에서 고친다(바인드 마운트라 rename 불가). `data/settings.json`은 쓰지 않는다 | [[VA-INFRA-001#C6]] · [[VA-MS-005]] 0장 |
 | 3 | **동시 분석** | 대기열. 도는 분석은 하나이고 나머지는 `queued`로 차례를 기다린다. 워커 하나가 꺼내 돌린다. `another-job-running`은 없앴다 | [[VA-API-001]] 5장 8 · [[VA-MS-002]] · [[VA-SEQ-001#SEQ-14]] |
 | 4 | **결과 화면의 YouTube 시점 링크** | 두지 않는다. 링크는 내보낸 마크다운에만 | [[VA-UC-001#UC-H3]] 6a · [[VA-UI-001]] 8장 |
@@ -149,7 +149,7 @@ E2E는 가짜 yt-dlp · ffmpeg · OpenAI로 돈다(C에서만 진짜). 테스트
 | 6 | **프롬프트 자리** | `backend/app/prompts/*.md` 파일 넷. 명세는 자리 표시 · 반드시 들어갈 규칙 · 출력 형식만 정한다 | [[VA-MS-006]] 0장 · [[VA-DOM-002]] 1장 |
 | 7 | **네트워크로 키 확인이 실패했을 때** | 배너 문구를 '연결을 확인하지 못했어요 — …'로 가르고 [키 넣으러 가기]를 뺀다. 버튼은 막지 않고, 누를 때 서버가 한 번 다시 확인한다 | [[VA-UI-002]] 1.4 · [[VA-API-001]] 5장 11 · [[VA-MS-005#SettingsService.require_key]] |
 
-1번의 남은 일이 끝나면 카드 A를 시작한다. 5번은 카드 A 첫 작업이다.
+일곱 모두 끝났다. 5번은 카드 A 첫 작업이다.
 
 ---
 
