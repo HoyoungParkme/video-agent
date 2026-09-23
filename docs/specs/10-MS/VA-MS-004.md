@@ -64,11 +64,11 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **처리** — 순서가 규칙이다
 1. if `video.status != analyzed` → `! result-not-ready {video_status: video.status}`
-2. `SettingsService.require_key()` · `! key-missing` · `! key-invalid`
+2. `await SettingsService.require_key()` · `! key-missing` · `! key-invalid` — 마지막 키 확인이 연결 실패(`network`)였으면 여기서 한 번 다시 확인한다([[VA-MS-005#SettingsService.require_key]]). 또 닿지 못하면 `key-invalid`(`reason_kind = network`)이고, 화면은 그 질문 자리에 답변 실패로 '연결을 확인하지 못했어요'를 보인다([[VA-UI-002#UI-4]] 10.2 규칙). 질문은 저장하지 않는다
 3. `q = question.strip()` · if 비어 있음 → `! validation {errors: [{field: question, message: 비어 있음}]}` · 2,000자를 넘으면 자른다
 4. `context = context_for(video, q)` — 구간 목록
 5. `history = DB: chat_turns where video_id order by asked_at desc limit config.CHAT_HISTORY_TURNS`를 시간순으로 뒤집는다([[VA-UC-001#UC-H4]] 1b — 대명사가 풀린다)
-6. `model = SettingsService.current_models().text`
+6. `model = SettingsService.current_models().text.id`
 7. `draft = AnswererPort.answer(q, context, history, model)` — `config.CHAT_TIMEOUT_SEC` 안에 · if 예외 · 시간 초과 → `! llm-unavailable {reason}` — **저장하지 않는다**([[VA-UI-002#UI-4]] 규칙: 실패한 질문은 기록에 남지 않는다)
 8. `cited = [s for s in draft.cited_secs if 0 ≤ s ≤ video.duration_sec]` 오름차순 · 중복 제거 — 범위 밖 시각은 버린다(인사이트와 달리 보정하지 않는다. 답의 근거는 모델이 실제로 본 구간에서만 나와야 한다)
 9. **트랜잭션**: `row = DB: chat_turns insert(video_id, question=q, answer=draft.answer, cited_secs=cited, model, asked_at=now)`
@@ -81,13 +81,13 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 | 조건 | 에러 |
 |---|---|
 | 결과 없음(작업 없음 · 진행 중 · 실패) | `result-not-ready` |
-| 키 없음 · 확인 실패 | `key-missing` · `key-invalid` |
+| 키 없음 · 확인 실패(연결 실패였으면 다시 확인한 뒤에도 실패) | `key-missing` · `key-invalid` |
 | 빈 질문 | `validation` |
 | 모델 호출 실패 · 시간 초과 | `llm-unavailable` |
 
 **호출하는 것** `SettingsService.require_key` · `SettingsService.current_models` · [[#ChatService.context_for]] · `AnswererPort.answer`
 
-**테스트 관점** 가짜 포트로: 답 성공 → 행 하나, `count_by_videos` +1 · 포트 예외 → `llm-unavailable`이고 행이 없다 · 빈 질문 · 공백만 → `validation` · `in_progress` 영상 → `result-not-ready`, 포트 호출 없음 · 12턴 있을 때 포트가 받는 `history`는 최근 10개 시간순 · `cited_secs`에 길이 밖 값이 오면 버려진다 · 근거 없음 → `cited_secs=[]` 저장 · 키 없음 → 포트 호출 없음
+**테스트 관점** 가짜 포트로: 답 성공 → 행 하나, `count_by_videos` +1 · 포트 예외 → `llm-unavailable`이고 행이 없다 · 빈 질문 · 공백만 → `validation` · `in_progress` 영상 → `result-not-ready`, 포트 호출 없음 · 12턴 있을 때 포트가 받는 `history`는 최근 10개 시간순 · `cited_secs`에 길이 밖 값이 오면 버려진다 · 근거 없음 → `cited_secs=[]` 저장 · 키 없음 → 포트 호출 없음 · 마지막 키 확인이 `network`이고 다시 확인도 실패 → `key-invalid`(`network`), 포트 호출 없음, 행 없음 · 다시 확인이 통과 → 답을 받아 저장한다 · 저장된 행의 `model`이 모델 id다
 
 ---
 
@@ -131,4 +131,4 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 - [ ] 관련 챕터 고르기를 낱말 일치로 시작한다. 품질이 모자라면 간단 임베딩(`pgvector`, [[VA-DOM-003]] 5장)으로 — 사용자가 결과를 보고 결정([[VA-INFRA-001]] 9절)
 - [ ] 한글 낱말 나누기 — 조사 · 어미를 떼지 않으면 '비용은'과 '비용'이 안 맞는다. 부분 일치로 넘기지만 형태소 분석기를 붙일지
 - [ ] 답 시간 제한 20초 — 목표 10초([[VA-PRD-001#N1]])보다 길게 잡았다. 긴 맥락에서 실제 시간을 재고 조정
-- [ ] 키 확인이 네트워크로 실패했을 때 질문 입력의 안내 문구 — [[VA-SEQ-001]] 3장(되먹일 것 #6)과 같은 항목. 사용자 확인
+- [x] 키 확인이 네트워크로 실패했을 때 질문 입력의 안내 문구 — 결정: 입력 영역의 안내(10.2)를 '연결을 확인하지 못했어요 — …'로 가르고 링크는 없다. 입력칸 · 보내기 · 추천 질문은 막지 않고, 보내면 `ask` 2번에서 키를 다시 확인한다(사용자 결정 2026-09-21, [[VA-UI-002#UI-4]] · [[VA-MS-005#SettingsService.require_key]])
