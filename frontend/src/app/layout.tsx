@@ -10,13 +10,13 @@ import Header from "@/components/Header";
 import KeyBanner from "@/components/KeyBanner";
 import "@/styles.css";
 
-const serif = localFont({
+const hahmlet = localFont({
   src: "../assets/Hahmlet-VF.woff2",
   weight: "500 600",
   variable: "--font-hahmlet",
   display: "swap",
 });
-const sans = localFont({
+const plexSans = localFont({
   src: [
     { path: "../assets/IBMPlexSansKR-Regular.woff2", weight: "400" },
     { path: "../assets/IBMPlexSansKR-Medium.woff2", weight: "500" },
@@ -25,7 +25,7 @@ const sans = localFont({
   variable: "--font-plex-sans",
   display: "swap",
 });
-const mono = localFont({
+const plexMono = localFont({
   src: [
     { path: "../assets/IBMPlexMono-Medium.woff2", weight: "500" },
     { path: "../assets/IBMPlexMono-SemiBold.woff2", weight: "600" },
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ko" className={`${serif.variable} ${sans.variable} ${mono.variable}`}>
+    <html lang="ko" className={`${hahmlet.variable} ${plexSans.variable} ${plexMono.variable}`}>
       <body>
         <KeyBanner />
         <Header />
