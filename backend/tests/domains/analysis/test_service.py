@@ -178,3 +178,48 @@ async def test_generate_summary_windowed_is_stub(db, make, summarizer, env_file)
     with pytest.raises(NotImplementedYet):
         await AnalysisService(db, summarizer).generate_summary(video)
     assert summarizer.calls == []
+
+
+# --- generate_chapters
+
+
+async def test_generate_chapters_50_minutes(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=3000)
+    await make.transcript(video.id, ["x"] * 30, step=100)
+    summarizer.chapter_draft = ChapterDraft(
+        parts=[],
+        chapters=[
+            (None, 700.0, "셋째", ["a", "b", "c", "d"]),  # 요점 넷 → 셋
+            (None, 30.0, "첫째", ["a", "b"]),  # 첫 챕터는 0초로 당긴다
+            (None, 400.0, "둘째", ["a", "b"]),
+            (None, 400.0, "둘째 또", ["a", "b"]),  # 같은 시각 → 뒤 것을 뺀다
+            (None, 5000.0, "넷째", ["a", "b"]),  # 길이 밖 → 마지막 구간
+        ],
+    )
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    rows = list(await db.scalars(select(ChapterRow).order_by(ChapterRow.seq)))
+    assert [(r.seq, r.start_sec, r.title) for r in rows] == [
+        (1, 0, "첫째"),
+        (2, 400, "둘째"),
+        (3, 700, "셋째"),
+        (4, 2900, "넷째"),
+    ]
+    assert rows[2].bullets == ["a", "b", "c"]
+    assert all(r.part_id is None for r in rows)
+    assert await _count(db, PartRow) == 0
+
+
+async def test_generate_chapters_twice_one_set(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=3000)
+    await make.transcript(video.id, ["x"] * 30, step=100)
+    svc = AnalysisService(db, summarizer)
+    await svc.generate_chapters(video)
+    await svc.generate_chapters(video)
+    assert await _count(db, ChapterRow) == 8
+
+
+async def test_generate_chapters_parts_is_stub(db, make, summarizer, env_file) -> None:
+    video = await _video(db, make, duration_sec=9000)
+    with pytest.raises(NotImplementedYet):
+        await AnalysisService(db, summarizer).generate_chapters(video)
+    assert summarizer.calls == []  # 모델을 부르기 전에 막는다

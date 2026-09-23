@@ -197,3 +197,42 @@ class AnalysisService:
                 insights.append((text, clamped))
         await crud.replace_summary(self.session, video.id, draft.one_liner, model, insights)
         await self.session.commit()
+
+    async def generate_chapters(self, video: Video) -> None:
+        """VA-MS-003#AnalysisService.generate_chapters
+
+        챕터를 만들어 갈아 끼운다 — 시작 시각 보정, 같은 시각은 하나로, 첫 챕터는 0초부터,
+        요점은 셋까지. 60분 넘는 영상의 파트 갈래(와 구간별 챕터)는 스텁 — B2(VA-CODE-001 B1).
+        모델을 부르기 전에 막는다 — 쓸모없는 호출을 하지 않게.
+
+        Args:
+            video: 영상(id · 길이)
+
+        Raises:
+            NotImplementedYet: 60분 넘는 영상(B2)
+        """
+        if video.duration_sec > config.PART_THRESHOLD_SEC:
+            raise NotImplementedYet("60분 넘는 영상의 챕터 묶기는 아직 지원하지 않아요")
+        segments = await self.segments_of(video.id)
+        model = settings.current_models().text.id
+        draft = await self.summarizer.chapters(segments, video.duration_sec, model)
+        placed = sorted(  # 시작 시각만으로 — 같은 시각이면 모델이 준 순서 그대로(안정 정렬)
+            (
+                (
+                    (self.clamp_secs([start], video.duration_sec, segments) or [0.0])[0],
+                    title,
+                    bullets[:BULLETS_MAX],
+                )
+                for _, start, title, bullets in draft.chapters
+            ),
+            key=lambda c: c[0],
+        )
+        chapters: list[tuple[float, str, list[str]]] = []
+        for start, title, bullets in placed:
+            if chapters and chapters[-1][0] == start:  # 같은 시각이 둘이면 뒤 것을 뺀다
+                continue
+            chapters.append((start, title, bullets))
+        if chapters and chapters[0][0] != 0:  # 스크립트 처음이 어느 챕터에도 안 들어가지 않게
+            chapters[0] = (0.0, *chapters[0][1:])
+        await crud.replace_chapters(self.session, video.id, chapters)
+        await self.session.commit()
