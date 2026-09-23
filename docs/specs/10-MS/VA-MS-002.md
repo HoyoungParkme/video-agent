@@ -454,19 +454,21 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 1. `row = DB: analysis_jobs where id` · `start_at = row.stages.index(row.stage)` — 실패한 단계
 2. `run`과 같은 반복을 `stages[start_at:]`부터. 단 —
    - `download` · `extract`에서 실패했으면 처음부터와 같다(임시 파일이 지워졌다)
-   - `transcribe`에서 실패했으면 조각 행이 있을 때는 음성 파일이 필요 없다 — `transcribe_stage`는 `done`이 아닌 조각만, 남아 있는 조각 파일로 보낸다. 조각 행이 없으면(나누다 멈춤) `audio = tmp / audio.mp3`(내려받기 · 추출 · 변환이 쓰는 이름) · 없으면 로컬 음성은 받아쓰기 단계가 다시 바꾸고([[#pipeline.run]]), 그 밖은 `stages`에서 앞 단계(`download` · `extract`)를 찾아 그 단계부터
+   - `transcribe`에서 실패했으면 조각 행이 있을 때는 음성 파일이 필요 없다(`audio = None`) — `transcribe_stage`는 `done`이 아닌 조각만, 남아 있는 조각 파일로 보낸다. 조각 행이 없으면(바꾸다 · 나누다 멈춤) — 로컬 음성은 받아쓰기 단계가 늘 다시 바꾼다([[#pipeline.run]]). `tmp / audio.mp3`가 있어도 바꾸다 멈춘 반쪽일 수 있어서다. 그 밖은 `audio = tmp / audio.mp3`(내려받기 · 추출이 다 쓴 파일 — 그 단계가 끝나야 받아쓰기로 넘어온다) · 없으면 `stages`에서 앞 단계(`download` · `extract`)를 찾아 그 단계부터
    - `summarize` 이후 실패는 스크립트가 있으므로 그 단계부터
 3. 마무리 · 예외 처리는 `run`과 같다
 
 **호출하는 것** [[#pipeline.run]]의 것 전부 · [[#pipeline.transcribe_stage]]
 
-**테스트 관점** 16번 조각 실패 상태에서 재개 → 1~15번은 OpenAI에 안 보낸다(가짜 포트 호출 기록) · 요약 실패에서 재개 → 받아쓰기를 안 한다 · 음성 파일이 지워진 채 받아쓰기 재개 → 추출부터 다시
+**테스트 관점** 조각 하나가 실패한 상태에서 재개 → 완료한 조각은 OpenAI에 안 보낸다(가짜 포트 호출 기록) · 요약 실패에서 재개 → 받아쓰기를 안 한다 · 조각도 음성 파일도 없이 받아쓰기 재개 → 추출부터 다시 · 로컬 음성을 바꾸다 멈춘 채 재개 → 음성 파일이 남아 있어도 다시 바꾼다
 
 ---
 
 #### pipeline.transcribe_stage 조각 병렬 받아쓰기
 
-**시그니처** `async def transcribe_stage(job_id: int, video: Video, audio: str, tmp: str) -> None`
+**시그니처** `async def transcribe_stage(job_id: int, video: Video, audio: str | None, tmp: str) -> None`
+
+`audio`는 나눌 음성(tmp 안 mp3)이다. 조각 행이 이미 있으면(다시 시도) 쓰지 않아 `None`일 수 있다([[#pipeline.resume]])
 
 근거: [[VA-SEQ-001#SEQ-4]] 12~30번 · [[VA-UC-001#UC-S3]] 전부 · [[VA-UI-002#UI-3]] 숫자 규칙 · 시퀀스 되먹임 #1 · #4
 
