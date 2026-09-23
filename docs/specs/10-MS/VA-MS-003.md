@@ -88,7 +88,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 **입력** `video` — `duration_sec`와 `id`를 쓴다
 
 **처리**
-1. `segments = segments_of(video.id)` · `model = SettingsService.current_models().text`
+1. `segments = segments_of(video.id)` · `model = SettingsService.current_models().text.id`
 2. `n_max = 10 if video.duration_sec > config.PART_THRESHOLD_SEC else 8` · `n_min = 5`
 3. if `토큰 수(segments) ≤ config.TEXT_TOKEN_LIMIT` → `draft = SummarizerPort.summary(segments, video.duration_sec, model)`
    else → 구간마다 `SummarizerPort.summary(구간의 segments, 구간 길이, model)`로 중간 요약을 얻고, 그 한 줄 요약 · 인사이트를 `[시각] 문장` 줄들의 가짜 구간 목록으로 만들어 `SummarizerPort.summary(그 목록, video.duration_sec, model)` — 최종 요약. 구간은 `config.TEXT_WINDOW_SEC`씩([[VA-UC-001#UC-S4]] 1a2를 챕터 대신 중간 요약으로)
@@ -294,7 +294,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 근거: [[VA-UI-001#UI-4]] 시각 표기(형식은 영상 길이로 정한다)
 
-**처리** `s = int(sec)` · if `duration_sec < 3600` → `f"{s // 60:02d}:{s % 60:02d}"` · else → `f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"`. 한 영상 안에서 표기가 섞이지 않는다
+**처리** `→ timecode.label(sec, long=duration_sec ≥ 3600)` — 표기 규칙은 공용 [[VA-MS-006#timecode.label]] 하나에만 둔다. 어댑터와 내보내기가 같은 함수를 쓰므로 두 벌이 되지 않는다. 한 영상 안에서 표기가 섞이지 않는다(영상 길이로 정한다)
+
+**호출하는 것** [[VA-MS-006#timecode.label]]
 
 **테스트 관점** 50분 영상의 760.12 → `12:40` · 150분 영상의 380 → `0:06:20` · 150분 영상의 3600 → `1:00:00`
 
@@ -314,7 +316,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 ## 3. 미결사항
 
-- [ ] **되먹임** — `clamp_secs`가 가장 가까운 구간 시각으로 보정하려면 `segments`를 받아야 한다. 클래스 명세 4.3의 `clamp_secs(secs, duration_sec)`에 인자 하나를 더한다([[VA-DOM-002#AnalysisService]]). 시그니처만 바뀌고 규칙은 그대로
+- [x] (반영: 클래스 명세 v10) **되먹임** — `clamp_secs`가 가장 가까운 구간 시각으로 보정하려면 `segments`를 받아야 한다. 클래스 명세 4.3의 `clamp_secs(secs, duration_sec)`에 인자 하나를 더한다([[VA-DOM-002#AnalysisService]]). 시그니처만 바뀌고 규칙은 그대로
 - [ ] 같은 제목의 영상 둘을 내보내면 파일이 서로 덮어쓴다(`filename_for`). 뒤에 `-{id}`를 붙일지 사용자 확인 — 붙이면 화면의 경로 표시도 바뀐다
 - [ ] 스크립트 토큰 수 세기 — `tiktoken`으로 정확히 셀지, 글자 수 ÷ 2로 어림할지. 첫 버전은 어림(의존성 없음). `config.TEXT_TOKEN_LIMIT`가 여유 있으니 오차가 문제되지 않는다
 - [ ] 파트 제목 — 포트가 파트를 안 주면 첫 챕터 제목을 쓴다(`generate_chapters` 5번). 파트 제목만 따로 모델에 묻는 호출을 더할지
