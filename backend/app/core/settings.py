@@ -186,5 +186,33 @@ class SettingsService:
         """
         return self.read_env().get("OPENAI_API_KEY") or None
 
+    def get(self) -> Settings:
+        """VA-MS-005#SettingsService.get
+
+        설정 전부. 마지막 확인 결과를 돌려줄 뿐 다시 확인하지 않는다.
+        OpenAI에 아무것도 보내지 않는다.
+
+        Returns:
+            키 상태(가린 키) · 고른 모델 id 둘 · 고를 수 있는 모델과 단가 · inbox 경로
+        """
+        env = self.read_env()
+        key = env.get("OPENAI_API_KEY") or None
+        c = self.last_check
+        status = KeyStatus(
+            state=c.state,
+            masked=_mask(key) if key else None,
+            stored_in=STORED_IN if key else None,
+            checked_at=c.checked_at,
+            reason_kind=c.reason_kind,
+            reason=c.reason,
+        )
+        m = self._models(env)
+        return Settings(
+            key=status,
+            models=Models(stt=m.stt.id, text=m.text.id),
+            model_options=config.MODEL_OPTIONS,
+            inbox_path=config.INBOX_DISPLAY_PATH,
+        )
+
 
 settings = SettingsService()

@@ -129,3 +129,37 @@ def test_api_key(svc, env_file, caplog: pytest.LogCaptureFixture) -> None:
     _write(env_file, "")
     assert svc.api_key() is None
     assert KEY not in caplog.text and NEW not in caplog.text
+
+
+# get
+
+
+def test_get_masks_and_sends_nothing(svc, env_file, verify, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-environment-0000")
+    _write(env_file)
+    s = svc.get()
+    assert s.key.masked == "sk-…1234"  # 환경 변수가 아니라 파일 것
+    assert s.key.stored_in == ".env에 저장됨"
+    assert s.models.model_dump() == {"stt": "whisper-1", "text": "gpt-5-mini"}
+    assert s.model_options == config.MODEL_OPTIONS
+    assert s.inbox_path == config.INBOX_DISPLAY_PATH
+    assert verify.calls == []
+
+
+def test_get_empty_key(svc, env_file) -> None:
+    _write(env_file, "")
+    k = svc.get().key
+    assert (k.masked, k.stored_in, k.state) == (None, None, KeyState.missing)
+
+
+def test_get_shows_last_failure(svc, env_file) -> None:
+    _write(env_file)
+    svc.last_check = KeyCheck(
+        KeyState.invalid, ReasonKind.quota, "잔액이 없습니다", datetime.now(UTC)
+    )
+    k = svc.get().key
+    assert (k.state, k.reason_kind, k.reason) == (
+        KeyState.invalid,
+        ReasonKind.quota,
+        "잔액이 없습니다",
+    )
