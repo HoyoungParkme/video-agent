@@ -1,6 +1,6 @@
 /**
  * 코드값 → 화면 글자. 두 화면 이상이 쓰는 표기만 — 단계 이름(VA-UI-002 UI-3 규칙) · 언어 이름 ·
- * 분석한 때('오늘 14:08' · '9월 12일'). 시각 표기는 components/TimeChip이 가진다.
+ * 분석한 때('오늘 14:08' · '9월 12일') · 음성 파일 판정. 시각 표기는 components/TimeChip이 가진다.
  */
 import type { JobStage } from "@/api/client";
 
@@ -55,4 +55,13 @@ export function analyzedLabel(iso: string, now: Date = new Date()): string {
     return `오늘 ${two(at.getHours())}:${two(at.getMinutes())}`;
   }
   return `${at.getMonth() + 1}월 ${at.getDate()}일`;
+}
+
+// 로컬 음성 파일의 확장자(서버 설정값 AUDIO_EXTS와 같다) — 음성 파일은 추출 단계가 없다(UC-H2 2b)
+const AUDIO_EXTS = ["mp3", "m4a", "wav"];
+
+/** 파일 이름이 음성 파일인가 — 확장자를 소문자로 본다. */
+export function isAudioFile(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 && AUDIO_EXTS.includes(name.slice(dot + 1).toLowerCase());
 }

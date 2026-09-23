@@ -103,6 +103,20 @@ export interface Estimate {
   text_model: string;
 }
 
+export interface InboxFile {
+  name: string;
+  size_bytes: number;
+  duration_sec: number | null;
+  kind: "video" | "audio";
+  modified_at: string;
+}
+
+export interface InboxListing {
+  /** 사용자에게 보일 호스트 쪽 폴더 경로 */
+  path: string;
+  files: InboxFile[];
+}
+
 export interface RegisterResponse {
   video: Video;
   estimate: Estimate | null;
@@ -235,6 +249,11 @@ export const api = {
   /** POST /api/videos — YouTube 주소를 등록하고 사전 안내 예상치를 받는다. 중복이면 기존 영상 */
   register: (url: string) =>
     call<RegisterResponse>("POST", "/api/videos", { source: "youtube", url }),
+  /** POST /api/videos — inbox 파일을 등록한다. 같은 내용이면 기존 영상 */
+  registerLocal: (path: string) =>
+    call<RegisterResponse>("POST", "/api/videos", { source: "local", path }),
+  /** GET /api/inbox — inbox 파일 목록(길이까지), 수정 시각 최근 순 */
+  inbox: () => call<InboxListing>("GET", "/api/inbox"),
   /** GET /api/videos — 작업이 있는 영상, 작업 시작 최근 순 */
   videos: () => call<VideoSummary[]>("GET", "/api/videos"),
   /** GET /api/videos/{id} — 영상과 최근 작업 요약 */
@@ -243,6 +262,8 @@ export const api = {
   startJob: (id: number) => call<Job>("POST", `/api/videos/${id}/job`),
   /** GET /api/videos/{id}/job — 진행 상태(UI-3이 1초마다) */
   job: (id: number) => call<Job>("GET", `/api/videos/${id}/job`),
+  /** POST /api/videos/{id}/job/retry — 실패한 단계부터 이어서. running 또는 queued */
+  retry: (id: number) => call<Job>("POST", `/api/videos/${id}/job/retry`),
   /** GET /api/videos/{id}/result — 결과 전부 */
   result: (id: number) => call<Result>("GET", `/api/videos/${id}/result`),
 };
