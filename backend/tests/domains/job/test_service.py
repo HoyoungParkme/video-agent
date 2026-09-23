@@ -272,6 +272,21 @@ async def test_estimate_local_150_minutes(db, make, env_file) -> None:
     assert est.seconds == 5 * 45 + 60 + 150  # 조각 · 텍스트 · 추출 몫
 
 
+async def test_estimate_local_audio_counts_conversion(db, make, env_file) -> None:
+    row = await make.video(
+        source_kind=SourceKind.local,
+        channel=None,
+        origin="call.m4a",
+        duration_sec=1800,
+        has_captions=False,
+        caption_language=None,
+        caption_kind=None,
+    )
+    est = await JobService(db).estimate(_video(row))
+    assert (est.chunks, est.stt_minutes) == (3, 30)
+    assert est.seconds == 1 * 45 + 60 + 30  # 조각 · 텍스트 · mp3 변환 몫
+
+
 async def test_estimate_none_when_job_exists(db, make, env_file) -> None:
     row = await make.video()
     await make.job(row.id, JobStatus.running)
