@@ -42,6 +42,7 @@ cd backend
 export ENV_PATH=../.env INBOX_DIR=../inbox DATA_DIR=../data
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --port 8001
+# 다른 터미널에서 저장소 뿌리부터
 cd frontend && npm run dev          # http://localhost:3000, /api/* → 127.0.0.1:8001
 ```
 
@@ -51,8 +52,10 @@ cd frontend && npm run dev          # http://localhost:3000, /api/* → 127.0.0.
 
 - `cd backend && uv run pytest` — **전용 DB에서만.** 이름에 `test`가 없는 DB면 시작하지 않는다. 기본은 `va_test`(5433), 바꾸려면 `VA_TEST_DATABASE_URL`. 한 DB에 pytest를 둘 이상 동시에 돌리지 않는다
 - `uv run ruff check .` · `uv run ruff format --check .`
-- `cd frontend && npx tsc --noEmit` · `npm run build` · `npx playwright test`(E2E — 가짜 OpenAI 서버와 api · web을 따로 띄운다)
+- `cd frontend && npx tsc --noEmit` · `npx eslint` · `npm run format` · `npm run build`
+- `cd frontend && npm run e2e` — Playwright. 가짜 OpenAI(8190) · api(8100, 빈 .env · 테스트 DB) · web(3100, E2E 전용 빌드)을 스스로 띄운다
+- 에이전트가 `next dev`를 돌리면 Next가 `frontend/AGENTS.md` · `CLAUDE.md`를 만든다(무시 목록에 있다). 확인은 `next build` 뒤 standalone 서버로 한다
 - 싱크독 검사 도구는 싱크독 저장소 것을 경로로 부른다(사본을 두지 않는다). `S=~/dev/personal/syncdoc/tools`, `D=docs/specs`
   - `python3 $S/check_code.py --specs $D` — MINISPEC ↔ 코드 시그니처(DEV-14 첫째 · 둘째)
   - `python3 $S/check_ui.py --specs $D --screens UI-5` — 와이어프레임 요소 번호 ↔ `data-el`(DEV-17)
-  - `python3 $S/check_tokens.py --specs $D` — 디자인 토큰이 UI-001 3장과 같은 값인지
+  - `python3 $S/check_tokens.py --specs $D` — 디자인 토큰이 UI-001 3장과 같은 값인지. 지금은 싱크독 형식의 3.3만 읽어 VA 문서에서는 간격 줄에서 멈춘다(카드 A 보고)
