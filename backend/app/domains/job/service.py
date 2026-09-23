@@ -319,3 +319,23 @@ class JobService:
         await asyncio.sleep(0)  # 워커에게 한 번 양보한다 — 도는 작업이 없으면 곧 꺼낸다
         await self.session.refresh(row)
         return self.to_job(row, [], await self.queue_position(row))
+
+    async def progress(self, video_id: int) -> Job:
+        """VA-MS-002#JobService.progress
+
+        폴링 응답 — 영상의 가장 최근 작업. 1초마다 불리므로 쿼리 둘(대기 중이면 셋)로 끝난다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            단계 · 진행률 · 조각 · 남은 시간 · 실패 내용
+
+        Raises:
+            NotFound: 작업이 없다(resource=job)
+        """
+        row = await crud.latest(self.session, video_id)
+        if row is None:
+            raise NotFound(resource="job", id=video_id)
+        chunks = await crud.chunks(self.session, row.id)
+        return self.to_job(row, chunks, await self.queue_position(row))

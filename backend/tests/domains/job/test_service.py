@@ -289,3 +289,45 @@ async def test_start_without_key_makes_no_row(db, make, env_file) -> None:
     with pytest.raises(KeyMissing):
         await JobService(db).start(_video(row))
     assert await db.scalar(select(AnalysisJobRow)) is None
+
+
+# --- progress
+
+
+async def test_progress_without_job(db, make) -> None:
+    row = await make.video()
+    with pytest.raises(NotFound) as e:
+        await JobService(db).progress(row.id)
+    assert e.value.extra["resource"] == "job"
+
+
+async def test_progress_queued(db, make) -> None:
+    await make.job((await make.video()).id, JobStatus.running)
+    row = await make.video()
+    await make.job(row.id, JobStatus.queued)
+    job = await JobService(db).progress(row.id)
+    assert (job.status, job.queue_position, job.remaining_sec, job.chunks) == (
+        JobStatus.queued,
+        1,
+        None,
+        None,
+    )
+    assert job.progress_pct == 0
+
+
+async def test_progress_counts_chunks_without_result(db, make, queries) -> None:
+    row = await make.video(has_captions=False)
+    job = await make.job(row.id, JobStatus.failed, stage="transcribe", stages=STT_STAGES)
+    await make.chunks(
+        job.id, [ChunkState.done] * 12 + [ChunkState.in_flight] * 3 + [ChunkState.waiting] * 15
+    )
+    queries.clear()
+    got = await JobService(db).progress(row.id)
+    assert (got.chunks.done, got.chunks.in_flight, got.chunks.waiting, got.chunks.next_seq) == (
+        12,
+        3,
+        15,
+        13,
+    )
+    assert len(queries) == 2  # 작업 · 조각(대기 중이 아니라 차례를 세지 않는다)
+    assert all("result" not in q for q in queries)  # 받아쓰기 결과는 읽지 않는다
