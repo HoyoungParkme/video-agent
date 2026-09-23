@@ -119,4 +119,10 @@ test("자막 없는 영상 — 시작 불가 판에 '아직 지원하지 않음'
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(input).toHaveValue("https://youtu.be/e2eNoCapt01"); // 넣은 주소가 그대로
   await expect(el(page, "3.3")).toBeFocused(); // 초점은 연 버튼으로
+
+  // 입력칸에서 Enter로 열어도 닫으면 초점은 [분석](3.3)으로
+  await input.press("Enter");
+  await expect(inDialog(page, "7.3")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(el(page, "3.3")).toBeFocused();
 });

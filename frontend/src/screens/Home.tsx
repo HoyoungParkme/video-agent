@@ -10,7 +10,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   api,
@@ -155,6 +155,7 @@ export default function Home() {
   const router = useRouter();
   const settings = useSettings();
   const videos = useVideos();
+  const analyzeButton = useRef<HTMLButtonElement>(null);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -173,6 +174,8 @@ export default function Home() {
   async function analyze() {
     if (blocked) return toSettingsIfBlocked();
     if (busy) return; // 대기 표시 중에는 새 요청을 보내지 않는다
+    // 입력칸에서 Enter로 눌렀어도 연 버튼은 3.3 — 다이얼로그가 닫히면 초점이 여기로 돌아온다(공통 1.2)
+    analyzeButton.current?.focus();
     setBusy(true);
     setUrlError(null);
     try {
@@ -250,6 +253,7 @@ export default function Home() {
                   />
                 </span>
                 <Button
+                  ref={analyzeButton}
                   kind="primary"
                   tall
                   blocked={blocked}
