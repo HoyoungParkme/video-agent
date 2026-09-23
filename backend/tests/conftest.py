@@ -66,6 +66,7 @@ from app.domains.job.models import (  # noqa: E402
     ErrorKind,
     JobStatus,
 )
+from app.domains.job.schemas import ChunkPlan, SttSegment  # noqa: E402
 from app.domains.job.service import JobService  # noqa: E402
 from app.domains.video.models import CaptionKind, SourceKind, VideoRow  # noqa: E402
 from app.domains.video.schemas import SourceInfo  # noqa: E402
@@ -395,7 +396,8 @@ def summarizer() -> FakeSummarizer:
 
 @dataclass
 class FakeAudioSource:
-    """AudioSourcePort 자리 — 자막."""
+    """AudioSourcePort 자리 — 자막 · 음성 내려받기 · 추출. 음성은 dest에 audio.mp3를 실제로 쓴다.
+    calls는 자막을 받으러 온 영상 ID, audio_calls는 (download|extract, 원본, dest)."""
 
     result: tuple[list[CaptionLine], str, CaptionKind] | None = field(
         default_factory=lambda: (
@@ -405,7 +407,9 @@ class FakeAudioSource:
         )
     )
     error: Exception | None = None
+    audio_error: Exception | None = None
     calls: list[str] = field(default_factory=list)
+    audio_calls: list[tuple[str, str, str]] = field(default_factory=list)
 
     async def captions(self, video_id: str) -> tuple[list[CaptionLine], str, CaptionKind] | None:
         self.calls.append(video_id)
@@ -413,10 +417,84 @@ class FakeAudioSource:
             raise self.error
         return self.result
 
+    async def _audio(self, how: str, src: str, dest: str) -> str:
+        self.audio_calls.append((how, src, dest))
+        if self.audio_error:
+            raise self.audio_error
+        out = Path(dest) / "audio.mp3"
+        out.write_bytes(b"mp3")
+        return str(out)
+
+    async def download_audio(self, video_id: str, dest: str) -> str:
+        return await self._audio("download", video_id, dest)
+
+    async def extract_audio(self, src: str, dest: str) -> str:
+        return await self._audio("extract", src, dest)
+
 
 @pytest.fixture
 def audio_source() -> FakeAudioSource:
     return FakeAudioSource()
+
+
+@dataclass
+class FakeAudioSplit:
+    """AudioSplitPort 자리 — n개(각 600초)로 나눈 것처럼 dest_dir에 {seq}.mp3를 실제로 쓴다."""
+
+    n: int = 3
+    error: Exception | None = None
+    calls: list[tuple[str, str]] = field(default_factory=list)
+
+    async def split(self, path: str, dest_dir: str) -> list[ChunkPlan]:
+        self.calls.append((path, dest_dir))
+        if self.error:
+            raise self.error
+        plans = []
+        for seq in range(1, self.n + 1):
+            chunk = Path(dest_dir) / f"{seq}.mp3"
+            chunk.write_bytes(b"chunk")
+            plans.append(ChunkPlan(seq, (seq - 1) * 600.0, 600.0, str(chunk)))
+        return plans
+
+
+@pytest.fixture
+def audio_split() -> FakeAudioSplit:
+    return FakeAudioSplit()
+
+
+@dataclass
+class FakeStt:
+    """SttPort 자리 — 조각(파일 이름의 seq)마다 구간 둘. fail[seq]만큼 error로 실패시키고,
+    받은 조각 번호와 동시에 도는 수의 최댓값을 센다."""
+
+    fail: dict[int, int] = field(default_factory=dict)
+    error: Exception = field(default_factory=TimeoutError)
+    delay: float = 0
+    calls: list[int] = field(default_factory=list)
+    running: int = 0
+    peak: int = 0
+
+    async def transcribe(self, path: str, model: str) -> list[SttSegment]:
+        seq = int(Path(path).stem)
+        self.calls.append(seq)
+        self.running += 1
+        self.peak = max(self.peak, self.running)
+        try:
+            await asyncio.sleep(self.delay)
+            if self.fail.get(seq, 0) > 0:
+                self.fail[seq] -= 1
+                raise self.error
+            return [
+                SttSegment(0.0, 5.0, f"{seq}번 조각 첫 문장", "ko"),
+                SttSegment(5.0, 9.5, f"{seq}번 조각 둘째 문장", "ko"),
+            ]
+        finally:
+            self.running -= 1
+
+
+@pytest.fixture
+def stt() -> FakeStt:
+    return FakeStt()
 
 
 @pytest.fixture

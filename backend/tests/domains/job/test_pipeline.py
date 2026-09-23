@@ -1,4 +1,7 @@
-"""job/pipeline — 오류 종류 · 첫 단계부터 · 대기열 워커(VA-MS-002 pipeline). 포트는 가짜로."""
+"""job/pipeline — 오류 종류 · 이유 한 줄 · 받아쓰기 · 첫 단계부터 · 이어서 · 대기열 워커(VA-MS-002 pipeline).
+
+포트는 가짜로.
+"""
 
 from __future__ import annotations
 
@@ -17,9 +20,16 @@ from app.core.db import SessionLocal
 from app.core.errors import NotImplementedYet
 from app.domains.analysis.models import SegmentRow, SummaryRow, TranscriptRow
 from app.domains.job import pipeline
-from app.domains.job.models import AnalysisJobRow, ErrorKind, JobStage, JobStatus
+from app.domains.job.models import (
+    AnalysisJobRow,
+    AudioChunkRow,
+    ChunkState,
+    ErrorKind,
+    JobStage,
+    JobStatus,
+)
 from app.domains.job.service import JobService
-from app.domains.video.models import VideoRow
+from app.domains.video.models import SourceKind, VideoRow
 from app.domains.video.service import VideoService
 from app.infra.errors import FfmpegError, OpenAIOutputError, YtdlpError
 
@@ -27,12 +37,19 @@ T0 = datetime(2026, 9, 23, 3, 0, tzinfo=UTC)
 REQ = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
 
 
+STT_STAGES = ["download", "transcribe", "summarize", "chapter", "suggest"]
+
+
 @pytest.fixture
-def ports(monkeypatch, audio_source, summarizer, tmp_path):
-    """파이프라인에 가짜 포트를 끼우고 data 폴더를 임시로."""
+def ports(monkeypatch, audio_source, audio_split, stt, summarizer, tmp_path):
+    """파이프라인에 가짜 포트를 끼우고 data · inbox 폴더를 임시로."""
     monkeypatch.setattr(pipeline, "audio_source", audio_source)
+    monkeypatch.setattr(pipeline, "audio_split", audio_split)
+    monkeypatch.setattr(pipeline, "stt", stt)
     monkeypatch.setattr(pipeline, "summarizer", summarizer)
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path / "inbox"))
+    (tmp_path / "inbox").mkdir()
     return audio_source, summarizer
 
 
@@ -101,17 +118,6 @@ def test_reason_of_each() -> None:
     )
     assert reason(ValueError("첫 줄이에요\n둘째 줄")) == "첫 줄이에요"
     assert reason(KeyError("x")) == "알 수 없는 오류(KeyError)"
-
-
-# --- 스텁
-
-
-async def test_stubs(make) -> None:
-    video, job = await _running(make)
-    with pytest.raises(NotImplementedYet):
-        await pipeline.transcribe_stage(job.id, video, "/tmp/a.mp3", "/tmp")
-    with pytest.raises(NotImplementedYet):
-        await pipeline.resume(job.id, video)
 
 
 # --- run
@@ -189,29 +195,141 @@ async def test_run_captions_vanished(db, make, ports) -> None:
     )
 
 
-async def test_run_without_captions_is_stub(db, make, ports) -> None:
-    video, job = await _running(make, has_captions=False, caption_language=None, caption_kind=None)
+# --- 받아쓰기 갈래
+
+
+async def _stt_job(make, stages: list[str], **video_kw):
+    """자막 없는 영상과 워커가 막 꺼낸 받아쓰기 작업."""
+    kw = {"has_captions": False, "caption_language": None, "caption_kind": None} | video_kw
+    row = await make.video(**kw)
+    job = await make.job(row.id, JobStatus.running, stages=stages, stt_model="whisper-1")
+    return VideoService.to_dto(row, None, 0), job
+
+
+def _local(origin: str) -> dict:
+    return {"source_kind": SourceKind.local, "channel": None, "origin": origin}
+
+
+async def _chunks(job_id: int) -> list[AudioChunkRow]:
+    async with SessionLocal() as s:
+        rows = await s.scalars(
+            select(AudioChunkRow).where(AudioChunkRow.job_id == job_id).order_by(AudioChunkRow.seq)
+        )
+        return list(rows)
+
+
+async def _segments(db) -> list[tuple[float, str]]:
+    rows = await db.scalars(select(SegmentRow).order_by(SegmentRow.seq))
+    return [(r.start_sec, r.text) for r in rows]
+
+
+async def test_run_youtube_without_captions(db, make, ports, audio_split, stt, tmp_path) -> None:
+    audio_source, summarizer = ports
+    video, job = await _stt_job(make, STT_STAGES)
+    tmp = tmp_path / "tmp" / str(video.id)
     await pipeline.run(job.id, video)
     row = await _row(job.id)
-    assert (row.status, row.stage, row.error_kind) == (
+    assert (row.status, row.progress_pct) == (JobStatus.done, 100)
+    assert audio_source.audio_calls == [("download", video.source_id, str(tmp))]
+    assert audio_split.calls == [(str(tmp / "audio.mp3"), str(tmp))]
+    assert sorted(stt.calls) == [1, 2, 3]
+    t = await db.scalar(select(TranscriptRow))
+    assert (t.source, t.language, t.model) == ("stt", "ko", "whisper-1")
+    segs = await _segments(db)
+    assert len(segs) == 6
+    assert segs[2] == (600.0, "2번 조각 첫 문장")  # 2번 조각의 0초 → 600초
+    assert [name for name, _ in summarizer.calls] == ["summary", "chapters", "questions"]
+    assert not tmp.exists()
+
+
+async def test_run_local_audio_converts_before_split(db, make, ports, audio_split, tmp_path):
+    audio_source, _ = ports
+    original = tmp_path / "inbox" / "call.wav"
+    original.write_bytes(b"wav")
+    video, job = await _stt_job(make, STT_STAGES[1:], **_local("call.wav"))
+    tmp = tmp_path / "tmp" / str(video.id)
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done
+    # 추출 단계는 없지만 받아쓰기 단계가 mp3로 바꾼 뒤 나눈다 — inbox 원본은 그대로
+    assert audio_source.audio_calls == [("extract", str(original), str(tmp))]
+    assert audio_split.calls == [(str(tmp / "audio.mp3"), str(tmp))]
+    assert original.read_bytes() == b"wav"
+
+
+async def test_run_local_video_extracts(db, make, ports, tmp_path) -> None:
+    audio_source, _ = ports
+    (tmp_path / "inbox" / "talk.mp4").write_bytes(b"mp4")
+    video, job = await _stt_job(make, ["extract", *STT_STAGES[1:]], **_local("talk.mp4"))
+    await pipeline.run(job.id, video)
+    row = await _row(job.id)
+    assert row.status == JobStatus.done
+    assert [c[0] for c in audio_source.audio_calls] == ["extract"]
+    assert set(row.stage_durations_sec) == {
+        "extract",
+        "transcribe",
+        "summarize",
+        "chapter",
+        "suggest",
+    }
+
+
+async def test_run_audio_download_fails_removes_tmp(db, make, ports, tmp_path) -> None:
+    audio_source, _ = ports
+    audio_source.audio_error = YtdlpError("ERROR: [youtube] abc: Video unavailable", "unavailable")
+    video, job = await _stt_job(make, STT_STAGES)
+    await pipeline.run(job.id, video)
+    row = await _row(job.id)
+    assert (row.status, row.stage, row.error_kind, row.error_reason) == (
         JobStatus.failed,
         JobStage.download,
-        ErrorKind.unknown,
+        ErrorKind.youtube,
+        "삭제되었거나 볼 수 없는 영상",
     )
+    assert not (tmp_path / "tmp" / str(video.id)).exists()
 
 
-async def test_run_cancelled_writes_nothing(db, make, ports) -> None:
-    _, summarizer = ports
-    summarizer.delay = 5
-    video, job = await _running(make)
-    task = asyncio.create_task(pipeline.run(job.id, video))
-    while not summarizer.calls:
-        await asyncio.sleep(0.01)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):  # 예외가 밖으로
-        await task
+async def test_transcribe_chunk_fails_after_three(db, make, ports, stt, tmp_path) -> None:
+    stt.fail = {2: 99}
+    video, job = await _stt_job(make, STT_STAGES)
+    tmp = tmp_path / "tmp" / str(video.id)
+    await pipeline.run(job.id, video)
     row = await _row(job.id)
-    assert (row.status, row.stage, row.error_kind) == (JobStatus.running, JobStage.summarize, None)
+    assert (row.status, row.stage, row.error_kind, row.error_reason) == (
+        JobStatus.failed,
+        JobStage.transcribe,
+        ErrorKind.network,
+        "네트워크 시간 초과",
+    )
+    assert (row.error_chunk_seq, row.error_attempts) == (2, 3)
+    chunks = await _chunks(job.id)
+    assert [(c.seq, c.state, c.attempts) for c in chunks] == [
+        (1, ChunkState.done, 1),
+        (2, ChunkState.failed, 3),
+        (3, ChunkState.done, 1),  # 하나가 실패해도 나머지는 끝까지
+    ]
+    assert stt.calls.count(2) == 3
+    assert sorted(p.name for p in tmp.iterdir()) == [
+        "2.mp3",
+        "audio.mp3",
+    ]  # done 조각 파일만 지운다
+    assert await db.scalar(select(TranscriptRow)) is None
+
+
+async def test_transcribe_keeps_concurrency(db, make, ports, audio_split, stt) -> None:
+    audio_split.n, stt.delay = 7, 0.02
+    video, job = await _stt_job(make, STT_STAGES)
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done
+    assert stt.peak == 3  # 작업의 동시 수를 넘지 않는다
+
+
+# --- resume
+
+
+async def test_resume_is_stub(make) -> None:
+    video, job = await _running(make)
+    with pytest.raises(NotImplementedYet):
+        await pipeline.resume(job.id, video)
 
 
 # --- worker

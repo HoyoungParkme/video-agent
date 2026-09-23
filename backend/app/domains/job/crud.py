@@ -53,6 +53,15 @@ async def chunks(session: AsyncSession, job_id: int) -> list[AudioChunkRow]:
     )
 
 
+async def chunks_with_results(session: AsyncSession, job_id: int) -> list[AudioChunkRow]:
+    """작업의 조각들, 번호순 — 받아쓰기 결과까지(이어 붙일 때)."""
+    return list(
+        await session.scalars(
+            select(AudioChunkRow).where(AudioChunkRow.job_id == job_id).order_by(AudioChunkRow.seq)
+        )
+    )
+
+
 async def has_chunks(session: AsyncSession, job_id: int) -> bool:
     """조각 행이 하나라도 있는지 — 이미 나눴으면 다시 만들지 않는다."""
     found = await session.scalar(
