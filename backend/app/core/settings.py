@@ -289,5 +289,37 @@ class SettingsService:
         self.last_check = check
         return self.get()
 
+    def set_models(self, stt_model: str, text_model: str) -> Settings:
+        """VA-MS-005#SettingsService.set_models
+
+        모델 선택을 `.env`에 저장한다. 다음 작업 · 질문부터 쓴다. 키 줄은 그대로.
+
+        Args:
+            stt_model: 받아쓰기 모델 id
+            text_model: 요약 · 챕터 · 질문 모델 id
+
+        Returns:
+            갱신된 설정
+
+        Raises:
+            Validation: 목록에 없는 id
+            Internal: 파일 쓰기 실패
+        """
+        errors = [
+            {"field": field, "message": "목록에 없는 모델이에요"}
+            for field, value, options in (
+                ("stt_model", stt_model, config.MODEL_OPTIONS.stt),
+                ("text_model", text_model, config.MODEL_OPTIONS.text),
+            )
+            if value not in {o.id for o in options}
+        ]
+        if errors:
+            raise Validation(errors=errors)
+        try:
+            self.write_env({"STT_MODEL": stt_model, "TEXT_MODEL": text_model})
+        except OSError as e:
+            raise Internal("모델 선택을 .env에 쓰지 못했어요") from e
+        return self.get()
+
 
 settings = SettingsService()

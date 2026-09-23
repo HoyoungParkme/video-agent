@@ -288,3 +288,22 @@ async def test_set_key_write_failure(svc, env_file, verify, monkeypatch) -> None
     monkeypatch.setattr(svc, "write_env", broken)
     with pytest.raises(Internal):
         await svc.set_key(NEW)
+
+
+# set_models
+
+
+def test_set_models(svc, env_file) -> None:
+    _write(env_file)
+    s = svc.set_models("whisper-1", "gpt-5.4")
+    assert s.models.text == "gpt-5.4"
+    assert svc.current_models().text.id == "gpt-5.4"
+    assert svc.read_env()["OPENAI_API_KEY"] == KEY
+
+
+def test_set_models_unknown(svc, env_file) -> None:
+    before = _write(env_file)
+    with pytest.raises(Validation) as e:
+        svc.set_models("whisper-1", "gpt-4o")
+    assert e.value.extra["errors"] == [{"field": "text_model", "message": "목록에 없는 모델이에요"}]
+    assert env_file.read_text() == before
