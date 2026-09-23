@@ -101,3 +101,38 @@ test.describe("배너 문구 셋", () => {
     await expect(el(page, "4.6")).not.toHaveAttribute("aria-disabled", "true");
   });
 });
+
+test.describe("저장 실패", () => {
+  test("키 확인이 연결 실패면 이유만 보이고 2.1은 그대로다(SEQ-12)", async ({ page }) => {
+    await page.route("**/api/settings/key", (route) =>
+      route.fulfill({
+        status: 502,
+        contentType: "application/problem+json",
+        json: { type: "urn:va:llm-unavailable", status: 502, reason: "연결하지 못했습니다" },
+      }),
+    );
+    await page.goto("/settings");
+    const before = await el(page, "2.1").textContent();
+    await page.locator("#new-key").fill(GOOD_KEY);
+    await el(page, "2.4").click();
+    await expect(el(page, "2.5")).toHaveText("키를 확인하지 못했어요 — 연결하지 못했습니다");
+    await expect(el(page, "2.1")).toHaveText(before ?? "");
+    await expect(page.locator("#new-key")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  test("모델 저장이 실패하면 그 자리에 알리고 머문다", async ({ page }) => {
+    await page.route("**/api/settings/models", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/problem+json",
+        json: { type: "urn:va:internal", status: 500, detail: "모델 선택을 .env에 쓰지 못했어요" },
+      }),
+    );
+    await page.goto("/settings");
+    await el(page, "6.2").click();
+    await expect(el(page, "6").getByRole("alert")).toHaveText(
+      "모델 선택을 저장하지 못했어요 — 모델 선택을 .env에 쓰지 못했어요",
+    );
+    await expect(page).toHaveURL(/\/settings$/);
+  });
+});

@@ -10,6 +10,7 @@ const FAKE = 8190;
 const API = 8100;
 const WEB = 3100;
 const TMP = path.join(__dirname, "e2e", ".tmp");
+const q = (p: string) => JSON.stringify(p);
 
 export default defineConfig({
   testDir: "e2e",
@@ -22,7 +23,8 @@ export default defineConfig({
     },
     {
       // 빈 .env로 시작한다 — 키가 없는 첫 실행
-      command: `rm -rf ${TMP} && mkdir -p ${TMP} && cd ../backend && uv run uvicorn app.main:app --host 127.0.0.1 --port ${API}`,
+      // 경로는 따옴표로 — 저장소 경로에 공백이 있어도 엉뚱한 폴더를 지우지 않게
+      command: `rm -rf ${q(TMP)} && mkdir -p ${q(TMP)} && cd ../backend && uv run uvicorn app.main:app --host 127.0.0.1 --port ${API}`,
       url: `http://127.0.0.1:${API}/health`,
       env: {
         ENV_PATH: path.join(TMP, "e2e.env"),
