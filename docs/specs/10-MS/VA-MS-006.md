@@ -23,8 +23,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 | `domains/chat/adapters/answerer_openai.py` | `AnswererPort` | [[#answerer_openai.answer]] |
 | `prompts/__init__.py` · `summary.md` · `chapters.md` · `questions.md` · `answer.md` | — (어댑터가 부른다) | [[#prompts.render]] |
 | `shared/timecode.py` | — (어댑터와 내보내기가 부른다) | [[#timecode.label]] · [[#timecode.parse]] |
+| `shared/captions.py` | — (두 묶음의 YouTube 어댑터가 부른다) | [[#captions.pick]] |
 
-마지막 두 줄은 어댑터가 아니다. analysis와 chat 두 묶음의 어댑터가 같이 쓰는데 묶음끼리는 서로의 모듈을 부르지 않으므로([[VA-DOM-002]] 1장 「묶음 안 규칙」) 묶음 밖에 둔다. 시각 표기는 순수 함수라 규약 1.9의 `shared/`에, 프롬프트 읽기는 프롬프트 파일 곁에 둔다. 클래스 명세 1장 트리에는 아직 없다(3장 되먹임).
+마지막 세 줄은 어댑터가 아니다. 두 묶음의 어댑터가 같이 쓰는데 묶음끼리는 서로의 모듈을 부르지 않으므로([[VA-DOM-002]] 1장 「묶음 안 규칙」) 묶음 밖에 둔다 — 시각 표기는 analysis와 chat이, 자막 고르기는 video(등록 때 자막 유무)와 job(분석 때 자막 받기)이 쓴다. 자막 고르기가 한 곳에 있어야 등록 때 알린 자막과 분석 때 받는 자막이 같다. 순수 함수는 규약 1.9의 `shared/`에, 프롬프트 읽기는 프롬프트 파일 곁에 둔다.
 
 항목 ID는 `파일.함수`다. 코드에서는 파일마다 Protocol을 구현하는 클래스 하나이고(`YouTubeInfoAdapter` 등) 메서드 docstring이 이 항목 ID를 가리킨다. 테스트는 가짜 어댑터로 바꿔 끼우고, 어댑터 자체 테스트는 `infra/`를 가짜로 둔다.
 
@@ -83,6 +84,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 | [[#prompts.render]] | 프롬프트 파일을 읽어 자리 표시를 채운다 |
 | [[#timecode.label]] | 초 → `mm:ss` 또는 `h:mm:ss` |
 | [[#timecode.parse]] | 모델이 쓴 시각 → 초 |
+| [[#captions.pick]] | yt-dlp 정보 → 자막 트랙(키 · 언어 · 종류) |
 
 ---
 
@@ -96,17 +98,17 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **처리**
 1. `raw = EXT: ytdlp.info(url)` — 정보만, 내려받기 없음. if `YtdlpError` → `! source-unavailable {reason: 원인 한 줄(비공개 · 삭제 · 지역 제한 · 네트워크를 가려 한국어로), hint: 추출기 오류면 'yt-dlp 업데이트' else None}`
-2. `vid = raw.id` · `subs = raw.subtitles`(수동) · `auto = raw.automatic_captions`
-3. 자막 — `config.CAPTION_LANGS` 순서로 `subs`에서 찾고, 없으면 `auto`에서 찾는다 · 그래도 없으면 `subs` · `auto`의 첫 언어 · 둘 다 비어 있으면 없음 → `(has_captions, caption_language, caption_kind)` = `(True, lang, manual)` · `(True, lang, auto)` · `(False, None, None)`
+2. `vid = raw.id`
+3. 자막 — [[#captions.pick]]`(raw)` · 트랙이 있으면 `(has_captions, caption_language, caption_kind)` = `(True, 언어, manual 또는 auto)` · 없으면 `(False, None, None)`
 4. `→ SourceInfo(source_kind=youtube, source_id=vid, title=raw.title, channel=raw.channel 또는 uploader, duration_sec=int(raw.duration), origin=f"https://www.youtube.com/watch?v={vid}", has_captions, caption_language, caption_kind)` · if `duration`이 없음(라이브 · 예정) → `! source-unavailable {reason: 길이를 알 수 없는 영상}`
 
 **출력** `SourceInfo`
 
 **예외** `source-unavailable`
 
-**호출하는 것** `ytdlp.info` ([[VA-MS-007#ytdlp.info]])
+**호출하는 것** `ytdlp.info` ([[VA-MS-007#ytdlp.info]]) · [[#captions.pick]]
 
-**테스트 관점** 가짜 `ytdlp.info`로: 수동 ko + 자동 en → `manual` · `ko` · 자동만 → `auto` · 자막 없음 → `has_captions=False` · 비공개 오류 → `source-unavailable`에 한국어 `reason` · 추출기 오류 → `hint` 있음 · `channel`이 없으면 `uploader`
+**테스트 관점** 가짜 `ytdlp.info`로: 수동 ko + 자동 en-orig → `manual` · `ko` · 자동(원래 언어)만 → `auto` · 번역 자동 자막만 → `has_captions=False` · 자막 없음 → `has_captions=False` · 비공개 오류 → `source-unavailable`에 한국어 `reason` · 추출기 오류 → `hint` 있음 · `channel`이 없으면 `uploader`
 
 ---
 
@@ -132,17 +134,17 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 근거: [[VA-SEQ-001#SEQ-3]] 3~4번 · [[VA-UC-001#UC-S2]] 1~2번 · [[VA-PRD-001#R3]]
 
 **처리**
-1. `raw = EXT: ytdlp.info(f"https://www.youtube.com/watch?v={video_id}")` · 언어 · 종류 고르기는 [[#youtube_info.info]] 3번과 같은 규칙 · if 없음 → `→ None`
-2. `vtt = EXT: ytdlp.captions(video_id, lang, kind)` — VTT 원문
+1. `raw = EXT: ytdlp.info(f"https://www.youtube.com/watch?v={video_id}")` · `(키, 언어, kind) = `[[#captions.pick]]`(raw)` — [[#youtube_info.info]]와 같은 함수 · if 없음 → `→ None`
+2. `vtt = EXT: ytdlp.captions(video_id, 키, kind)` — VTT 원문
 3. VTT 파싱 → `CaptionLine(start_sec, end_sec, text)` — 큐마다 시각 두 개와 텍스트. 태그(`<c>` · `<00:00:01.000>`) 제거 · 빈 줄 제외
 4. 자동 자막의 **굴러가는 중복**을 없앤다 — 앞 큐의 텍스트가 뒤 큐의 앞부분과 같으면 뒤 큐에서 겹친 부분을 뗀다 · 텍스트가 비면 큐를 뺀다 · 같은 텍스트가 잇달아 오면 하나로(끝 시각은 뒤 것)
-5. `→ (lines, lang, kind)`
+5. `→ (lines, 언어, kind)`
 
 **출력** 줄 목록과 언어 · 종류. `None`은 자막이 없다는 뜻이다 — 단계 목록은 시작 때 자막 유무로 정해지므로, 등록 때 있던 자막이 그 사이 사라진 경우라 파이프라인이 실패로 접는다([[VA-MS-002#pipeline.run]])
 
 **예외** `YtdlpError` → 파이프라인이 `youtube`로 접는다
 
-**호출하는 것** `ytdlp.info` · `ytdlp.captions` ([[VA-MS-007#ytdlp.captions]])
+**호출하는 것** `ytdlp.info` · `ytdlp.captions` ([[VA-MS-007#ytdlp.captions]]) · [[#captions.pick]]
 
 **테스트 관점** VTT 고정 파일로: 수동 자막 30줄 → 30 `CaptionLine`, 시각이 초 · 자동 자막의 굴러가는 큐 → 중복 없이, 문장이 한 번씩 · 태그 제거 · 자막 없음 → `None`
 
@@ -335,10 +337,34 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 ---
 
+#### captions.pick yt-dlp 정보 → 자막 트랙
+
+**시그니처** `def pick(raw: dict) -> tuple[str, str, str] | None`
+
+근거: [[VA-PRD-001#R3]] · [[VA-UC-001#UC-S2]] 1번(수동 우선, 없으면 자동) · [[#youtube_info.info]] · [[#audio_source.captions]] · 3장(자동 목록의 기계 번역)
+
+**입력** `raw` — [[VA-MS-007#ytdlp.info]]가 준 JSON. `subtitles`(수동) · `automatic_captions`(자동) · `language`(영상의 원래 언어)를 본다
+
+**처리**
+1. 수동 = `raw.subtitles`의 키 중 `live_chat`(라이브 채팅 기록 — 자막이 아니다)을 뺀 것
+2. 자동 = `raw.automatic_captions` 중 **원래 언어의 받아쓰기** 하나 — 키가 `-orig`로 끝나는 것, 없으면 `raw.language`와 같은 키. 나머지 자동 키(백여 개)는 YouTube가 원래 받아쓰기를 기계 번역한 것이라 보지 않는다 — 원문보다 부정확하고, 요약은 어차피 한국어로 쓴다
+3. 키의 언어 = `-` 앞 부분(`ko-KR` · `ko-FmoQciUtYSc` · `ko-orig` → `ko`). 수동 자막의 키는 `ko`처럼 언어만일 때도, 뒤에 지역이나 트랙 이름이 붙을 때도 있다
+4. 고르는 순서 — `config.CAPTION_LANGS` 순서로 수동에서 언어가 같은 것 → 자동의 언어가 `CAPTION_LANGS`에 있으면 자동 → 수동의 첫 키 → 자동 → 없으면 `None`
+5. `→ (키, 언어, "manual" 또는 "auto")`. 키는 내려받을 때([[VA-MS-007#ytdlp.captions]]의 `lang` 인자)에, 언어는 저장할 때(`caption_language` · `transcripts.language`) 쓴다. 순수 함수 — 도메인 타입을 모른다(종류는 문자열)
+
+**출력** 자막 트랙 하나 또는 `None`
+
+**호출하는 것** 없음
+
+**테스트 관점** 수동 `ko` + 자동 `en-orig` → (`ko`, `ko`, manual) · 수동 없음, 자동 `en-orig`과 번역 `ko` → (`en-orig`, `en`, auto) — 번역 `ko`를 고르지 않는다 · 수동 `ko-FmoQciUtYSc` → 키는 그대로, 언어 `ko` · 수동 `ja`만 + 자동 `en-orig` → 자동 `en-orig` · 수동 `ja`만 + 자동 `fr-orig` → 수동 `ja` · 자동 `fr-orig`만 → `fr-orig` · 수동 `live_chat`만 → `None` · `-orig`가 없으면 `raw.language` 키 · 둘 다 비었으면 `None`
+
+---
+
 ## 3. 미결사항
 
 - [x] 프롬프트 원문의 자리 — 결정: `app/prompts/*.md` 파일 넷(사용자 결정 2026-09-21). 명세는 자리 표시 · 반드시 들어갈 규칙 · 출력 형식만 정하고 문장은 파일에 둔다(0장 「프롬프트 파일」). [[VA-DOM-002]] 7장의 「자리 표시 이름과 출력 형식」 미결을 여기서 닫는다
 - [ ] 자동 자막의 굴러가는 중복 제거 규칙(`captions` 4번)이 YouTube 형식 변화에 약하다. 실제 영상 셋으로 검증 뒤 조정
+- [x] 자동 자막 목록에 기계 번역이 섞인다 — 실제 yt-dlp 출력(2026-09-23)에서 `automatic_captions` 키가 150개 넘게 왔다(원래 언어의 받아쓰기 `xx-orig` 하나 + 나머지는 번역). 수동 키도 `ko-FmoQciUtYSc`처럼 트랙 이름이 붙어 온다. 옛 규칙(자동에서 `ko`를 찾는다)이면 영어 영상도 번역된 한국어를 골랐다. 결정(카드 B1): 원래 언어만 보고 키의 앞 부분을 언어로 읽는다 — 규칙은 [[#captions.pick]] 하나에
 - [ ] 로컬 음성 파일(mp3 · m4a · wav)도 mp3 64kbps로 다시 변환한다(`extract_audio`). 이미 작은 mp3면 건너뛸지 — 첫 버전은 항상 변환(형식을 하나로)
 - [ ] whisper-1 언어 이름 → ISO 코드 표 — 자주 나오는 20개만 두고 나머지는 그대로. 음성 형식 미결은 `config.AUDIO_FORMAT`으로 닫혔다([[VA-INFRA-001]] 9절)
 - [x] JSON 모드가 시각 표기를 `12:40:00`처럼 바꿔 쓰는 것 — 결정: [[#timecode.parse]] 3번. 스크립트 끝을 넘는 세 칸 표기는 앞 두 칸을 `mm:ss`로 읽는다. 실제 응답 표본을 테스트에 넣는다
