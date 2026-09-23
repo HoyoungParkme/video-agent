@@ -183,9 +183,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 **처리**
 1. `total = ffmpeg.probe(path).format.duration` · if `total ≤ config.CHUNK_SEC + config.SPLIT_WINDOW_SEC` → 조각 하나: `→ [ChunkPlan(seq=1, offset_sec=0, duration_sec=total, path=path)]` (자르지 않는다. `path`는 늘 `tmp` 안의 mp3다 — 로컬 음성도 받아쓰기 단계가 먼저 바꾸므로 inbox 원본이 조각이 되지 않는다. 받아쓰기가 끝나면 파이프라인이 지운다)
 2. `silences = EXT: ffmpeg.silences(path)` — 무음 구간의 가운데 시각 목록(`config.SILENCE_DB` · `SILENCE_MIN_SEC`)
-3. 경계 = `k × config.CHUNK_SEC`(k = 1, 2, …)마다 `[목표 − SPLIT_WINDOW_SEC, 목표 + SPLIT_WINDOW_SEC]` 안에서 목표에 가장 가까운 무음 시각 · 없으면 목표 시각 그대로(문장이 잘릴 수 있다 — 어쩔 수 없다)
+3. 경계 = `k × config.CHUNK_SEC`(k = 1, 2, …)마다 `[목표 − SPLIT_WINDOW_SEC, 목표 + SPLIT_WINDOW_SEC]` 안에서 목표에 가장 가까운 무음 시각(앞 경계보다 뒤) · 없으면 목표 시각 그대로(문장이 잘릴 수 있다 — 어쩔 수 없다). 목표가 `total − SPLIT_WINDOW_SEC` 이상이면 경계를 두지 않고 멈춘다 — 마지막 조각이 몇 초짜리가 되지 않게(1번의 조각 하나로 끝나는 여유와 같다)
 4. 경계마다 `EXT: ffmpeg.cut(path, start, end, f"{dest_dir}/{seq}.mp3")` · `ChunkPlan(seq, offset_sec=start, duration_sec=end − start, path)`
-5. if 어느 조각의 파일 크기 > `config.CHUNK_MAX_BYTES` → 그 조각을 반으로 다시 자른다(무음 없이) — 64kbps라 10분이면 4.8MB여서 사실상 안 일어난다
+5. if 어느 조각의 파일 크기 > `config.CHUNK_MAX_BYTES` → 그 조각을 반으로 다시 자른다(무음 없이, 번호는 뒤로 민다) — 64kbps라 10분이면 4.8MB여서 사실상 안 일어난다. 조각 길이가 `SPLIT_WINDOW_SEC` 이하이면 더 자르지 않는다 — 크기가 줄지 않는 이상한 파일에서 끝없이 돌지 않게
 6. `→ 계획 목록 (seq 순)`
 
 **출력** `list[ChunkPlan]`. 조각 수가 화면의 `{k}개 조각`
@@ -194,7 +194,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **호출하는 것** `ffmpeg.probe` · `ffmpeg.silences` · `ffmpeg.cut` ([[VA-MS-007#ffmpeg.silences]] · [[VA-MS-007#ffmpeg.cut]])
 
-**테스트 관점** 150분 파일 → 15 조각, 경계가 각 600초 ±30초 안의 무음 · 무음 없는 파일 → 정확히 600초마다 · 8분 파일 → 조각 하나, 자르기 호출 없음 · 조각 길이 합 = 전체 · 모든 조각 < 24MB
+**테스트 관점** 150분 파일 → 15 조각, 경계가 각 600초 ±30초 안의 무음 · 무음 없는 파일 → 정확히 600초마다 · 창 밖의 무음은 쓰지 않는다 · 8분 파일 → 조각 하나, 자르기 호출 없음 · 9,010초 파일 → 15 조각(끝 10초짜리 조각이 없다) · 크기 상한을 넘는 조각 → 반으로, 번호가 이어진다 · 조각 길이 합 = 전체 · 모든 조각 < 24MB
 
 ---
 
