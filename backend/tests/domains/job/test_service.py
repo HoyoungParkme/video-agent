@@ -494,6 +494,19 @@ async def test_mark_stage_with_transcribe(db, make) -> None:
     assert (await _job_row(db, job.id)).progress_pct == 77  # 70 + 7.5 → 내림
 
 
+async def test_mark_stage_reentering_transcribe_keeps_done_share(db, make) -> None:
+    # 다시 시도 — 30개 중 15 완료에서 받아쓰기로 다시 들어가면 진행률이 앞 단계 몫으로 떨어지지 않는다
+    job = await _transcribing(make, 30, done=15)
+    row = await _job_row(db, job.id)
+    row.stage_durations_sec = {"download": 40, "transcribe": 300}
+    row.stage_started_at = datetime.now(UTC) - timedelta(seconds=2)  # claim_next가 막 적은 때
+    await db.commit()
+    await JobService(db).mark_stage(job.id, JobStage.transcribe)
+    row = await _job_row(db, job.id)
+    assert row.progress_pct == 42  # 7.5 + 70 × 15/30, 내림
+    assert row.stage_durations_sec == {"download": 40, "transcribe": 302}  # 걸린 시간은 더한다
+
+
 async def test_finish(db, make) -> None:
     video = await make.video()
     job = await make.job(video.id, JobStatus.running, stage="suggest")

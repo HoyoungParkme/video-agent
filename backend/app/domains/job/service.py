@@ -433,6 +433,7 @@ class JobService:
         """VA-MS-002#JobService.mark_stage
 
         단계 전환 — 끝난 단계의 걸린 시간, 새 단계의 시작 시각, 진행률(앞선 단계 가중치 합).
+        받아쓰기로 다시 들어가면(다시 시도) 이미 끝난 조각 몫까지 넣는다 — 진행률이 뒤로 가지 않게.
 
         Args:
             job_id: 작업 id
@@ -443,14 +444,22 @@ class JobService:
         row.stage = stage
         row.stage_started_at = datetime.now(UTC)
         row.progress_pct = _done_pct(row.stages, stage)
+        if stage == JobStage.transcribe:
+            counts = (await crud.chunk_counts(self.session, [job_id])).get(job_id)
+            if counts:
+                row.progress_pct = _transcribe_pct(row.stages, *counts)
         await self.session.commit()
 
     @staticmethod
     def _close_stage(row: AnalysisJobRow) -> None:
-        # 처음(pending)에서 넘어갈 때는 걸린 시간이 없다
+        # 처음(pending)에서 넘어갈 때는 걸린 시간이 없다. 다시 시도로 같은 단계를 또 돌면 더한다
         if row.stage != JobStage.pending:
             took = round(_elapsed(row.stage_started_at))
-            row.stage_durations_sec = {**row.stage_durations_sec, row.stage.value: took}
+            key = row.stage.value
+            row.stage_durations_sec = {
+                **row.stage_durations_sec,
+                key: row.stage_durations_sec.get(key, 0) + took,
+            }
 
     async def plan_chunks(self, job_id: int, plans: list[ChunkPlan]) -> None:
         """VA-MS-002#JobService.plan_chunks
