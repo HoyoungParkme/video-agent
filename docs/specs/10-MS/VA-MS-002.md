@@ -493,7 +493,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 근거: [[VA-DOM-002]] 4.2 파이프라인 문단 · [[VA-UI-002#UI-3]] 5.1 제목 재료
 
-**처리** if `isinstance(e, (TimeoutError, OSError의 네트워크 계열, httpx.TransportError))` → `network` · elif OpenAI SDK 예외 → `openai` · elif 어댑터의 `YtdlpError` → `youtube` · elif 어댑터의 `FfmpegError` → `ffmpeg` · elif `OSError(ENOSPC)` → `disk` · else → `unknown`
+**처리** if `isinstance(e, (TimeoutError, OSError의 네트워크 계열, openai.APIConnectionError))` → `network`(`APITimeoutError`는 `APIConnectionError`의 하위라 함께 걸린다) · elif OpenAI SDK 예외 → `openai` · elif 어댑터의 `YtdlpError` → `youtube` · elif 어댑터의 `FfmpegError` → `ffmpeg` · elif `OSError(ENOSPC)` → `disk` · else → `unknown`
 
 **테스트 관점** 여섯 종류 각각 · OpenAI SDK의 연결 오류는 `openai`가 아니라 `network`(SDK가 `APIConnectionError`로 감싼다 — 먼저 검사)
 
