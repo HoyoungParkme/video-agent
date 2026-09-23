@@ -107,7 +107,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 1. `SettingsService.require_key()` · if 없음 → `! key-missing` · if 확인 실패 → `! key-invalid`
 2. `DB: analysis_jobs where video_id` · if 있음 → `! job-exists {job_id, job_status}` — 실패한 작업은 `retry`로, 끝난 작업은 다시 만들지 않는다
 3. `stages = stages_for(video)` · `est = estimate(video)`(여기서는 `status`를 보지 않는다 — 작업이 없다는 것을 2에서 확인했다) · `models = SettingsService.current_models()`
-4. **트랜잭션**: `DB: analysis_jobs insert(video_id, status=queued, stage=pending, stages, progress_pct=0, est_seconds=est.seconds, est_cost_usd=est.total_cost_usd, concurrency=config.STT_CONCURRENCY, stt_model=models.stt.id if needs_stt else None, text_model=models.text.id, stage_durations_sec={}, started_at=now, queued_at=now, stage_started_at=now)` — **늘 `queued`다.** 다른 영상이 도는지 보지 않는다. `running`으로 바꾸는 것은 워커 하나라([[#JobService.claim_next]]) 시작하는 길이 하나다
+4. **트랜잭션**: `DB: analysis_jobs insert(video_id, status=queued, stage=pending, stages, progress_pct=0, est_seconds=est.seconds, est_cost_usd=est.total_cost_usd, concurrency=config.STT_CONCURRENCY, stt_model=models.stt.id if needs_stt else None, text_model=models.text.id, stage_durations_sec={}, started_at=now, queued_at=now, stage_started_at=now)` — **늘 `queued`다.** 다른 영상이 도는지 보지 않는다. `running`으로 바꾸는 것은 워커 하나라([[#JobService.claim_next]]) 시작하는 길이 하나다 · 커밋이 영상 하나에 작업 하나인 부분 unique([[VA-DOM-003]] 3장)에 걸리면 — 2와 4 사이에 같은 영상의 [분석 시작]이 하나 더 들어왔다(탭 둘) — 롤백하고 먼저 들어간 작업으로 `! job-exists`
 5. 커밋 뒤 `wake()` · `await asyncio.sleep(0)` — 워커에게 한 번 양보한다. 도는 작업이 없으면 워커가 이 틈에 꺼내 `running`이 된다(보장은 아니다 — 안 됐으면 `queued`로 나가고 첫 폴링에서 바뀐다)
 6. `row = DB: analysis_jobs where id`(다시 읽기) · `→ to_job(row, [], queue_position(row))`
 
@@ -117,7 +117,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** `SettingsService.require_key` · `SettingsService.current_models` · [[#JobService.stages_for]] · [[#JobService.estimate]] · [[#JobService.wake]] · [[#JobService.queue_position]] · [[#JobService.to_job]]
 
-**테스트 관점** 응답이 파이프라인을 기다리지 않는다(깨우기만 한다) · 같은 영상 두 번 → 둘째는 `job-exists` · 다른 영상이 `running`이어도 **거절하지 않고** `queued` · `queue_position=1` · 대기 작업이 하나 더 있으면 2 · 자막 있는 YouTube → `stt_model=None`, `stages` 4개 · 행에 그때의 모델 이름 · 동시 수 · 예상치가 남는다 · 키가 없으면 행이 안 생긴다
+**테스트 관점** 응답이 파이프라인을 기다리지 않는다(깨우기만 한다) · 같은 영상 두 번 → 둘째는 `job-exists` · 2에서 못 본 같은 영상의 작업이 커밋 때 부분 unique에 걸리면 `job-exists`이고 행은 하나 · 다른 영상이 `running`이어도 **거절하지 않고** `queued` · `queue_position=1` · 대기 작업이 하나 더 있으면 2 · 자막 있는 YouTube → `stt_model=None`, `stages` 4개 · 행에 그때의 모델 이름 · 동시 수 · 예상치가 남는다 · 키가 없으면 행이 안 생긴다
 
 ---
 
