@@ -112,3 +112,50 @@ def test_remaining_sec_without_chunks() -> None:
 def test_remaining_sec_chunks_is_stub() -> None:
     with pytest.raises(NotImplementedYet):
         JobService.remaining_sec(_row(stage=JobStage.transcribe, stages=STT_STAGES), [])
+
+
+# --- to_job
+
+
+def _chunk(seq: int, state: ChunkState) -> AudioChunkRow:
+    return AudioChunkRow(job_id=1, seq=seq, offset_sec=0, duration_sec=600, state=state, attempts=1)
+
+
+def test_to_job_stage_index_and_models() -> None:
+    job = JobService.to_job(_row(stage=JobStage.chapter), [])
+    assert job.stages == ["download", "summarize", "chapter", "suggest"]
+    assert job.stage_index == 3
+    assert job.chunks is None
+    assert job.concurrency is None  # 받아쓰기가 없는 작업
+    assert job.models.model_dump() == {"stt": None, "text": "gpt-5-mini"}
+    assert job.error is None
+    assert JobService.to_job(_row(stage=JobStage.pending), []).stage_index == 1
+
+
+def test_to_job_failed_chunk_and_next_seq() -> None:
+    # 16번 실패, 17번 완료 — 화면의 k는 16, 다시 시도할 r도 16
+    states = (
+        [ChunkState.done] * 15 + [ChunkState.failed, ChunkState.done] + [ChunkState.waiting] * 7
+    )
+    row = _row(
+        status=JobStatus.failed,
+        stage=JobStage.transcribe,
+        stages=STT_STAGES,
+        error_kind=ErrorKind.network,
+        error_reason="시간 초과",
+        error_chunk_seq=16,
+        error_attempts=3,
+    )
+    job = JobService.to_job(row, [_chunk(i, s) for i, s in enumerate(states, 1)])
+    assert job.error == JobError(
+        kind=ErrorKind.network, reason="시간 초과", chunk_seq=16, attempts=3
+    )
+    assert job.chunks.next_seq == 16
+    assert (job.chunks.total, job.chunks.done, job.chunks.failed, job.chunks.waiting) == (
+        24,
+        16,
+        1,
+        7,
+    )
+    assert job.concurrency == 3
+    assert job.remaining_sec is None

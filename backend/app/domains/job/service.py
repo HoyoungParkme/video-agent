@@ -126,3 +126,65 @@ class JobService:
             raise NotImplementedYet("받아쓰기의 남은 시간은 아직 지원하지 않아요")
         spent = sum(row.stage_durations_sec.values()) + _elapsed(row.stage_started_at)
         return max(round(row.est_seconds - spent), 0)
+
+    @staticmethod
+    def to_job(
+        row: AnalysisJobRow, chunks: list[AudioChunkRow], queue_position: int | None = None
+    ) -> Job:
+        """VA-MS-002#JobService.to_job
+
+        행 + 조각 → 폴링 응답. 차례는 DB를 읽어야 해서 부르는 쪽이 세어 넘긴다 — 순수 함수.
+
+        Args:
+            row: 작업 행
+            chunks: 조각들(번호순)
+            queue_position: 대기열에서의 차례
+
+        Returns:
+            Job
+        """
+        items = [Chunk(seq=c.seq, state=c.state) for c in chunks]
+        states = [c.state for c in chunks]
+        chunks_dto = (
+            Chunks(
+                total=len(chunks),
+                done=states.count(ChunkState.done),
+                in_flight=states.count(ChunkState.in_flight),
+                failed=states.count(ChunkState.failed),
+                waiting=states.count(ChunkState.waiting),
+                next_seq=next((c.seq for c in chunks if c.state != ChunkState.done), None),
+                items=items,
+            )
+            if chunks
+            else None
+        )
+        error = (
+            JobError(
+                kind=row.error_kind,
+                reason=row.error_reason,
+                chunk_seq=row.error_chunk_seq,
+                attempts=row.error_attempts,
+            )
+            if row.status == JobStatus.failed
+            else None
+        )
+        return Job(
+            id=row.id,
+            video_id=row.video_id,
+            status=row.status,
+            stage=row.stage,
+            queue_position=queue_position,
+            stages=row.stages,
+            stage_index=row.stages.index(row.stage) + 1 if row.stage != JobStage.pending else 1,
+            progress_pct=row.progress_pct,
+            remaining_sec=JobService.remaining_sec(row, chunks),
+            chunks=chunks_dto,
+            concurrency=row.concurrency if JobStage.transcribe in row.stages else None,
+            models=Models(stt=row.stt_model, text=row.text_model),
+            error=error,
+            est_seconds=row.est_seconds,
+            est_cost_usd=float(row.est_cost_usd),
+            stage_durations_sec=row.stage_durations_sec,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+        )
