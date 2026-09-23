@@ -160,7 +160,8 @@ app/
 ```
 frontend/
 ├── package.json · tsconfig.json · next.config.ts   화면만 설정하므로 여기. next.config.ts가 `/api/*`를 api로 넘긴다 — 브라우저는 web 하나만 본다
-├── playwright.config.ts · e2e/   E2E. 와이어프레임 요소 번호(data-el)로 누르고, 가짜 OpenAI 서버(e2e/fake-openai.mjs)를 함께 띄운다
+├── playwright.config.ts · e2e/   E2E. 와이어프레임 요소 번호(data-el)로 누르고, 가짜 OpenAI 서버(e2e/fake-openai.mjs)를 함께 띄운다.
+│                              yt-dlp도 가짜(e2e/fake-ytdlp.mjs — 정해 둔 정보 · 자막)라 YouTube에 닿지 않는다. 시작 때 테스트 DB를 비운다
 ├── public/                    그대로 서빙 — favicon
 └── src/
     ├── app/                   Next.js App Router — 라우팅. 기본형의 main.tsx · App.tsx 몫
@@ -174,6 +175,7 @@ frontend/
     ├── components/            두 화면 이상이 쓰는 조각만. 와이어프레임 1장 공통 컴포넌트와 1:1 —
     │                          Header · Dialog · TimeChip · KeyBanner · Toast · FailureAlert · EmptyBox · buttons
     ├── api/client.ts          서버 호출 한곳. 화면이 직접 fetch 하지 않는다. 형태는 [[VA-API-001]] 4장 스키마 그대로
+    ├── labels.ts              코드값 → 화면 글자. 두 화면 이상이 쓰는 표기만 — 단계 이름([[VA-UI-002#UI-3]] 규칙) · 언어 이름 · 분석한 때('오늘 14:08')
     ├── assets/                글꼴 파일 — Hahmlet · IBM Plex Sans KR · IBM Plex Mono (next/font 로컬, 앱 밖으로 요청 없음)
     ├── proxy.ts               요청이 라우트에 닿기 전에 — `/api/*`의 Host가 localhost · 127.0.0.1이 아니면 400(INFRA 5절, DNS 리바인딩). Next 16에서 middleware의 새 이름
     └── styles.css             [[VA-UI-001]] 3장 토큰의 전사. 값을 컴포넌트에 직접 쓰지 않는다
