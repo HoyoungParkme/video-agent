@@ -156,3 +156,15 @@ async def _stage(stage: JobStage, job_id: int, video: Video, tmp: Path) -> None:
                 await analysis.generate_chapters(video)
             elif stage == JobStage.suggest:
                 await analysis.generate_questions(video)
+
+
+async def resume(job_id: int, video: Video) -> None:
+    """VA-MS-002#pipeline.resume
+
+    실패한 단계부터 이어서. 스텁 — B2(VA-CODE-001 B1). 다시 시도가 501이라 B1에서는
+    stage가 pending이 아닌 작업이 대기열에 들어오지 않는다.
+
+    Raises:
+        NotImplementedYet: 아직 없다
+    """
+    raise NotImplementedYet("이어서 다시 시도는 아직 지원하지 않아요")

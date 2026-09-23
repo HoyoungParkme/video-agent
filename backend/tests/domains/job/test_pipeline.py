@@ -68,6 +68,17 @@ def test_error_kind_each() -> None:
     assert kind(NotImplementedYet("아직")) == ErrorKind.unknown
 
 
+# --- 스텁
+
+
+async def test_stubs(make) -> None:
+    video, job = await _running(make)
+    with pytest.raises(NotImplementedYet):
+        await pipeline.transcribe_stage(job.id, video, "/tmp/a.mp3", "/tmp")
+    with pytest.raises(NotImplementedYet):
+        await pipeline.resume(job.id, video)
+
+
 # --- run
 
 
