@@ -69,7 +69,8 @@ video-agent/                    저장소 = 프로젝트
 app/
 ├── main.py                 앱 조립. 라우터 등록, 시작 때(lifespan) 저장된 키 확인(SettingsService.check_stored_key),
 │                           서버가 죽어 running인 채 남은 작업을 failed로 되돌림(JobService.fail_orphans),
-│                           대기열 워커 하나를 띄움(pipeline.worker) — 끌 때 취소한다
+│                           대기열 워커 하나를 띄움(pipeline.worker(load_video) — VideoService.get을 감싸 넘긴다) — 끌 때 취소한다.
+│                           어댑터에 넘길 client_for(부를 때마다 SettingsService.api_key로 openai.client)를 조립한다
 ├── core/                   도메인에 속하지 않는 것
 │   ├── config.py           환경 변수 → Config (DB URL · inbox/data 경로 · .env 경로 · 조각 길이 · 동시 수 · 재시도 상한 · 모델 목록과 단가)
 │   │                       키와 고른 모델은 여기 없다 — 돌면서 바뀌므로 SettingsService가 .env 파일에서 읽는다
@@ -114,11 +115,15 @@ app/
 │       ├── ports.py        AnswererPort
 │       └── adapters/       answerer_openai.py (infra/openai. 프롬프트는 prompts/에서 읽는다)
 │
-├── prompts/                모델에 보내는 지시문. 마크다운 파일, `{자리 표시}`를 어댑터가 채운다 (아래 「기본형과 다른 점」)
+├── prompts/                모델에 보내는 지시문. 마크다운 파일, `{{이름}}` 자리 표시를 어댑터가 채운다 (아래 「기본형과 다른 점」)
+│   ├── __init__.py         render(name, **values) — 파일을 읽어 자리 표시를 채운다. 부를 때마다 읽는다(MINISPEC 어댑터 `prompts.render`)
 │   ├── summary.md          핵심 요약 — 한 줄 요약 · 인사이트와 근거 시각
 │   ├── chapters.md         파트 · 챕터 · 챕터별 요점
 │   ├── questions.md        추천 질문 3개
 │   └── answer.md           질문 답변 — 스크립트 근거만, 근거 시각
+│
+├── shared/                 두 묶음 이상이 쓰는 순수 유틸(규약 1.9)
+│   └── timecode.py         초 ↔ `mm:ss` · `h:mm:ss`. 내보내기(analysis)와 OpenAI 어댑터 둘(analysis · chat)이 쓴다(MINISPEC 어댑터 `timecode.label` · MINISPEC 어댑터 `timecode.parse`)
 │
 └── infra/                  외부 시스템 공용 클라이언트. 도메인별 해석은 각 묶음의 adapters/에
     ├── ytdlp.py            영상 정보 · 자막 목록 · 자막 내려받기 · 음성 내려받기
@@ -126,7 +131,7 @@ app/
     └── openai.py           클라이언트 생성 · 키 확인(모델 목록 조회) · 받아쓰기 호출 · 채팅 호출
 ```
 
-`shared/`는 없다 — 두 묶음 이상이 쓰는 순수 유틸이 아직 없다. 시각 표기(`mm:ss`)는 내보내기(`analysis/export.py`)만 쓴다. 생기면 그때 만든다.
+`shared/`에는 `timecode.py` 하나만 있다. 시각 표기는 내보내기(analysis)와 OpenAI 어댑터 둘(analysis의 요약 · chat의 답변)이 쓰는데, 묶음끼리는 서로의 모듈을 부르지 않으므로 묶음 밖에 둔다. 다른 순수 유틸은 두 묶음이 실제로 같이 쓸 때 옮긴다.
 
 **이 문서에서 파일 경로를 적을 때**는 패키지 안 상대 경로로 쓴다 — `domains/job/pipeline.py`는 `backend/app/domains/job/pipeline.py`를 가리킨다.
 
@@ -527,6 +532,7 @@ flowchart LR
 |---|---|---|
 | `video/router` | `JobService.estimate(video)` | [[VA-API-001#POST/api/videos]] 응답이 영상 + 예상치. 작업이 있으면 null을 돌려주므로 라우터에 분기가 없다 |
 | `video/router` | `JobService.cancel(video_id)` | [[VA-API-001#DELETE/api/videos/{id}]] — 진행 중이면 먼저 멈춘다. 없으면 아무것도 안 한다 |
+| `video/router` | `JobService.wake()` | 같은 삭제에서 `VideoService.delete` **뒤에** 부른다 — 지운 것이 도는 작업이었으면 다음 대기 작업이 시작된다. 지우기 전에 깨우면 워커가 곧 지워질 행을 꺼낼 수 있다(시퀀스 SEQ-11) |
 | `job/router` | `VideoService.get(video_id)` | 시작 · 재시도가 `Video` DTO를 받는다. 작업 묶음은 영상 테이블을 모른다 |
 | `analysis/router` | `VideoService.get(video_id)` · `ChatService.history(video_id)` | 결과 · 내보내기가 `Video`를 받고, `with_chat`이면 대화 턴을 받는다 |
 | `chat/router` | `VideoService.get(video_id)` | 질문이 `Video`를 받는다(결과 유무 · 길이). 기록 조회도 영상이 없으면 404를 내야 하므로 먼저 부른다 |
@@ -564,9 +570,9 @@ flowchart TB
     AS -.->|current_models| SS
     MAIN[main.py<br/>lifespan]
     MAIN -->|worker| PL
-    MAIN -.->|check_stored_key| SS
+    MAIN -.->|check_stored_key · api_key| SS
     MAIN -.->|fail_orphans| JS
-    PL -.->|claim_next| JS
+    PL -.->|claim_next · wait_for_work| JS
     PL -.->|mark_stage · plan_chunks · mark_chunk · finish · fail| JS
     PL -.->|save_transcript · generate_summary · generate_chapters · generate_questions| AS
     CS -.->|segments_of · chapters_of| AS
@@ -587,9 +593,9 @@ flowchart TB
 **규칙**
 - 서비스끼리 직접 부르는 것은 넷이다 — `VideoService → JobService`(작업 요약 · 예상치는 라우터가), `VideoService → ChatService`(대화 수), `pipeline → AnalysisService`(단계 실행), `ChatService → AnalysisService`(답변 맥락). `AnalysisService`와 `JobService`는 다른 묶음의 서비스를 부르지 않는다. `JobService`는 영상 테이블을 모른다 — 필요한 것은 `Video` DTO로 받는다
 - 순환이 없다. video → job · chat, chat → analysis, job → analysis. 반대 방향은 없다
-- `SettingsService`는 `core/`라 어느 묶음이든 부를 수 있다. 하는 일은 키 확인 · 모델 이름 넷뿐이다
+- `SettingsService`는 `core/`라 어느 묶음이든 부를 수 있다. 하는 일은 키 확인 · 모델 이름 넷과, 조립 지점(`main.py`)에 지금 키를 주는 것(`api_key`)이다
 - 어댑터는 `infra/` 클라이언트만 부른다. 서비스는 `infra/`를 직접 부르지 않는다 — `SettingsService`만 예외로 `infra/openai.verify_key`를 부른다(포트를 둘 도메인이 없다)
-- `pipeline.worker`는 `main.py`가 시작 때 하나 띄운다. 워커가 `JobService.claim_next`로 다음 작업을 받아 `run` 또는 `resume`을 태스크로 돌리고 끝나기를 기다린다. 도는 태스크의 핸들은 `JobService`가 들고 있어 삭제 때 취소한다(4.2). `JobService`는 파이프라인을 직접 띄우지 않는다 — 대기열에 넣고 워커를 깨울 뿐이다
+- `pipeline.worker(load_video)`는 `main.py`가 시작 때 하나 띄운다. `load_video`는 `main.py`가 `VideoService.get`을 감싸 넘기는 함수다 — 작업 묶음은 영상 묶음을 import하지 않고, 둘을 아는 곳은 조립 지점뿐이다. 워커가 `JobService.claim_next`로 다음 작업을 받아 `run` 또는 `resume`을 태스크로 돌리고 끝나기를 기다린다. 도는 태스크의 핸들은 `JobService`가 들고 있어 삭제 때 취소한다(4.2). `JobService`는 파이프라인을 직접 띄우지 않는다 — 대기열에 넣고 워커를 깨울 뿐이다
 
 ---
 ## 4. 설계 클래스
@@ -667,6 +673,7 @@ classDiagram
         +fail(job_id: int, error: JobError) None
         +fail_orphans() int
         +claim_next() AnalysisJobRow
+        +wake() None
         +wait_for_work() None
         -stages_for(video: Video) list~JobStage~
         -remaining_sec(job: AnalysisJobRow) int
@@ -722,6 +729,7 @@ classDiagram
 | `mark_stage` · `plan_chunks` · `mark_chunk` · `finish` · `fail` | pipeline | [[VA-UC-001#UC-S6]] 1~3 · [[VA-UC-001#UC-S3]] 2~3 | |
 | `fail_orphans` | `main.py` 시작 절차 | — (5장 8) | |
 | `claim_next` · `wait_for_work` | pipeline.worker | [[VA-UC-001#UC-H0]] 3b | |
+| `wake` | `start` · `retry` · video/router(삭제 뒤) | [[VA-UC-001#UC-H0]] 3b · [[VA-UC-001#UC-H6]] 4 | |
 
 **규칙이 사는 곳**
 - `estimate`: 작업이 있으면 null. 자막 있음이면 `needs_stt = false` · 약 60초 · 받아쓰기 비용 0. 받아쓰기 필요면 조각 수 = 길이 ÷ 조각 길이(설정값), 동시 수 = 설정값, 받아쓰기 비용 = 분 × 단가(설정값 — `SettingsService.current_models`의 모델 단가), 예상 시간 = 조각 수 ÷ 동시 수 × 조각당 예상 시간. 텍스트 모델 비용 추정식은 7장. 화면은 이 숫자를 그대로 보인다([[VA-UI-002#UI-2]] 규칙)
@@ -729,9 +737,10 @@ classDiagram
 - `stages_for`: 자막 있는 YouTube [download, summarize, chapter, suggest] · 자막 없는 YouTube [download, transcribe, summarize, chapter, suggest] · 로컬 영상 [extract, transcribe, summarize, chapter, suggest] · 로컬 음성 [transcribe, summarize, chapter, suggest]([[VA-UC-001#UC-S2]], [[VA-UC-001#UC-H2]] 2b)
 - `retry`: `status`가 `failed`가 아니면 `job-not-failed`. `error_*`를 비우고 `queued`로 되돌리고 `queued_at`을 지금으로 적은 뒤 워커를 깨운다 — 같은 행, 같은 `id`, `stage`는 실패한 단계 그대로. 도는 작업이 있으면 대기열 끝에서 기다린다
 - `claim_next`: `running`인 행이 없을 때만, `queued` 중 `queued_at`이 가장 이른 행을 `running`으로 바꿔 돌려준다. 없으면 None. 한 트랜잭션으로 하고 DB의 부분 unique(`running` 하나, [[VA-DOM-003#analysis_jobs]])가 마지막 방어선이다
-- `wait_for_work`: 워커가 할 일이 없을 때 기다리는 곳이다. `start` · `retry` · 작업이 끝났을 때(`finish` · `fail` · `cancel`) 깨운다. 프로세스 안 `asyncio.Event` 하나다
+- `wait_for_work`: 워커가 할 일이 없을 때 기다리는 곳이다. 프로세스 안 `asyncio.Event` 하나이고, 신호가 없어도 몇 초마다 한 번은 대기열을 본다(MINISPEC 작업 서비스 `JobService.wait_for_work`)
+- `wake`: 그 신호를 켠다. 부르는 곳은 셋 — `start` · `retry`(커밋 뒤)와 삭제 라우터(`VideoService.delete` 뒤). `finish` · `fail` · `cancel`은 깨우지 않는다 — 워커가 도는 태스크를 직접 기다리므로 끝나면 스스로 다음으로 간다
 - `queue_position`: `queued`인 행 중 `queued_at`이 자기보다 이른 것의 수 + 1. `queued`가 아니면 None. 도는 작업이 하나 있고 자기가 대기열 맨 앞이면 1이고, 그때 화면의 '앞 영상 1개'와 '1번째'가 같은 수다([[VA-API-001]] 5장 8)
-- `cancel`: 태스크 핸들이 있으면 취소하고 기다린다. 행은 지우지 않는다(cascade가 지운다). 없으면(대기 중 · 실패 · 완료) 아무것도 안 한다 — 대기 중인 작업은 행이 지워지면 대기열에서 빠진 것이다. 끝에 워커를 깨워 다음 작업이 시작되게 한다
+- `cancel`: 태스크 핸들이 있으면 취소하고 기다린다. 행은 지우지 않는다(cascade가 지운다). 없으면(대기 중 · 실패 · 완료) 아무것도 안 한다 — 대기 중인 작업은 행이 지워지면 대기열에서 빠진 것이다. 워커는 깨우지 않는다 — 삭제 라우터가 행을 지운 뒤에 `wake`를 부른다
 - `progress` · `to_job`: `remaining_sec` = 받아쓰기 단계면 미완료 조각 수 × 지금까지 조각당 평균(`done_at` 차이), 다른 단계는 예상 전체 시간 − 지난 시간(0 아래로 내려가지 않는다), `running`이 아니면 null. `queue_position`은 위 규칙대로. `chunks.next_seq`는 `done`이 아닌 첫 조각. `Chunks`의 집계(done · in_flight · failed · waiting)는 조각 행에서 센다. `progress_pct`는 파이프라인이 단계 가중치로 갱신한 값을 그대로
 - `mark_chunk`: `in_flight`로 바꿀 때 `attempts`를 1 올린다. `done`으로 바꿀 때 `done_at` · `result`를 저장하고 `progress_pct`를 완료 조각 비율로 갱신한다. `waiting`(재시도 대기) · `failed`는 상태만 바꾼다
 - `fail_orphans`: 시작 때 `running`인 작업을 `failed`(kind `unknown`, reason '서버가 다시 시작됨')로, `queued`는 그대로 둔다(워커가 뜨면 이어서 돈다). 되돌린 작업의 `in_flight` 조각을 `waiting`으로 돌린다. 핸들이 없는 작업은 돌지 않는데 화면에는 도는 것처럼 보이기 때문이다(5장 8)
@@ -740,8 +749,9 @@ classDiagram
 **파이프라인 (`job/pipeline.py`)** — 클래스가 아니라 함수 모듈이다. 항목으로 두지 않고 여기 적는다.
 
 ```
-worker() -> None                                main.py가 시작 때 하나 띄운다. 끝없이 돈다:
+worker(load_video) -> None                      main.py가 시작 때 하나 띄운다. load_video: 영상 id → Video | None (VideoService.get을 감싼 것). 끝없이 돈다:
                                                   row = JobService.claim_next() · 없으면 JobService.wait_for_work() 뒤 다시
+                                                  video = load_video(row.video_id) · None이면(그 사이 지워짐) 건너뛴다
                                                   row.stage가 pending이면 run, 아니면 resume을 태스크로 띄우고(핸들은 JobService가 보관) 끝나기를 기다린다
                                                   태스크가 어떻게 끝나든(완료 · 실패 · 취소) 다음 작업으로. 워커 자신은 죽지 않는다
 run(job_id: int, video: Video) -> None          worker가 띄운다. stages 첫 단계부터
@@ -920,6 +930,9 @@ classDiagram
         +check_stored_key() KeyStatus
         +require_key() None
         +current_models() Models
+        +api_key() str
+        -read_env() dict
+        -write_env(values: dict) None
         -last_check KeyCheck
     }
 ```
@@ -932,13 +945,15 @@ classDiagram
 | `check_stored_key` | main(시작) · VideoService.register(분석 버튼) · require_key(마지막이 연결 실패일 때) | [[VA-UC-001#UC-H8]] 1a | |
 | `require_key` | VideoService.register · JobService.start · retry · ChatService.ask | [[VA-UC-001#UC-H0]] 사전조건 | key-missing · key-invalid |
 | `current_models` | JobService · AnalysisService · ChatService | — | |
+| `api_key` | `main.py`가 조립한 `client_for` | — | |
 
 **규칙이 사는 곳**
 - `check_stored_key`: `infra/openai.verify_key`로 가벼운 요청(모델 목록)을 보내고 `last_check`에 결과와 시각을 둔다. 부르는 때는 서버 시작, 분석 버튼, 키 저장, 그리고 마지막 확인이 연결 실패였을 때의 `require_key`다([[VA-UI-002#UI-5]] 규칙, [[VA-API-001]] 5장 11). `get`은 `last_check`를 돌려줄 뿐 다시 확인하지 않는다
-- `require_key`: `last_check.state`가 `missing`이면 `key-missing`, `invalid`면 `key-invalid`(reason_kind · reason · checked_at). **다만 `invalid`의 이유가 `network`면 그 자리에서 `check_stored_key`를 한 번 부르고 새 결과로 판정한다** — 키가 틀린 것이 아니라 인터넷이 없었던 것이라 화면이 버튼을 막지 않는다([[VA-UI-002]] 1.4, [[VA-API-001]] 5장 11). 다른 이유는 다시 확인해도 같으므로 OpenAI에 보내지 않는다. 읽기 요청은 부르지 않는다 — 키 없이도 읽기는 전부 된다([[VA-API-001]] 1장)
+- `require_key`: 비동기다 — 연결 실패였으면 OpenAI를 한 번 부를 수 있다. 부르는 네 곳은 모두 `await`한다. `last_check.state`가 `missing`이면 `key-missing`, `invalid`면 `key-invalid`(reason_kind · reason · checked_at). **다만 `invalid`의 이유가 `network`면 그 자리에서 `check_stored_key`를 한 번 부르고 새 결과로 판정한다** — 키가 틀린 것이 아니라 인터넷이 없었던 것이라 화면이 버튼을 막지 않는다([[VA-UI-002]] 1.4, [[VA-API-001]] 5장 11). 다른 이유는 다시 확인해도 같으므로 OpenAI에 보내지 않는다. 읽기 요청은 부르지 않는다 — 키 없이도 읽기는 전부 된다([[VA-API-001]] 1장)
 - `set_key`: 확인이 통과해야 저장한다. 실패(`format` · `auth` · `quota`)는 `key-rejected`, 네트워크는 `llm-unavailable`. 둘 다 저장하지 않고 `last_check`도 바꾸지 않는다. 통과하면 `.env`의 `OPENAI_API_KEY` 줄을 고치고 `last_check`를 `ok`로
-- `.env` 쓰기: `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL` 세 줄만 바꾸고 다른 줄 · 주석 · 순서는 그대로 둔다. 줄이 없으면 끝에 더한다. 같은 폴더에 임시 파일로 쓴 뒤 rename으로 바꿔치기해 반쯤 쓰인 파일이 남지 않게 한다. 서버를 다시 띄우지 않아도 다음 요청부터 새 값을 쓴다 — 읽을 때마다 파일에서 읽기 때문이다(`config.py`에 두지 않는 이유)
+- `.env` 쓰기: `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL` 세 줄만 바꾸고 다른 줄 · 주석 · 순서는 그대로 둔다. 줄이 없으면 끝에 더한다. **제자리에서 쓴다** — 새 내용을 메모리에서 다 만든 뒤 같은 파일을 열어 한 번에 쓰고 자른다(`truncate` · `fsync`). 파일 하나를 바인드 마운트하면 그 파일이 마운트 지점이라 rename으로 바꿔치기할 수 없다(`EBUSY`, 컨테이너로 확인). 쓰기는 프로세스 안 잠금 하나로 줄 세운다(MINISPEC 설정 서비스 `SettingsService.write_env`). 서버를 다시 띄우지 않아도 다음 요청부터 새 값을 쓴다 — 읽을 때마다 파일에서 읽기 때문이다(`config.py`에 두지 않는 이유)
 - `get`: `key.stored_in`은 키가 있으면 늘 '.env에 저장됨', 없으면 None
+- `api_key`: `.env`의 `OPENAI_API_KEY`를 그대로 준다. 없거나 비었으면 None. 부르는 곳은 `main.py`가 조립해 어댑터에 넘기는 `client_for` 하나다 — 어댑터가 모델을 부를 때마다 이것으로 클라이언트를 받으므로, 화면이나 `.env`에서 키를 바꾸면 다음 호출부터 새 키를 쓴다. 키 전체가 밖으로 나가는 유일한 길이라 응답 · 로그에는 쓰지 않는다
 - `set_models`: 값은 `model_options`(설정값)에 있는 id만. `.env`의 `STT_MODEL` · `TEXT_MODEL` 줄에 쓴다. 받아쓰기 목록은 구간 시각을 주는 모델만([[VA-INFRA-001#C3]])
 - 키 전체는 어떤 응답에도 없다. `masked`는 앞 3자 · 끝 4자
 
@@ -990,7 +1005,7 @@ openai.transcribe(client, path, model) -> dict
 openai.chat(client, model, messages) -> str
 ```
 
-**규칙** — 키는 `SettingsService`가 준다. 어댑터는 키를 읽지 않는다. 밖으로 나가는 것은 이 파일 셋을 지나는 것뿐이다([[VA-INFRA-001#C9]]) — yt-dlp에 영상 ID, OpenAI에 음성 조각 · 스크립트 텍스트 · 질문과 앞선 대화 · 키 확인.
+**규칙** — 키는 `SettingsService`가 준다. 어댑터는 키를 읽지 않고, 생성자에서 `client_for`(클라이언트를 주는 함수)를 받아 모델을 부를 때마다 부른다. `openai.client`는 키마다 클라이언트 하나를 캐시한다 — 키가 같으면 같은 것을 준다(MINISPEC infra `openai.client`). 밖으로 나가는 것은 이 파일 셋을 지나는 것뿐이다([[VA-INFRA-001#C9]]) — yt-dlp에 영상 ID, OpenAI에 음성 조각 · 스크립트 텍스트 · 질문과 앞선 대화 · 키 확인.
 
 ---
 
@@ -1060,13 +1075,13 @@ class VideoRow(Base):
 - [x] (반영: 유스케이스 v2) 유스케이스 갱신 요청 — [[VA-UC-001#UC-S4]] 2~3번과 1a2의 「챕터 먼저」를 「핵심 요약 → 챕터」로, 긴 영상의 요약 재료를 「구간별 중간 요약」으로(5장 10)
 - [x] (반영: 도메인 모델 v3) 도메인 모델 갱신 요청 — [[VA-DOM-001#Video]]에 작업 없는 영상(`registered`)과 실패 구분, 「분석완료시각」이 계산값이라는 것 · [[VA-DOM-001#AnalysisJob]]에 상태와 단계 분리(5장 4 · 5)
 - [x] ERD·DD가 생기면 2장 각 항목에 테이블 참조를 더한다 — 반영. JSONB 속성 다섯은 [[VA-DOM-003]] 3장에서 확정
-- [ ] 텍스트 모델 비용 추정식(`JobService.estimate`) — MINISPEC. [[VA-API-001]] 6장과 같은 항목
+- [x] 텍스트 모델 비용 추정식(`JobService.estimate`) — 반영: MINISPEC 작업 서비스 `JobService.estimate` 5번(분당 토큰 추정 × 단가)
 - [x] 조각이 없는 단계의 남은 시간 — 결정: 예상 전체 시간 − 지난 시간, 0 아래로 내려가지 않는다(4.2 `progress`)
-- [ ] `progress_pct`의 단계 가중치 — 받아쓰기가 대부분이라 조각 비율을 그대로 쓸지, 단계마다 고정 몫을 둘지 MINISPEC
-- [ ] inbox 길이 캐시 — 파일마다 ffprobe. 수정 시각 기준으로 메모리에 둘지 MINISPEC
-- [ ] 내보내기 파일 이름 규칙(`AnalysisService.filename_for`) — MINISPEC
+- [x] `progress_pct`의 단계 가중치 — 반영: MINISPEC 작업 서비스 0장(받아쓰기가 있으면 70, 나머지 단계가 30을 나눈다)
+- [x] inbox 길이 캐시 — 첫 버전은 캐시 없이 동시 4개로 잰다(MINISPEC 영상 서비스 `VideoService.list_inbox`). 느리면 그 문서 3장에서 다시 정한다
+- [x] 내보내기 파일 이름 규칙 — 반영: MINISPEC 결과 서비스 `AnalysisService.filename_for`
 - [x] 동시 분석 대기열 — 결정: 대기열(`queued` · `queued_at` · `pipeline.worker` · `claim_next`). `another-job-running`은 없앴다(사용자 결정 2026-09-21, 5장 8)
-- [ ] **되먹임** `analysis_jobs.queued_at timestamptz`와 대기열용 인덱스 — [[VA-DOM-003#analysis_jobs]]에 아직 없다. ERD 다음 판에서 넣는다
-- [ ] 프롬프트 파일의 자리 표시 이름과 출력 형식(JSON 스키마) — MINISPEC(어댑터)
-- [ ] 관련 챕터 고르기(`ChatService.context_for`) — 챕터 제목 매칭 vs 간단 임베딩. 첫 버전은 제목 매칭([[VA-INFRA-001]] 9절)
-- [ ] `shared/`가 없다 — 시각 표기 함수를 화면 쪽 채팅 · 목록도 쓰게 되면 그때 옮긴다(프런트는 `components/TimeChip`이 따로 가진다)
+- [x] (반영: ERD v4) **되먹임** `analysis_jobs.queued_at timestamptz`와 대기열용 인덱스 — [[VA-DOM-003#analysis_jobs]]
+- [x] 프롬프트 파일의 자리 표시 이름과 출력 형식 — 반영: MINISPEC 어댑터 0장 「프롬프트 파일」
+- [ ] 관련 챕터 고르기(`ChatService.context_for`) — 첫 버전은 제목 · 요점 낱말 일치(MINISPEC 대화 서비스 `ChatService.context_for`). 품질이 모자라면 간단 임베딩으로 — 사용자가 결과를 보고 정한다([[VA-INFRA-001]] 9절)
+- [x] `shared/` — 결정: 시각 표기가 두 묶음에서 쓰여 `shared/timecode.py`를 만들었다(1장, MINISPEC 어댑터 되먹임). 프런트는 `components/TimeChip`이 따로 가진다
