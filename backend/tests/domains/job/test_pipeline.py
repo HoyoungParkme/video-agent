@@ -432,6 +432,33 @@ async def test_resume_without_chunks_or_audio_starts_from_extract(db, make, port
     assert [c[0] for c in audio_source.audio_calls] == ["extract"]  # 앞 단계부터
 
 
+async def test_resume_failing_before_first_stage_keeps_chunk_files(
+    db, make, ports, stt, tmp_path, monkeypatch
+) -> None:
+    stt.fail = {2: 3}
+    video, job = await _stt_job(make, STT_STAGES)
+    tmp = tmp_path / "tmp" / str(video.id)
+    await pipeline.run(job.id, video)  # 2번 조각에서 멈춘다
+    assert (tmp / "2.mp3").exists()
+    await _retried(job.id)
+    original = pipeline._resume_at
+
+    def broken(*_):
+        raise RuntimeError("DB 연결이 잠깐 끊김")
+
+    monkeypatch.setattr(pipeline, "_resume_at", broken)
+    await pipeline.resume(job.id, video)  # 첫 단계에 들어가기 전에 실패
+    assert (await _row(job.id)).status == JobStatus.failed
+    assert (tmp / "2.mp3").exists()  # 이어하기는 조각 파일을 지우지 않는다
+
+    monkeypatch.setattr(pipeline, "_resume_at", original)
+    await _retried(job.id)
+    stt.calls.clear()
+    await pipeline.resume(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done
+    assert stt.calls == [2]  # 끝난 조각은 다시 보내지 않는다
+
+
 async def test_resume_local_audio_converts_again(db, make, ports, audio_split, tmp_path) -> None:
     audio_source, _ = ports
     (tmp_path / "inbox" / "call.m4a").write_bytes(b"m4a")

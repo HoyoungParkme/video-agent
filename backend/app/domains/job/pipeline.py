@@ -302,7 +302,9 @@ async def _drive(job_id: int, video: Video, resume: bool) -> None:
         error = e.error if isinstance(e, JobFailure) else _error_of(e)
         async with SessionLocal() as s:
             await JobService(s).fail(job_id, error)
-        if stage in (None, JobStage.download, JobStage.extract):  # 임시 파일이 쓸모없다
+        # 내려받기 · 추출에서 멈췄으면 임시 파일이 쓸모없다. 첫 단계 전에 멈춘 이어하기는 둔다 —
+        # 받아쓰기에서 멈춘 작업의 조각 파일이 있다(지우면 조각 행만 남아 매번 실패한다)
+        if stage in (JobStage.download, JobStage.extract) or (stage is None and not resume):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
