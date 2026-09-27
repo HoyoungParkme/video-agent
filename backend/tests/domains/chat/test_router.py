@@ -53,12 +53,13 @@ async def test_post_chat_errors(api, make, key, answerer) -> None:
     assert (r.status_code, r.json()["type"]) == (404, "urn:va:not-found")
     running = await make.video()
     await make.job(running.id, JobStatus.running)
-    r = await api.post(f"/api/videos/{running.id}/chat", json={"question": "왜?"})
-    assert (r.status_code, r.json()["type"], r.json()["video_status"]) == (
-        409,
-        "urn:va:result-not-ready",
-        "in_progress",
-    )
+    for question in ("왜?", ""):  # 빈 질문도 결과부터 — 순서가 규칙이다
+        r = await api.post(f"/api/videos/{running.id}/chat", json={"question": question})
+        assert (r.status_code, r.json()["type"], r.json()["video_status"]) == (
+            409,
+            "urn:va:result-not-ready",
+            "in_progress",
+        )
     answerer.error = LlmUnavailable(reason="OpenAI 서버 오류")
     r = await api.post(url, json={"question": "왜?"})
     assert (r.status_code, r.json()["type"], r.json()["reason"]) == (
@@ -71,6 +72,7 @@ async def test_post_chat_errors(api, make, key, answerer) -> None:
 
 async def test_post_chat_without_key(api, make, env_file, verify, answerer) -> None:
     row = await _analyzed(make)
-    r = await api.post(f"/api/videos/{row.id}/chat", json={"question": "왜?"})
-    assert (r.status_code, r.json()["type"]) == (503, "urn:va:key-missing")
+    for question in ("왜?", ""):  # 빈 질문도 키부터
+        r = await api.post(f"/api/videos/{row.id}/chat", json={"question": question})
+        assert (r.status_code, r.json()["type"]) == (503, "urn:va:key-missing")
     assert answerer.calls == []

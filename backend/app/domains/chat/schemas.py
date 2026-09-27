@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ChatTurn(BaseModel):
@@ -19,9 +19,12 @@ class ChatTurn(BaseModel):
 
 
 class AskRequest(BaseModel):
-    """질문 하나 — 입력칸 문장이든 추천 질문이든 같은 요청이다."""
+    """질문 하나 — 입력칸 문장이든 추천 질문이든 같은 요청이다.
 
-    question: str = Field(min_length=1)
+    글자 수는 여기서 막지 않는다 — 빈 질문도 결과 · 키 다음에 서비스가 본다(순서가 규칙).
+    """
+
+    question: str
 
 
 @dataclass(frozen=True)
