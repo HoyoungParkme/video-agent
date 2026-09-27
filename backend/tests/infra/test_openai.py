@@ -1,4 +1,4 @@
-"""infra/openai — VA-MS-007 openai.client · verify_key · transcribe · chat의 테스트 관점."""
+"""infra/openai — VA-MS-007 openai.client · verify_key · transcribe · chat · chat_json의 테스트 관점."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import pytest
 
 from app.core.config import config
 from app.infra import openai
+from app.infra.errors import OpenAIOutputError
 from app.infra.openai import KeyState, ReasonKind
 
 KEY = "sk-test-abcdefghijklmnop1234"
@@ -208,3 +209,49 @@ async def test_chat_passes_sdk_errors() -> None:
     error = sdk.APIConnectionError(request=httpx2.Request("POST", "http://fake/v1/chat"))
     with pytest.raises(sdk.APIConnectionError):
         await openai.chat(_chat_client(_Recorder(error=error)), "gpt-5-mini", [])
+
+
+# --- chat_json
+
+
+class _Seq:
+    """가짜 SDK — 부를 때마다 다음 응답(본문 또는 예외)을 준다."""
+
+    def __init__(self, *results: str | Exception) -> None:
+        self.results, self.calls = list(results), 0
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.calls += 1
+        result = self.results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return _completion(result)
+
+
+def _one_liner(obj: Any) -> str:
+    text = obj["one_liner"].strip()
+    if not text:
+        raise ValueError("비었다")
+    return text
+
+
+async def test_chat_json_calls_again_on_bad_format() -> None:
+    seq = _Seq("JSON이 아니다", '{"one_liner": " 요약 "}')
+    assert await openai.chat_json(_chat_client(seq), "gpt-5-mini", [], _one_liner) == "요약"
+    assert seq.calls == 2
+
+
+async def test_chat_json_gives_up_after_retries() -> None:
+    seq = _Seq('{"x": 1}', '{"one_liner": "  "}')  # 키 없음 → 다듬고 나니 빔
+    with pytest.raises(OpenAIOutputError) as e:
+        await openai.chat_json(_chat_client(seq), "gpt-5-mini", [], _one_liner)
+    assert "비었다" in str(e.value)  # 마지막 까닭
+    assert seq.calls == config.LLM_RETRY + 1
+
+
+async def test_chat_json_passes_sdk_errors_once() -> None:
+    error = sdk.APIConnectionError(request=httpx2.Request("POST", "http://fake/v1/chat"))
+    seq = _Seq(error, '{"one_liner": "요약"}')
+    with pytest.raises(sdk.APIConnectionError):
+        await openai.chat_json(_chat_client(seq), "gpt-5-mini", [], _one_liner)
+    assert seq.calls == 1  # SDK 예외는 다시 부르지 않는다

@@ -122,7 +122,8 @@ async def test_summary_retries_once_then_fails(chat, adapter) -> None:
     chat.replies = ["{깨짐", "[]"]
     with pytest.raises(OpenAIOutputError):
         await summarizer.summary(segs(3000), 3000, "m")
-    assert len(made) == 4
+    assert len(chat.calls) == 4  # 두 번씩 불렀다
+    assert len(made) == 2  # 클라이언트는 요약마다 받는다 — 형식 실패 되풀이는 같은 것으로
 
 
 async def test_summary_drops_unreadable_times(chat, adapter) -> None:
