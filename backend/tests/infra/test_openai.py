@@ -1,4 +1,4 @@
-"""infra/openai — VA-MS-007 openai.client · verify_key · transcribe · chat · chat_json의 테스트 관점."""
+"""infra/openai — VA-MS-007 openai.client · verify_key · transcribe · chat · chat_json · reason_of의 테스트 관점."""
 
 from __future__ import annotations
 
@@ -255,3 +255,30 @@ async def test_chat_json_passes_sdk_errors_once() -> None:
     with pytest.raises(sdk.APIConnectionError):
         await openai.chat_json(_chat_client(seq), "gpt-5-mini", [], _one_liner)
     assert seq.calls == 1  # SDK 예외는 다시 부르지 않는다
+
+
+# --- reason_of
+
+REQ = httpx2.Request("POST", "http://fake/v1/chat")
+
+
+def _status(code: int, body_code: str | None = None) -> sdk.APIStatusError:
+    body = {"code": body_code, "message": "error"} if body_code else None
+    return sdk.APIStatusError("error", response=httpx2.Response(code, request=REQ), body=body)
+
+
+def test_reason_of_each_row() -> None:
+    reason = openai.reason_of
+    assert reason(sdk.APITimeoutError(request=REQ)) == "네트워크 시간 초과"  # 연결 오류보다 먼저
+    assert reason(TimeoutError()) == "네트워크 시간 초과"
+    assert reason(sdk.APIConnectionError(request=REQ)) == "네트워크에 연결할 수 없음"
+    assert reason(OpenAIOutputError("모델 출력을 읽지 못했어요(비었다)")) == (
+        "모델 출력을 읽지 못했어요(비었다)"
+    )
+    assert reason(_status(401)) == "API 키 인증 실패"
+    assert reason(_status(403)) == "OpenAI 권한 없음"
+    assert reason(_status(429, "insufficient_quota")) == "OpenAI 잔액 부족"
+    assert reason(_status(429, "rate_limit_exceeded")) == "OpenAI 요청 한도 초과"
+    assert reason(_status(503)) == "OpenAI 서버 오류"
+    assert reason(_status(400)) == "OpenAI가 요청을 거절함(400)"
+    assert reason(sdk.OpenAIError("상태 없음")) == "OpenAI 오류"
