@@ -25,9 +25,9 @@ from app.domains.chat.schemas import ChatTurn
 if TYPE_CHECKING:
     from app.domains.video.schemas import Video
 
-# 낱말 나누기 — 한글이 든 어절은 2자 이상, 영문 · 숫자 단어는 소문자로. 조사 · 어미는 떼지 않는다
+# 낱말 나누기 — 2자 이상(한글 어절 · 영문 · 숫자 모두), 영문은 소문자로. 조사 · 어미는 떼지 않는다.
+# 한 글자는 거의 모든 챕터 글에 들어 있어('a' · '2') 점수를 흐린다
 _SPLIT = re.compile(r"[^\w]+")
-_HANGUL = re.compile(r"[가-힣]")
 # 질문 글자 상한 — 넘으면 자른다
 QUESTION_MAX = 2000
 
@@ -48,14 +48,14 @@ def _tokens(segments: list[Segment]) -> float:
 
 
 def _words(text: str) -> list[str]:
-    return [w for w in _SPLIT.split(text.lower()) if w and not (_HANGUL.search(w) and len(w) < 2)]
+    return [w for w in _SPLIT.split(text.lower()) if len(w) >= 2]
 
 
 def _score(chapter: Chapter, words: list[str]) -> int:
-    # 질문 낱말이 챕터 글에 들어 있거나, 챕터 글의 2자 이상 낱말이 질문 낱말에 들어 있으면 맞다
+    # 질문 낱말이 챕터 글에 들어 있거나, 챕터 글의 낱말이 질문 낱말에 들어 있으면 맞다
     # — '비용'이 '비용은'과 맞게
     text = " ".join([chapter.title, *chapter.bullets]).lower()
-    own = [w for w in _words(text) if len(w) >= 2]
+    own = _words(text)
     return sum(1 for w in words if w in text or any(o in w for o in own))
 
 
@@ -188,6 +188,7 @@ class ChatService:
                 for s in segments
                 if any(c.start_sec <= s.start_sec < ends.get(c.seq, float("inf")) for c in picked)
             ]
+            # 하나만 남으면 넘어도 그대로 — 챕터 안을 자르면 맞는 구간을 잃는다
             if _tokens(chosen) <= config.CHAT_TOKEN_LIMIT or len(picked) == 1:
                 return chosen
             picked = picked[:-1]
