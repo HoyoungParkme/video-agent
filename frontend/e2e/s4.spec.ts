@@ -107,6 +107,60 @@ test("답변 실패 — 이유 한 줄과 다시 시도, 실패한 질문은 세
   await expect(el(page, "7.3")).toHaveText(String(before + 1));
 });
 
+/** 잠깐 기다린다 — 앞서 준 응답을 화면이 먼저 처리하게 */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 300));
+
+test("답이 기록보다 먼저 와도 — 저장 전에 읽은 기록에 합쳐 보인다", async ({ page, request }) => {
+  const url = await openResult(page, "https://youtu.be/e2eAskVid01");
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 800 }); // 답을 저장하기 전에 기록을 읽는다
+  let answered = () => {};
+  const done = new Promise<void>((resolve) => (answered = resolve));
+  await page.route("**/api/videos/*/chat", async (route) => {
+    const res = await route.fetch();
+    if (route.request().method() === "GET") {
+      await done; // 질문 전의 기록을 답이 온 뒤에 준다
+      await settle();
+    }
+    await route.fulfill({ response: res });
+    if (route.request().method() === "POST") answered();
+  });
+  await page.goto(url);
+  const before = Number(await el(page, "7.3").textContent());
+  await el(page, "5.1").click(); // 탭을 처음 열며 보낸다 — 기록 GET과 질문 POST가 함께 간다
+  await expect(el(page, "7.3")).toHaveText(String(before + 1));
+  await expect(page.locator(".turn")).toHaveCount(before + 1);
+  await expect(page.locator(".turn").last().locator(".turn-question")).toHaveText(
+    "청킹 전략을 바꾼 근거는?",
+  );
+});
+
+test("기록이 답보다 먼저 와도 — 저장 뒤에 읽은 기록과 겹치지 않는다", async ({ page, request }) => {
+  const url = await openResult(page, "https://youtu.be/e2eAskVid01");
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  let saved = () => {};
+  const committed = new Promise<void>((resolve) => (saved = resolve));
+  let listed = () => {};
+  const shown = new Promise<void>((resolve) => (listed = resolve));
+  await page.route("**/api/videos/*/chat", async (route) => {
+    if (route.request().method() === "POST") {
+      const res = await route.fetch(); // 서버가 저장했다
+      saved();
+      await shown; // 저장 뒤에 읽은 기록이 먼저 화면에 간 다음 답을 준다
+      await route.fulfill({ response: res });
+      return;
+    }
+    await committed; // 새 턴이 든 기록
+    await route.fulfill({ response: await route.fetch() });
+    await settle();
+    listed();
+  });
+  await page.goto(url);
+  const before = Number(await el(page, "7.3").textContent());
+  await el(page, "5.1").click();
+  await expect(el(page, "7.3")).toHaveText(String(before + 1));
+  await expect(page.locator(".turn")).toHaveCount(before + 1); // 같은 턴이 두 번 보이지 않는다
+});
+
 test("3시간 스크립트 — 질문과 맞는 챕터만 보낸다", async ({ page, request }) => {
   await openResult(page, "https://youtu.be/e2eLong3h01");
   await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });

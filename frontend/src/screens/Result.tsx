@@ -11,6 +11,7 @@
  * 서버에 잠깐 닿지 못하면 2초 뒤 다시 받는다.
  * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다.
  * 질문 기록은 질문하기 탭을 처음 열 때 받는다. 추천 질문(5.1 · 10.1)을 누르면 그 탭으로 바뀌고 바로 보낸다.
+ * 기록과 답은 id로 합친다 — 기록을 받는 사이에 온 답도 한 번씩 보인다.
  * 답을 기다리는 동안이나 키가 막혔을 때는 보내지 않는다(알약은 탭만 바꾼다). 실패한 질문은 저장되지 않아
  * 마지막 턴에만 실패 줄과 다시 시도가 있고, 새 질문을 보내면 빠진다.
  * 채우지 않은 것: 내보내기(1.2) · 휴지통(1.3)은 B4.
@@ -45,6 +46,12 @@ type Tab = "script" | "chat";
 interface Pending {
   question: string;
   error: string | null;
+}
+
+/** 턴을 id로 합친다 — 이미 있는 것은 두 번 넣지 않는다. 새 턴은 끝에 붙는다. */
+function merged(list: ChatTurn[], more: ChatTurn[]): ChatTurn[] {
+  const ids = new Set(list.map((t) => t.id));
+  return [...list, ...more.filter((t) => !ids.has(t.id))];
 }
 
 /** 답변 실패(9.8) — 까닭으로 고른다(UI-4 규칙). {이유}는 서버가 준 한 줄. */
@@ -196,6 +203,8 @@ export default function Result({ id }: { id: number }) {
   const [tab, setTab] = useState<Tab>("script");
   // 질문 기록 — 질문하기 탭을 처음 열 때 받는다(받기 전에는 null)
   const [turns, setTurns] = useState<ChatTurn[] | null>(null);
+  // 이 화면에서 받은 답 — 기록이 답보다 늦게 오거나 저장 전에 읽은 것이어도 받을 때 합친다
+  const answered = useRef<ChatTurn[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
   // 이 화면에서 늘어난 질문 수 — 배지(7.3) = 저장된 수 + 이것
   const [asked, setAsked] = useState(0);
@@ -255,7 +264,7 @@ export default function Result({ id }: { id: number }) {
     const load = async () => {
       try {
         const got = await api.chat(id);
-        if (alive) setTurns(got);
+        if (alive) setTurns(merged(got, answered.current));
       } catch {
         if (alive) timer = setTimeout(load, RETRY_MS);
       }
@@ -294,8 +303,9 @@ export default function Result({ id }: { id: number }) {
     setPending({ question: q, error: null });
     try {
       const turn = await api.ask(id, q);
-      // 기록을 아직 받기 전이면 받을 때 함께 온다(서버가 저장한 뒤 답한다)
-      setTurns((prev) => (prev === null ? prev : [...prev, turn]));
+      answered.current.push(turn);
+      // 기록을 받기 전이면 받을 때 합친다. 저장 뒤에 읽은 기록에 이미 있으면 두 번 넣지 않는다
+      setTurns((prev) => (prev === null ? prev : merged(prev, [turn])));
       setAsked((n) => n + 1);
       setPending(null);
     } catch (e) {
