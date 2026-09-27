@@ -237,7 +237,17 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
-  if (res.ok) return (await res.json()) as T;
+  if (res.ok) {
+    // 연결 문구 배너가 떠 있는데 요청이 통과했다 — 서버가 키를 다시 확인해 통과시켰을 수 있다.
+    // 설정을 다시 받아 배너를 새로 그린다(공통 1.4 — 분석 버튼 · 다시 시도 · 질문 보내기)
+    if (
+      method !== "GET" &&
+      current?.key.state === "invalid" &&
+      current.key.reason_kind === "network"
+    )
+      loadSettings().catch(() => undefined); // 받지 못하면 배너는 그대로
+    return (await res.json()) as T;
+  }
   let problem: Record<string, unknown> = {};
   try {
     problem = (await res.json()) as Record<string, unknown>;

@@ -211,3 +211,39 @@ test("키가 없으면 — 기록은 보이고 질문은 막힌다(10.2)", async
   await expect(el(page, "9.7")).toHaveCount(0);
   expect((await fakeOpenAI(request)).asks.length).toBe(sent);
 });
+
+test("연결 문구 배너 — 질문이 서버의 다시 확인을 통과하면 사라진다(공통 1.4)", async ({
+  page,
+  request,
+}) => {
+  const url = await openResult(page, "https://youtu.be/e2eAskVid01");
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  // 마지막 키 확인이 연결 실패였던 것처럼 — 질문이 서버를 통과하기 전까지만 설정을 바꿔 준다
+  let passed = false;
+  await page.route("**/api/videos/*/chat", async (route) => {
+    const res = await route.fetch();
+    if (route.request().method() === "POST" && res.ok()) passed = true;
+    await route.fulfill({ response: res });
+  });
+  await page.route("**/api/settings", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    if (!passed) body.key = { ...body.key, state: "invalid", reason_kind: "network", reason: "x" };
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.goto(url);
+  const banner = page.getByRole("status").filter({ hasText: "연결을 확인하지 못했어요" });
+  await expect(banner).toBeVisible();
+  await el(page, "7.2").click();
+  await expect(el(page, "10.2")).toHaveText(
+    "연결을 확인하지 못했어요 — 인터넷이 되면 분석 버튼을 누를 때 다시 확인합니다",
+  );
+  await expect(box(page)).toBeEnabled(); // 연결 문구는 막지 않는다
+  await box(page).fill("RAG를 고른 이유는?");
+  await box(page).press("Enter");
+  await expect(page.locator(".turn").last().locator(".turn-answer")).toContainText(
+    "에 대한 답입니다",
+  );
+  await expect(banner).toHaveCount(0); // 설정을 다시 받아 배너가 사라진다
+  await expect(el(page, "10.2")).toHaveCount(0);
+});
