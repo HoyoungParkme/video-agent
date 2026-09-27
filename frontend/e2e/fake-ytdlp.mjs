@@ -14,6 +14,16 @@ const VIDEOS = {
   e2eCaption4: { title: "임베딩 모델 고르기", duration: 1500, subtitles: { ko: [] } },
   // 요약 단계에서 실패 → 그 단계부터 다시 시도 — S6 4번
   e2eCaption5: { title: "평가 세트 만드는 법", duration: 1200, subtitles: { ko: [] } },
+  // 영상에 질문하기 — S4
+  e2eAskVid01: { title: "RAG 검색 품질 회고", duration: 3000, subtitles: { ko: [] } },
+  // 3시간 — 10초마다 70자 줄이라 대화 토큰 상한(3만)을 넘는다. 질문과 맞는 챕터만 보낸다
+  e2eLong3h01: {
+    title: "데이터 카탈로그 워크숍 종일",
+    duration: 10800,
+    subtitles: { ko: [] },
+    step: 10,
+    width: 70,
+  },
   // 자막 없는 영상 — 받아쓰기 필요 판(s1)
   e2eNoCapt01: { title: "자막 없는 강연", duration: 1800, subtitles: {} },
   // 자막 없는 영상을 끝까지 — 음성 내려받기 · 추출 · 받아쓰기(대기열에서 다시 시도의 앞 영상)
@@ -30,17 +40,20 @@ if (!video) {
   process.exit(1);
 }
 
-/** 100초마다 한 줄 — 가짜 OpenAI의 시각(01:40 · 10:00 …)이 이 안에 든다. */
-function vtt(duration) {
+/**
+ * step초마다 한 줄(기본 100초 — 가짜 OpenAI의 시각 01:40 · 10:00 …이 이 안에 든다).
+ * width를 주면 줄을 그 글자 수로 채운다 — 긴 스크립트를 만든다.
+ */
+function vtt({ duration, step = 100, width }) {
   const ts = (s) => {
     const two = (n) => String(n).padStart(2, "0");
     return `${two(Math.floor(s / 3600))}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}.000`;
   };
   const cues = [];
-  for (let s = 0, n = 1; s < duration; s += 100, n += 1) {
-    cues.push(
-      `${ts(s)} --> ${ts(Math.min(s + 90, duration))}\n${n}번째 문장 — 검색 품질 이야기를 이어 갑니다.`,
-    );
+  for (let s = 0, n = 1; s < duration; s += step, n += 1) {
+    const text = `${n}번째 문장 — 검색 품질 이야기를 이어 갑니다.`;
+    const line = width ? text.padEnd(width, " 이어서") : text;
+    cues.push(`${ts(s)} --> ${ts(Math.min(s + Math.round(step * 0.9), duration))}\n${line}`);
   }
   return `WEBVTT\nKind: captions\nLanguage: ko\n\n${cues.join("\n\n")}\n`;
 }
@@ -64,7 +77,7 @@ if (args.includes("--dump-single-json")) {
 if (args.includes("--write-subs") || args.includes("--write-auto-subs")) {
   const out = args[args.indexOf("-o") + 1].replace("%(id)s", id);
   const lang = args[args.indexOf("--sub-langs") + 1];
-  writeFileSync(`${out}.${lang}.vtt`, vtt(video.duration));
+  writeFileSync(`${out}.${lang}.vtt`, vtt(video));
   process.exit(0);
 }
 
