@@ -59,6 +59,8 @@ from app.domains.analysis.schemas import (  # noqa: E402
     Segment,
     SummaryDraft,
 )
+from app.domains.chat.models import ChatTurnRow  # noqa: E402
+from app.domains.chat.schemas import AnswerDraft, ChatTurn  # noqa: E402
 from app.domains.job.models import (  # noqa: E402
     AnalysisJobRow,
     AudioChunkRow,
@@ -276,6 +278,36 @@ class Make:
         )
         await self.s.commit()
 
+    async def chapters(self, video_id: int, chapters: list[tuple[float, str, list[str]]]) -> None:
+        """챕터 — (시작, 제목, 요점), 파트 없이."""
+        from app.domains.analysis import crud
+
+        drafts = [(None, start, title, bullets) for start, title, bullets in chapters]
+        await crud.replace_chapters(self.s, video_id, [], drafts)
+        await self.s.commit()
+
+    async def turn(
+        self,
+        video_id: int,
+        question: str = "질문",
+        answer: str = "답",
+        cited: list[float] | None = None,
+        at: datetime | None = None,
+    ) -> ChatTurnRow:
+        """대화 턴 한 줄 — at을 주지 않으면 지금."""
+        row = ChatTurnRow(
+            video_id=video_id,
+            question=question,
+            answer=answer,
+            cited_secs=cited or [],
+            model="gpt-5-mini",
+            asked_at=at or datetime.now(UTC),
+        )
+        self.s.add(row)
+        await self.s.commit()
+        await self.s.refresh(row)
+        return row
+
 
 @pytest.fixture
 def make(db: AsyncSession) -> Make:
@@ -401,6 +433,34 @@ def summarizer() -> FakeSummarizer:
 
 
 @dataclass
+class FakeAnswerer:
+    """AnswererPort 자리 — 근거 있는 답(기본) · 근거 없는 답(draft를 바꾼다) · 실패(error).
+    받은 질문 · 맥락 · 앞선 턴 · 모델을 적는다."""
+
+    draft: AnswerDraft = field(
+        default_factory=lambda: AnswerDraft("PostgreSQL을 썼다고 합니다.", [60.0, 120.0])
+    )
+    error: Exception | None = None
+    delay: float = 0
+    calls: list[tuple[str, list[Segment], list[ChatTurn], str]] = field(default_factory=list)
+
+    async def answer(
+        self, question: str, context: list[Segment], history: list[ChatTurn], model: str
+    ) -> AnswerDraft:
+        self.calls.append((question, context, history, model))
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.error:
+            raise self.error
+        return self.draft
+
+
+@pytest.fixture
+def answerer() -> FakeAnswerer:
+    return FakeAnswerer()
+
+
+@dataclass
 class FakeAudioSource:
     """AudioSourcePort 자리 — 자막 · 음성 내려받기 · 추출. 음성은 dest에 audio.mp3를 실제로 쓴다.
     calls는 자막을 받으러 온 영상 ID, audio_calls는 (download|extract, 원본, dest)."""
@@ -505,13 +565,16 @@ def stt() -> FakeStt:
 
 
 @pytest.fixture
-async def api(db, youtube, probe, summarizer, monkeypatch) -> AsyncIterator[httpx.AsyncClient]:
+async def api(
+    db, youtube, probe, summarizer, answerer, monkeypatch
+) -> AsyncIterator[httpx.AsyncClient]:
     """앱에 바로 붙는 클라이언트 — 시작 이벤트(워커) 없이, 어댑터는 가짜로."""
     from app.main import app
 
     monkeypatch.setattr(app.state, "youtube_info", youtube)
     monkeypatch.setattr(app.state, "media_probe", probe)
     monkeypatch.setattr(app.state, "summarizer", summarizer)
+    monkeypatch.setattr(app.state, "answerer", answerer)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c

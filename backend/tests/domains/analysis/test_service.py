@@ -404,3 +404,18 @@ async def test_result_of_parts_end_and_counts(db, make, summarizer, env_file) ->
         (2, 4000, 9000, 1),
     ]
     assert [c.part_seq for c in result.chapters] == [1, 1, 2]
+
+
+# --- 포트 없이 만들기(VA-DOM-002 6장)
+
+
+async def test_reads_without_summarizer_port(db, make) -> None:
+    # 대화 맥락은 구간 · 챕터만 읽는다 — 요약 포트 없이 만든다
+    video = await make.video()
+    await make.transcript(video.id, ["하나", "둘"])
+    await make.chapters(video.id, [(0.0, "시작", ["요점"])])
+    analysis = AnalysisService(db)
+    assert [s.text for s in await analysis.segments_of(video.id)] == ["하나", "둘"]
+    assert [c.title for c in await analysis.chapters_of(video.id)] == ["시작"]
+    with pytest.raises(RuntimeError):  # 생성 단계는 포트가 있어야 한다 — 코드 실수
+        await analysis.generate_questions(VideoService.to_dto(video, None, 0))

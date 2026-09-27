@@ -20,7 +20,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 
 **커밋 규격** — `code(슬라이스): 함수명 — 요약`. 함수 하나 = 커밋 하나, docstring 첫 줄 = MINISPEC 항목 ID. PR = 슬라이스 하나. **커밋 메시지와 PR 본문에 에이전트 표시(`Co-Authored-By` · 세션 링크 · 「Generated with」)를 넣지 않는다** — 제목과 본문만 쓴다(싱크독 규약 STD-001 1.10, 사용자 결정 2026-09-22).
 
-**진행 상황**: 카드 7장 중 **A · B1 · B2 완료**(2026-09-23, PR #1 · #2 · #3). 다음은 B3.
+**진행 상황**: 카드 7장 중 **A · B1 · B2 완료**(2026-09-23, PR #1 · #2 · #3). **B3 진행 중**(2026-09-27 시작, `feat/card-b3`).
 
 ---
 
@@ -74,10 +74,10 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 | 항목 | 내용 |
 |---|---|
 | 근거 | [[VA-SCN-001#S4]] · [[VA-UC-001#UC-H4]] · [[VA-SEQ-001#SEQ-9]] · [[VA-PRD-001#R6]] · [[VA-PRD-001#R9]] |
-| 구현 함수 | [[VA-MS-004#ChatService.history]] · [[VA-MS-004#ChatService.ask]] · [[VA-MS-004#ChatService.context_for]] · [[VA-MS-006#answerer_openai.answer]] — 4개 |
+| 구현 함수 | [[VA-MS-004#ChatService.history]] · [[VA-MS-004#ChatService.ask]] · [[VA-MS-004#ChatService.context_for]] · [[VA-MS-006#answerer_openai.answer]] · **infra** [[VA-MS-007#openai.chat_json]] · [[VA-MS-007#openai.reason_of]] — 6개. 옮기는 것 둘: 요약 어댑터의 형식 실패 되풀이(`_ask`) → `openai.chat_json`, 파이프라인의 OpenAI 이유 표(`_openai_reason`) → `openai.reason_of`(답변과 같이 쓰려고 — 두 벌을 막는다) · `AnalysisService`는 요약 포트 없이도 만든다(구간 · 챕터 읽기, [[VA-DOM-002]] 6장) |
 | API | [[VA-API-001#GET/api/videos/{id}/chat]] · [[VA-API-001#POST/api/videos/{id}/chat]] |
 | 화면 | [[VA-UI-002#UI-4]] [질문하기] 탭 전부 — 대화 목록 · 빈 상태 상자 · 질문 턴 · 근거 칩(시각 이동) · '영상에 없는 내용' · 답 대기 · 답변 실패 + 다시 시도 · 입력 영역(추천 칩 · 입력칸 · 보내기 · 전송 안내 · 키 없음 안내) · 추천 질문 알약 → 바로 전송 · 질문 수 배지 |
-| 테스트 | 구현 함수의 테스트 관점 전부 · 가짜 answerer(근거 있음 · 없음 · 실패 세 갈래) · **E2E S4**: 추천 질문 → 근거 칩 답 → 이어지는 질문('그거 성능은?')이 맥락으로 답함 → 영상에 없는 질문 → 배지 → 다시 열어도 기록이 남음 · 3시간 스크립트(가짜)에서 챕터로 맥락을 고른다 |
+| 테스트 | 구현 함수의 테스트 관점 전부 · 가짜 answerer(근거 있음 · 없음 · 실패 세 갈래) · E2E 가짜: 가짜 OpenAI가 답변 프롬프트를 알아보고 질문으로 근거 있는 답 · 영상에 없는 답을 가르며, 받은 앞선 턴 수와 스크립트 범위를 기록한다 · 가짜 yt-dlp에 3시간 자막(10초마다 긴 줄 — 대화 토큰 상한을 넘는다) · **E2E S4**: 추천 질문 → 근거 칩 답 → 이어지는 질문('그거 성능은?')이 맥락으로 답함 → 영상에 없는 질문 → 배지 → 다시 열어도 기록이 남음 · 3시간 스크립트(가짜)에서 챕터로 맥락을 고른다 |
 | 스텁 | B1의 `chat` 스텁 해제. `DELETE` · `export` · `cancel`은 그대로 |
 | 선행 | B2 |
 | 완료 | — |

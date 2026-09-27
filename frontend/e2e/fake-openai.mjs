@@ -1,6 +1,7 @@
 // 가짜 OpenAI — E2E의 api가 여기로 보낸다(VA-MS-007 openai.client의 base_url).
 // 키 확인(GET /v1/models): 맞는 키는 하나뿐이고 나머지는 인증 실패(401).
-// 채팅(POST /v1/chat/completions): system 문구로 요약 · 챕터 · 추천 질문을 가려 정해 둔 JSON을 준다.
+// 채팅(POST /v1/chat/completions): system 문구로 요약 · 챕터 · 추천 질문 · 질문 답변을 가려 JSON을 준다.
+// 답변은 받은 스크립트의 첫 · 끝 시각과 앞선 턴으로 흉내 내고, 받은 것을 기록(asks)에 남긴다.
 // 1시간 넘는 영상(챕터 지시에 '파트 2~5개')이면 파트로 묶은 챕터를 준다. 시각은 스크립트(100초마다 한 줄) 안에 든다.
 // 받아쓰기(POST /v1/audio/transcriptions): 올라온 조각(가짜 ffmpeg가 쓴 길이 JSON)으로 100초마다 구간을 준다.
 // 테스트는 /control로 채팅 · 받아쓰기 지연, 조각 하나를 몇 번 실패시킬지(500 또는 연결 끊기), 다음 채팅 몇 번을
@@ -18,6 +19,7 @@ const state = {
   sttFail: null, // { seq, times, drop? } — 그 조각을 times번 실패시킨다. drop이면 500 대신 연결을 끊는다
   chatFail: 0, // 다음 채팅 몇 번을 500으로
   transcribed: [], // 받아쓴 조각 번호(성공한 것), 받은 차례대로
+  asks: [], // 답한 질문마다 { question, history(앞선 턴 수), first, last(받은 스크립트의 첫 · 끝 시각) }
 };
 
 const SUMMARY = {
@@ -137,7 +139,34 @@ function uploaded(body) {
   return { seq: Number.parseInt(name, 10), duration };
 }
 
-function reply(system) {
+/**
+ * 질문 답변 — 마지막 user 메시지의 `<transcript>` 줄에서 첫 · 끝 시각을, 앞선 턴에서 직전 질문을 읽는다.
+ * '매출'을 물으면 영상에 없는 답(시각을 하나 붙여 어댑터가 비우는지 본다), 아니면 첫 · 둘째 시각이 근거다.
+ */
+function answer(messages) {
+  const last = messages.at(-1)?.content ?? "";
+  const m = last.match(/<transcript>\n([\s\S]*?)\n<\/transcript>\n\n([\s\S]*)$/);
+  const script = m?.[1] ?? "";
+  const question = m?.[2] ?? "";
+  const times = [...script.matchAll(/^\[([\d:]+)\]/gm)].map((t) => t[1]);
+  const history = Math.max(0, (messages.length - 2) / 2); // system + (user, assistant) × n + 마지막 user
+  const previous = history > 0 ? messages.at(-3)?.content : null;
+  state.asks.push({ question, history, first: times[0] ?? null, last: times.at(-1) ?? null });
+  if (question.includes("매출")) {
+    return {
+      answer: "이 영상에서는 다루지 않습니다. 발표자 회사의 매출 이야기는 나오지 않아요.",
+      times: times.slice(0, 1),
+    };
+  }
+  const lead = previous ? `앞선 질문('${previous}')에 이어 답합니다. ` : "";
+  return {
+    answer: `${lead}'${question}'에 대한 답입니다 — 스크립트 ${times[0]}부터 ${times.at(-1)}까지를 봤어요.`,
+    times: times.slice(0, 2),
+  };
+}
+
+function reply(system, messages) {
+  if (system.includes("근거로 질문에 답하는")) return answer(messages);
   if (system.includes("파트 2~5개")) return CHAPTERS_LONG;
   if (system.includes("챕터를 나누는")) return CHAPTERS;
   if (system.includes("질문을 고르는")) return QUESTIONS;
@@ -151,7 +180,7 @@ createServer(async (req, res) => {
       const body = await readJson(req);
       // 비우기가 먼저 — 같은 요청의 설정값을 지우지 않게. 남은 실패도 비운다(앞 테스트가 도중에 끝났을 때)
       if (body.reset) {
-        Object.assign(state, { chats: 0, transcriptions: 0, transcribed: [] });
+        Object.assign(state, { chats: 0, transcriptions: 0, transcribed: [], asks: [] });
         Object.assign(state, { sttFail: null, chatFail: 0 });
       }
       if (typeof body.chat_delay_ms === "number") state.chatDelayMs = body.chat_delay_ms;
@@ -195,7 +224,10 @@ createServer(async (req, res) => {
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content: JSON.stringify(reply(system)) },
+          message: {
+            role: "assistant",
+            content: JSON.stringify(reply(system, body.messages ?? [])),
+          },
           finish_reason: "stop",
         },
       ],

@@ -201,6 +201,15 @@ export interface Result {
   analyzed_at: string;
 }
 
+/** 질문 하나와 답(VA-API-001 4장 ChatTurn). cited_secs가 비면 '영상에 없는 내용'. */
+export interface ChatTurn {
+  id: number;
+  question: string;
+  answer: string;
+  cited_secs: number[];
+  asked_at: string;
+}
+
 /** problem+json 하나. kind는 `urn:va:` 뒤 — key-rejected · validation 등(VA-API-001 2장). */
 export class ApiError extends Error {
   readonly status: number;
@@ -228,7 +237,17 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
-  if (res.ok) return (await res.json()) as T;
+  if (res.ok) {
+    // 연결 문구 배너가 떠 있는데 요청이 통과했다 — 서버가 키를 다시 확인해 통과시켰을 수 있다.
+    // 설정을 다시 받아 배너를 새로 그린다(공통 1.4 — 분석 버튼 · 다시 시도 · 질문 보내기)
+    if (
+      method !== "GET" &&
+      current?.key.state === "invalid" &&
+      current.key.reason_kind === "network"
+    )
+      loadSettings().catch(() => undefined); // 받지 못하면 배너는 그대로
+    return (await res.json()) as T;
+  }
   let problem: Record<string, unknown> = {};
   try {
     problem = (await res.json()) as Record<string, unknown>;
@@ -266,6 +285,11 @@ export const api = {
   retry: (id: number) => call<Job>("POST", `/api/videos/${id}/job/retry`),
   /** GET /api/videos/{id}/result — 결과 전부 */
   result: (id: number) => call<Result>("GET", `/api/videos/${id}/result`),
+  /** GET /api/videos/{id}/chat — 질문 · 답변 기록, 시간순 */
+  chat: (id: number) => call<ChatTurn[]>("GET", `/api/videos/${id}/chat`),
+  /** POST /api/videos/{id}/chat — 질문하고 답을 받는다. 실패하면 저장되지 않는다 */
+  ask: (id: number, question: string) =>
+    call<ChatTurn>("POST", `/api/videos/${id}/chat`, { question }),
 };
 
 // 설정 한 벌을 화면들이 같이 본다 — layout의 배너와 화면이 같은 값을 쓰고, 키를 저장하면 배너가 바로 바뀐다

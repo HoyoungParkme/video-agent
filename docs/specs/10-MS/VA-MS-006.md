@@ -35,7 +35,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 - **키는 부를 때마다 받는다.** 어댑터는 생성자에서 클라이언트가 아니라 클라이언트를 주는 함수 `client_for: Callable[[], AsyncOpenAI]`를 받고, 모델을 부를 때마다 부른다. 조립 지점(`main.py`)이 [[VA-MS-005#SettingsService.api_key]]로 받은 지금 키로 [[VA-MS-007#openai.client]]를 부르는 함수를 넘긴다. 화면이나 `.env`에서 키를 바꾸면 서버를 다시 띄우지 않아도 다음 호출부터 새 키를 쓴다([[VA-MS-005]] 0장). 어댑터는 키 문자열을 보지 않는다([[VA-DOM-002]] 4.7 규칙)
 - **지시는 system, 스크립트는 user.** system 메시지는 프롬프트 파일을 채운 것이다. 스크립트 본문은 파일에 넣지 않고 user 메시지에 `<transcript>` … `</transcript>`로 감싸 보낸다. 스크립트 안의 문장이 지시로 읽히지 않게 둘을 섞지 않는다
 - **시각 표기.** 스크립트는 `[시각] 문장` 줄이고 시각은 [[#timecode.label]]로 쓴다. 표기는 보내는 구간의 마지막 끝 시각이 3600초 이상이면 `h:mm:ss`, 아니면 `mm:ss`다. 긴 영상을 구간으로 나눠 보낼 때도([[VA-MS-003#AnalysisService.generate_summary]]) 절대 시각이 그대로 읽힌다. 모델이 돌려준 시각은 [[#timecode.parse]]로 초로 되돌린다
-- **출력은 JSON 모드.** 형식은 아래 표의 「출력」이다. JSON이 아니거나, 필수 키가 없거나, 타입이 틀리거나, 다듬고 나서 결과가 비면 형식 실패다. 형식 실패면 `config.LLM_RETRY`만큼 다시 부르고, 그래도 실패하면 `OpenAIOutputError`(`infra/errors.py` — [[VA-MS-007]] 0장, → `ErrorKind.openai`)를 던진다. JSON 모드는 메시지에 'JSON'이라는 낱말이 있어야 받아 주므로 파일마다 출력 형식 문단에 넣는다
+- **출력은 JSON 모드.** 형식은 아래 표의 「출력」이다. JSON이 아니거나, 필수 키가 없거나, 타입이 틀리거나, 다듬고 나서 결과가 비면 형식 실패다. 형식 실패면 `config.LLM_RETRY`만큼 다시 부르고, 그래도 실패하면 `OpenAIOutputError`(`infra/errors.py` — [[VA-MS-007]] 0장, → `ErrorKind.openai`)를 던진다. 이 되풀이는 [[VA-MS-007#openai.chat_json]] 하나가 한다 — 요약 · 챕터 · 추천 질문 · 답변이 같이 쓴다. 어댑터는 파싱 · 다듬기 함수(`parse`)만 넘긴다. JSON 모드는 메시지에 'JSON'이라는 낱말이 있어야 받아 주므로 파일마다 출력 형식 문단에 넣는다
 - 언어는 한국어로 지시한다([[VA-UC-001#UC-S4]] 6번)
 
 **프롬프트 파일** — `app/prompts/`의 마크다운 넷. 파일 하나가 system 메시지 전부다. 자리 표시는 `{{이름}}`(영문 소문자와 밑줄)이고, JSON 예시의 한 겹 중괄호는 그대로 둔다. 문장은 품질을 보며 자주 고치므로 명세에 옮겨 적지 않는다. 명세가 정하는 것은 자리 표시, 반드시 들어갈 규칙, 출력 형식 셋이고, 테스트가 파일마다 이 셋을 확인한다([[#prompts.render]]).
@@ -227,12 +227,12 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 **처리**
 1. `n = 10 if duration_sec > config.PART_THRESHOLD_SEC else 8` · `end = segments[-1].end_sec` · `long = end ≥ 3600` · `script = 줄마다 f"[{timecode.label(s.start_sec, long)}] {s.text}"`
 2. `system = prompts.render("summary", insight_max=n, time_format="h:mm:ss" if long else "mm:ss")` · `user = "<transcript>\n" + script + "\n</transcript>"`
-3. `raw = EXT: openai.chat(client_for(), model, [system, user])` — JSON 모드 · 파싱과 다듬기: `one_liner`는 앞뒤 공백을 떼고, 비면 형식 실패 · `insights`는 앞 `n`개 · 인사이트마다 `times`를 [[#timecode.parse]]`(t, end)`로 초로 바꾸고 못 읽은 것은 버린다, 셋이 넘으면 앞 셋 · 시각이 하나도 남지 않은 인사이트는 버린다 · 남은 인사이트가 없으면 형식 실패 · 형식 실패는 `config.LLM_RETRY`만큼 다시, 그래도 실패 → `! OpenAIOutputError`
+3. `EXT: openai.chat_json(client_for(), model, [system, user], parse)` — JSON 모드 · 파싱과 다듬기: `one_liner`는 앞뒤 공백을 떼고, 비면 형식 실패 · `insights`는 앞 `n`개 · 인사이트마다 `times`를 [[#timecode.parse]]`(t, end)`로 초로 바꾸고 못 읽은 것은 버린다, 셋이 넘으면 앞 셋 · 시각이 하나도 남지 않은 인사이트는 버린다 · 남은 인사이트가 없으면 형식 실패 · 형식 실패는 `config.LLM_RETRY`만큼 다시, 그래도 실패 → `! OpenAIOutputError`
 4. `→ SummaryDraft(one_liner, insights=[(text, [secs …]) …])` — 5개보다 적어도 그대로 준다. 개수와 시각 범위 보정은 서비스가 한다([[VA-MS-003#AnalysisService.clamp_secs]])
 
 **출력** `SummaryDraft`
 
-**호출하는 것** `openai.chat` ([[VA-MS-007#openai.chat]]) · [[#prompts.render]] · [[#timecode.label]] · [[#timecode.parse]]
+**호출하는 것** `openai.chat_json` ([[VA-MS-007#openai.chat_json]]) · [[#prompts.render]] · [[#timecode.label]] · [[#timecode.parse]]
 
 **테스트 관점** 가짜 응답으로: JSON 파싱 · `12:40` → 760 · `1:02:03` → 3723 · 깨진 JSON 한 번 → 다시 부르고 성공 · 두 번 깨짐 → `OpenAIOutputError` · 시각을 못 읽은 인사이트는 빠진다 · system이 `summary.md`를 채운 것과 같고 스크립트는 user 메시지에만 있다 · 70분 영상의 뒤쪽 구간(`end` ≥ 3600)은 `h:mm:ss`로 보낸다 · 부를 때마다 `client_for`를 부른다
 
@@ -247,10 +247,10 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 **처리**
 1. `target = max(3, round(duration_sec / 60 / 6))` · `parts = "2~5" if duration_sec > config.PART_THRESHOLD_SEC else "0"` · `end` · `long` · `script` · `user`는 `summary` 1~2번과 같다
 2. `system = prompts.render("chapters", chapter_target=target, part_count=parts, time_format=…)`
-3. `raw = EXT: openai.chat(client_for(), model, [system, user])` · 파싱과 다듬기: 챕터마다 `start`를 [[#timecode.parse]]로 초로 바꾸고 못 읽으면 그 챕터를 버린다 · 제목이 비면 버린다 · `bullets`는 빈 줄을 빼고 앞 셋 · `start` 순으로 정렬 · 남은 챕터가 없으면 형식 실패 · `parts`가 "0"이면 응답의 `parts`를 버리고 챕터의 `part`를 모두 null로, 아니면 `part`가 `parts` 범위 밖일 때 null · 형식 실패 처리는 `summary`와 같다
+3. `EXT: openai.chat_json(client_for(), model, [system, user], parse)` · 파싱과 다듬기: 챕터마다 `start`를 [[#timecode.parse]]로 초로 바꾸고 못 읽으면 그 챕터를 버린다 · 제목이 비면 버린다 · `bullets`는 빈 줄을 빼고 앞 셋 · `start` 순으로 정렬 · 남은 챕터가 없으면 형식 실패 · `parts`가 "0"이면 응답의 `parts`를 버리고 챕터의 `part`를 모두 null로, 아니면 `part`가 `parts` 범위 밖일 때 null · 형식 실패 처리는 `summary`와 같다
 4. `→ ChapterDraft(parts=[(title, start_sec) …], chapters=[(part_seq, start_sec, title, bullets) …])` — 60분 이하면 `parts=[]`, `part_seq=None`
 
-**호출하는 것** `openai.chat` · [[#prompts.render]] · [[#timecode.label]] · [[#timecode.parse]]
+**호출하는 것** `openai.chat_json` · [[#prompts.render]] · [[#timecode.label]] · [[#timecode.parse]]
 
 **테스트 관점** 50분 → `parts=[]` · 150분을 한 번에 → 파트 2~5, 챕터마다 `part_seq` · 30분 구간 호출 → `part_count`가 "0", 응답에 파트가 와도 버린다 · `part`가 범위 밖 → null · 순서가 뒤섞인 응답 → 정렬 · system에 `target`이 들어간다
 
@@ -262,9 +262,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 근거: [[VA-SEQ-001#SEQ-3]] 29~30번 · [[VA-UC-001#UC-S4]] 4번 · [[VA-PRD-001#R9]] · [[VA-MS-003#AnalysisService.generate_questions]]
 
-**처리** `system = prompts.render("questions", question_count=config.QUESTION_COUNT)` · `user`는 `summary` 1~2번과 같다 · `raw = EXT: openai.chat(client_for(), model, [system, user])` · 다듬기: 앞뒤 공백을 떼고 빈 문장과 중복을 뺀다, 물음표로 끝나지 않으면 붙인다, 앞 `QUESTION_COUNT`개 · 남은 것이 없으면 형식 실패(처리는 같다) · `→ 문자열 목록`
+**처리** `system = prompts.render("questions", question_count=config.QUESTION_COUNT)` · `user`는 `summary` 1~2번과 같다 · `EXT: openai.chat_json(client_for(), model, [system, user], parse)` · 다듬기: 앞뒤 공백을 떼고 빈 문장과 중복을 뺀다, 물음표로 끝나지 않으면 붙인다, 앞 `QUESTION_COUNT`개 · 남은 것이 없으면 형식 실패(처리는 같다) · `→ 문자열 목록`
 
-**호출하는 것** `openai.chat` · [[#prompts.render]] · [[#timecode.label]]
+**호출하는 것** `openai.chat_json` · [[#prompts.render]] · [[#timecode.label]]
 
 **테스트 관점** 3개 · 물음표로 끝 · 4개 오면 3개로 · 물음표 없는 문장 → 붙는다 · 같은 질문 둘 → 하나
 
@@ -277,16 +277,19 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 근거: [[VA-SEQ-001#SEQ-9]] 25~30번 · [[VA-UC-001#UC-H4]] 2~3번, 1b · 3a · [[VA-PRD-001#R6]] · [[VA-MS-004#ChatService.ask]]
 
 **처리**
-1. `end = context[-1].end_sec`(비면 0) · `long = end ≥ 3600` · 본문 = `context`를 [[#timecode.label]]로 `[시각] 문장` 줄로 · 메시지 = `[system, (user, assistant) × history 순서대로, user = "<transcript>\n" + 본문 + "\n</transcript>\n\n" + question]` — 앞선 턴은 질문 · 답을 그대로 보내고, 근거 시각은 답 뒤에 `(근거: 12:40)`로 붙여 대명사가 풀리게. 앞선 턴의 스크립트는 다시 보내지 않는다 — 이번 질문에 맞춘 `context`만 간다([[VA-MS-004#ChatService.context_for]])
+1. `end = context[-1].end_sec`(비면 0) · `long = end ≥ 3600` · 본문 = `context`를 [[#timecode.label]]로 `[시각] 문장` 줄로 · 메시지 = `[system, (user, assistant) × history 순서대로, user = "<transcript>\n" + 본문 + "\n</transcript>\n\n" + question]` — 앞선 턴은 질문 · 답을 그대로 보내고, 근거 시각은 답 뒤에 `(근거: 12:40)`로 붙여 대명사가 풀리게 — 표기는 본문과 같은 `long`으로 쓴다. 모델이 앞선 턴의 시각을 옮겨 적어도 [[#timecode.parse]]가 같은 `end`로 바로 읽는다(짧은 본문이면 1시간 넘는 근거도 `70:00`. `1:10:00`으로 쓰면 끝이 30분인 본문에서는 70초로 읽힌다). 앞선 턴의 스크립트는 다시 보내지 않는다 — 이번 질문에 맞춘 `context`만 간다([[VA-MS-004#ChatService.context_for]])
 2. `system = prompts.render("answer", time_format="h:mm:ss" if long else "mm:ss", not_covered=config.NOT_COVERED_TEXT)`
-3. `raw = EXT: openai.chat(client_for(), model, messages)` — JSON 모드 · `config.CHAT_TIMEOUT_SEC`는 서비스가 건다 · 다듬기: `answer`가 비면 형식 실패 · `times`는 [[#timecode.parse]]`(t, end)`로 초로 바꾸고 못 읽은 것은 버린다, 셋이 넘으면 앞 셋 · 형식 실패 처리는 `summary`와 같다
+3. `EXT: openai.chat_json(client_for(), model, messages, parse)` — JSON 모드 · `config.CHAT_TIMEOUT_SEC`는 서비스가 건다 · `parse`(다듬기): `answer`가 비면 형식 실패 · `times`는 [[#timecode.parse]]`(t, end)`로 초로 바꾸고 못 읽은 것은 버린다, 셋이 넘으면 앞 셋 · 형식 실패 처리는 `summary`와 같다
 4. `→ AnswerDraft(answer, cited_secs=[초 …])` — `answer`가 `config.NOT_COVERED_TEXT`로 시작하면 `cited_secs=[]`로 강제(모델이 시각을 붙여도)
+5. OpenAI 호출 실패(SDK 예외) · 형식 실패(`OpenAIOutputError`)는 `! llm-unavailable {reason: openai.reason_of(e)}`로 바꿔 올린다([[VA-MS-007#openai.reason_of]]) — 대화에는 실패 종류가 필요 없고, 서비스가 SDK를 모르게([[VA-MS-004#ChatService.ask]] 7번). 파이프라인 쪽 어댑터가 예외를 그대로 올리는 것과 다르다(거기는 `error_kind`가 종류를 가른다)
 
 **출력** `AnswerDraft`
 
-**호출하는 것** `openai.chat` · [[#prompts.render]] · [[#timecode.label]] · [[#timecode.parse]]
+**예외** `llm-unavailable`
 
-**테스트 관점** 가짜 응답으로: 근거 둘 → `cited_secs` 두 개 초 단위 · `config.NOT_COVERED_TEXT`로 시작 + 시각 → `cited_secs=[]` · `history` 3턴 → 메시지 8개(system + 6 + 마지막 user) · 마지막 user 메시지에만 `<transcript>`가 있다 · system이 `answer.md`를 채운 것과 같다
+**호출하는 것** `openai.chat_json` · `openai.reason_of` · [[#prompts.render]] · [[#timecode.label]] · [[#timecode.parse]]
+
+**테스트 관점** 가짜 응답으로: 근거 둘 → `cited_secs` 두 개 초 단위 · `config.NOT_COVERED_TEXT`로 시작 + 시각 → `cited_secs=[]` · `history` 3턴 → 메시지 8개(system + 6 + 마지막 user) · 마지막 user 메시지에만 `<transcript>`가 있다 · 앞선 턴의 근거 표기는 본문을 따른다 — 짧은 본문에서 4200초는 `(근거: 70:00)`, 긴 본문에서 1800초는 `(근거: 0:30:00)` · system이 `answer.md`를 채운 것과 같다 · SDK 5xx → `llm-unavailable`('OpenAI 서버 오류') · 형식이 두 번 틀리면 `llm-unavailable`(그 문장)
 
 ---
 

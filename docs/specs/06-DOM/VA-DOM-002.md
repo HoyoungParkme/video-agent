@@ -1004,7 +1004,7 @@ chat/ports.py
 
 ### 4.7 infra — 공용 클라이언트
 
-묶음 밖. 외부 프로그램 · API를 감싸는 얇은 층이고 도메인 타입을 모른다. 어댑터만 부른다. 시그니처는 MINISPEC에서 확정.
+묶음 밖. 외부 프로그램 · API를 감싸는 얇은 층이고 도메인 타입을 모른다. 어댑터만 부른다 — `openai.reason_of`는 예외를 글로 바꾸는 순수 함수라 파이프라인의 실패 이유 한 줄(`pipeline.reason_of`)도 부른다. 같은 표가 두 벌이 되지 않게. 시그니처는 MINISPEC에서 확정.
 
 ```
 ytdlp.info(url) -> dict                 제목·채널·길이·자막 목록. 영상 ID 추출도 여기
@@ -1018,6 +1018,8 @@ openai.client(key) -> Client
 openai.verify_key(key) -> KeyCheck      모델 목록 조회 한 번
 openai.transcribe(client, path, model) -> dict
 openai.chat(client, model, messages) -> str
+openai.chat_json(client, model, messages, parse) -> T   JSON 모드. 형식이 틀리면 설정값만큼 다시 부르고, 그래도 틀리면 OpenAIOutputError
+openai.reason_of(e) -> str              OpenAI 호출 예외 → 한국어 한 줄(실패 알림 · 답변 실패의 '왜')
 ```
 
 **규칙** — 키는 `SettingsService`가 준다. 어댑터는 키를 읽지 않고, 생성자에서 `client_for`(클라이언트를 주는 함수)를 받아 모델을 부를 때마다 부른다. `openai.client`는 키마다 클라이언트 하나를 캐시한다 — 키가 같으면 같은 것을 준다(MINISPEC infra `openai.client`). 밖으로 나가는 것은 이 파일 셋을 지나는 것뿐이다([[VA-INFRA-001#C9]]) — yt-dlp에 영상 ID, OpenAI에 음성 조각 · 스크립트 텍스트 · 질문과 앞선 대화 · 키 확인.
@@ -1072,7 +1074,7 @@ class VideoRow(Base):
 
 **세션**: 요청마다 하나(`core/db.py`). 파이프라인 태스크는 단계마다 짧은 세션을 열고 닫는다 — 십여 분 도는 태스크가 세션 하나를 잡고 있지 않게. 트랜잭션 경계는 서비스 메서드 하나다.
 
-**서비스 조립**: 서비스는 클래스이고 생성자가 세션과 그 묶음의 포트를 받는다(`VideoService(session, youtube_info)` · `AnalysisService(session, summarizer)`). 라우터는 요청 세션과 `app.state`의 어댑터로 만들고, 파이프라인은 부를 때마다 짧은 세션으로 만든다. `JobService`가 들고 있는 태스크 핸들과 워커를 깨우는 신호는 프로세스에 하나라 클래스 속성이다. 작업 묶음은 `Video` 타입을 타입 검사 때만 import한다 — 영상 묶음을 부르지 않는다(3.2).
+**서비스 조립**: 서비스는 클래스이고 생성자가 세션과 그 묶음의 포트를 받는다(`VideoService(session, youtube_info)` · `AnalysisService(session, summarizer)`). 라우터는 요청 세션과 `app.state`의 어댑터로 만들고, 파이프라인은 부를 때마다 짧은 세션으로 만든다. 포트는 그 메서드가 쓸 때만 필요하다 — 읽기만 하는 곳은 포트 없이 만든다(영상 목록의 대화 수 `ChatService(session)`, 대화 맥락의 구간 · 챕터 `AnalysisService(session)`). 포트 없이 포트가 필요한 메서드를 부르면 코드 실수라 `internal`(500)이다. `JobService`가 들고 있는 태스크 핸들과 워커를 깨우는 신호는 프로세스에 하나라 클래스 속성이다. 작업 묶음은 `Video` 타입을 타입 검사 때만 import한다 — 영상 묶음을 부르지 않는다(3.2).
 
 **에러**: `core/errors.py`에 problem+json 종류마다 예외 클래스 하나. 라우터는 잡지 않고 앱 수준 핸들러가 `application/problem+json`으로 바꾼다. 포괄 핸들러가 나머지를 `urn:va:internal`로.
 

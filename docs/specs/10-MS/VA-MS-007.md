@@ -10,13 +10,13 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 ## 0. 이 문서가 다루는 것
 
-`infra/ytdlp.py` · `infra/ffmpeg.py` · `infra/openai.py`의 함수 11개. 클래스 명세 [[VA-DOM-002]] 4.7의 시그니처를 함수 내부까지 내린 것. 외부 프로그램 · API를 감싸는 얇은 층이고 **도메인 타입을 모른다** — 돌려주는 것은 dict · 문자열 · 경로다. 어댑터([[VA-MS-006]])만 부른다. 밖으로 나가는 것은 이 파일 셋을 지나는 것뿐이다([[VA-INFRA-001#C9]]).
+`infra/ytdlp.py` · `infra/ffmpeg.py` · `infra/openai.py`의 함수 13개. 클래스 명세 [[VA-DOM-002]] 4.7의 시그니처를 함수 내부까지 내린 것. 외부 프로그램 · API를 감싸는 얇은 층이고 **도메인 타입을 모른다** — 돌려주는 것은 dict · 문자열 · 경로다. 어댑터([[VA-MS-006]])만 부른다 — 예외를 글로 바꾸는 순수 함수 [[#openai.reason_of]]만 파이프라인의 실패 이유 한 줄([[VA-MS-002#pipeline.reason_of]])도 부른다. 밖으로 나가는 것은 이 파일 셋을 지나는 것뿐이다([[VA-INFRA-001#C9]]).
 
 형식은 명세 작성 규약 2.10. 간략형이 많다 — 대부분 명령 한 줄이다.
 
 **표기** — `→` 반환, `!` 예외, `EXT:` 외부에 닿는 호출, `PROC:` 자식 프로세스 실행.
 
-**예외 클래스** — `infra/errors.py`에 셋: `YtdlpError(reason, kind)`(`kind` ∈ `private` · `unavailable` · `geo` · `network` · `extractor` · `other`), `FfmpegError(reason, returncode)`, `OpenAIOutputError(reason)`. OpenAI는 SDK 예외를 그대로 낸다(`APIConnectionError` · `APIStatusError` · `APITimeoutError`). 셋째는 이 층이 던지지 않는다 — 모델 출력이 형식에 맞지 않을 때 OpenAI 어댑터가 던진다([[VA-MS-006]] 0장 「출력은 JSON 모드」). 어댑터 옆이 아니라 여기 두는 것은 파이프라인이 어댑터 묶음을 import하지 않고 종류를 가르게 하려는 것이다. 어댑터 · 파이프라인이 이것으로 `ErrorKind`를 정한다([[VA-MS-002#pipeline.error_kind]]).
+**예외 클래스** — `infra/errors.py`에 셋: `YtdlpError(reason, kind)`(`kind` ∈ `private` · `unavailable` · `geo` · `network` · `extractor` · `other`), `FfmpegError(reason, returncode)`, `OpenAIOutputError(reason)`. OpenAI는 SDK 예외를 그대로 낸다(`APIConnectionError` · `APIStatusError` · `APITimeoutError`). 셋째는 모델 출력이 형식에 맞지 않을 때 [[#openai.chat_json]]이 다시 불러도 못 맞추면 던진다([[VA-MS-006]] 0장 「출력은 JSON 모드」). 어댑터 옆이 아니라 여기 두는 것은 파이프라인이 어댑터 묶음을 import하지 않고 종류를 가르게 하려는 것이다. 어댑터 · 파이프라인이 이것으로 `ErrorKind`를 정한다([[VA-MS-002#pipeline.error_kind]]).
 
 **자식 프로세스** — yt-dlp · ffmpeg는 `asyncio.create_subprocess_exec`로 띄운다(셸 없이, 인자 목록으로 — 경로에 공백 · 특수 문자가 있어도 안전). 표준 입력은 닫는다(`DEVNULL` — ffmpeg가 터미널 입력을 읽지 않게). 표준 오류는 모아서 예외 `reason`에 마지막 3줄을 넣는다. 시간 제한은 `config.PROC_TIMEOUT_SEC`(첫 값 1800 — 3시간 영상 추출도 30분이면 끝난다). **시간 제한을 넘거나 부른 쪽이 취소하면**(작업 취소 · 서버 끄기) 자식 프로세스를 죽이고 끝나기를 기다린다 — 주인 없이 돌며 임시 폴더에 쓰지 않게. 실행 파일을 띄우지 못하거나(없음 · 권한) JSON이어야 할 출력이 JSON이 아니면 그 모듈의 예외(`YtdlpError(kind=other)` · `FfmpegError`)로 낸다.
 
@@ -47,6 +47,8 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | [[#openai.verify_key]] | 모델 목록 조회로 키 확인 |
 | [[#openai.transcribe]] | 음성 → verbose_json |
 | [[#openai.chat]] | 채팅 완성 (JSON 모드) |
+| [[#openai.chat_json]] | JSON 응답을 파싱까지 — 형식이 틀리면 다시 부른다 |
+| [[#openai.reason_of]] | OpenAI 호출 예외 → 한국어 한 줄 |
 
 ---
 
@@ -203,6 +205,43 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 **처리** `EXT: client.chat.completions.create(model=model, messages=messages, response_format={"type": "json_object"} if json_mode else None)` · `→ choices[0].message.content` (문자열. 파싱은 어댑터가) · 빈 응답이면 `""`. SDK 예외는 그대로. 토큰 사용량(`usage`)은 로그에 한 줄 — 비용 확인용([[VA-PRD-001#R8]])
 
 **테스트 관점** `json_mode=True`면 `response_format`이 들어간다 · 응답 문자열이 그대로 · 예외가 그대로 나간다 · 메시지 본문(스크립트)은 로그에 안 찍힌다 — 사용량만
+
+---
+
+#### openai.chat_json JSON 응답을 파싱까지
+
+**시그니처** `async def chat_json(client: AsyncOpenAI, model: str, messages: list[dict], parse: Callable[[Any], T]) -> T`
+
+근거: [[VA-MS-006#summarizer_openai.summary]] · [[VA-MS-006#answerer_openai.answer]] — 둘의 「형식 실패 처리」가 같아 한곳에 둔다
+
+**처리** `config.LLM_RETRY + 1`번까지: `raw = chat(client, model, messages)`(JSON 모드) · `→ parse(json.loads(raw))` · `ValueError` · `KeyError` · `TypeError`(JSON 아님 · 키 없음 · 타입 틀림 · 다듬고 나니 빔 — `parse`가 던진다)면 다시 부른다 · 끝내 안 되면 `! OpenAIOutputError("모델 출력을 읽지 못했어요({마지막 까닭})")`. SDK 예외(연결 · 상태)는 다시 부르지 않고 그대로 낸다 — 재시도 수는 부르는 쪽이 센다
+
+**테스트 관점** 첫 응답이 JSON이 아니고 둘째가 맞으면 둘째 결과 · 두 번 다 틀리면 `OpenAIOutputError`(까닭이 메시지에) · `parse`가 던진 `ValueError`도 형식 실패로 센다 · SDK 예외는 한 번만 부르고 그대로 나간다
+
+---
+
+#### openai.reason_of OpenAI 호출 예외 → 한국어 한 줄
+
+**시그니처** `def reason_of(e: BaseException) -> str`
+
+근거: [[VA-MS-002#pipeline.reason_of]](실패 알림의 '왜') · [[VA-MS-006#answerer_openai.answer]](답변 실패의 '왜') — 표가 두 벌이 되지 않게 여기 하나
+
+**처리** 위에서부터 처음 맞는 줄
+
+| 예외 | 한 줄 |
+|---|---|
+| `APITimeoutError` · `TimeoutError` | '네트워크 시간 초과' |
+| `APIConnectionError` | '네트워크에 연결할 수 없음' |
+| `OpenAIOutputError` | 그 `reason`(앱이 만든 한국어 문장) |
+| 상태 401 | 'API 키 인증 실패' |
+| 상태 403 | 'OpenAI 권한 없음' |
+| 상태 429, `code`가 `insufficient_quota` | 'OpenAI 잔액 부족' |
+| 상태 429 | 'OpenAI 요청 한도 초과' |
+| 상태 5xx | 'OpenAI 서버 오류' |
+| 그 밖의 상태 | 'OpenAI가 요청을 거절함({상태})' |
+| 그 밖 | 'OpenAI 오류' |
+
+**테스트 관점** 표의 줄마다 하나 · `APITimeoutError`가 `APIConnectionError`보다 먼저다(하위 클래스) · 상태가 없는 SDK 예외는 'OpenAI 오류'
 
 ---
 

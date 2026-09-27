@@ -1,13 +1,13 @@
 """SummarizerPort 구현 — OpenAI 채팅으로 요약 · 챕터 · 추천 질문(VA-MS-006 summarizer_openai).
 
 지시는 system(프롬프트 파일), 스크립트는 user 메시지의 `<transcript>` 안에 — 섞지 않는다.
-출력은 JSON 모드. 형식이 틀리면 `config.LLM_RETRY`만큼 다시 부르고, 그래도 틀리면
-OpenAIOutputError. 키는 부를 때마다 client_for로 받는다 — 어댑터는 키 문자열을 보지 않는다.
+출력은 JSON 모드. 형식이 틀리면 다시 부르고 그래도 틀리면 OpenAIOutputError — 그 되풀이는
+infra openai.chat_json이 한다. 키는 부를 때마다 client_for로 받는다 — 어댑터는 키 문자열을
+보지 않는다.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -17,7 +17,6 @@ from app import prompts
 from app.core.config import config
 from app.domains.analysis.schemas import ChapterDraft, Segment, SummaryDraft
 from app.infra import openai
-from app.infra.errors import OpenAIOutputError
 from app.shared import timecode
 
 T = TypeVar("T")
@@ -64,19 +63,9 @@ class SummarizerOpenAI:
         self.client_for = client_for
 
     async def _ask(self, model: str, system: str, user: str, parse: Callable[[Any], T]) -> T:
-        # 형식 실패(JSON 아님 · 키 없음 · 타입 틀림 · 다듬고 나니 빔)면 다시 부른다
-        why = ""
-        for _ in range(config.LLM_RETRY + 1):
-            raw = await openai.chat(
-                self.client_for(),
-                model,
-                [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            )
-            try:
-                return parse(json.loads(raw))
-            except (ValueError, KeyError, TypeError) as e:
-                why = str(e) or type(e).__name__
-        raise OpenAIOutputError(f"모델 출력을 읽지 못했어요({why})")
+        # 지시는 system, 스크립트는 user — 형식 실패 되풀이는 infra가 한다
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        return await openai.chat_json(self.client_for(), model, messages, parse)
 
     async def summary(self, segments: list[Segment], duration_sec: int, model: str) -> SummaryDraft:
         """VA-MS-006#summarizer_openai.summary

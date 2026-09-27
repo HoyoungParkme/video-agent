@@ -32,6 +32,7 @@ from app.domains.job.models import AudioChunkRow, ChunkState, ErrorKind, JobStag
 from app.domains.job.ports import AudioSourcePort, AudioSplitPort, SttPort
 from app.domains.job.schemas import JobError
 from app.domains.job.service import JobService
+from app.infra import openai
 from app.infra.errors import FfmpegError, OpenAIOutputError, YtdlpError
 
 if TYPE_CHECKING:
@@ -126,7 +127,7 @@ def reason_of(e: BaseException) -> str:
         timeout = isinstance(e, TimeoutError | APITimeoutError)
         return "네트워크 시간 초과" if timeout else "네트워크에 연결할 수 없음"
     if kind == ErrorKind.openai:
-        return _openai_reason(e)
+        return openai.reason_of(e)  # 질문 답변 실패와 같은 표
     if kind == ErrorKind.youtube:
         return _YTDLP_REASONS.get(getattr(e, "kind", "other"), _YTDLP_REASONS["other"])
     if kind == ErrorKind.ffmpeg:
@@ -134,22 +135,6 @@ def reason_of(e: BaseException) -> str:
     if kind == ErrorKind.disk:
         return "저장 공간 부족"
     return f"알 수 없는 오류({type(e).__name__})"
-
-
-def _openai_reason(e: BaseException) -> str:
-    status = getattr(e, "status_code", None)
-    if status == 401:
-        return "API 키 인증 실패"
-    if status == 403:
-        return "OpenAI 권한 없음"
-    if status == 429:
-        quota = getattr(e, "code", None) == "insufficient_quota"
-        return "OpenAI 잔액 부족" if quota else "OpenAI 요청 한도 초과"
-    if isinstance(status, int) and status >= 500:
-        return "OpenAI 서버 오류"
-    if isinstance(status, int):
-        return f"OpenAI가 요청을 거절함({status})"
-    return "OpenAI 오류"
 
 
 def _first_line(e: BaseException) -> str:

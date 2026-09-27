@@ -24,6 +24,7 @@ from app.core.settings import settings
 from app.domains.analysis import router as analysis_router
 from app.domains.analysis.adapters.summarizer_openai import SummarizerOpenAI
 from app.domains.chat import router as chat_router
+from app.domains.chat.adapters.answerer_openai import AnswererOpenAI
 from app.domains.job import pipeline
 from app.domains.job import router as job_router
 from app.domains.job.adapters.audio_source import AudioSourceAdapter
@@ -93,6 +94,7 @@ errors.install(app)
 app.state.youtube_info = YouTubeInfoAdapter()
 app.state.media_probe = MediaProbeAdapter()
 app.state.summarizer = SummarizerOpenAI(client_for)
+app.state.answerer = AnswererOpenAI(client_for)
 pipeline.audio_source = AudioSourceAdapter()
 pipeline.audio_split = AudioSplitAdapter()
 pipeline.stt = SttOpenAI(client_for)

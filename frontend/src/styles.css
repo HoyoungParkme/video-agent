@@ -48,6 +48,7 @@
   --text-15: 15px;
   --text-14: 14px;
   --text-13: 13px;
+  --text-12: 12px;
 
   /* 3.3 간격 · 모서리 · 그림자 */
   --space-2: 2px;
@@ -122,7 +123,7 @@ h1, h2, p { margin: 0; }
 
 /* 공통 1.1 헤더 — VA-UI-001 4.1 */
 .va-header {
-  position: sticky; top: 0; z-index: 10;
+  position: sticky; top: var(--banner-h, 0px); z-index: 10;
   height: var(--header-h); padding: 0 var(--space-40);
   display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--c-line); background: var(--c-bg);
@@ -143,6 +144,7 @@ h1, h2, p { margin: 0; }
 
 /* 공통 1.4 키 없음 배너 — VA-UI-001 4.5 */
 .va-banner {
+  position: sticky; top: 0; z-index: 11;
   min-height: 56px; padding: var(--space-8) var(--space-40);
   display: flex; align-items: center; gap: var(--space-12);
   background: var(--c-danger-soft); color: var(--c-danger-deep); font-size: var(--text-15);
@@ -446,7 +448,7 @@ h1, h2, p { margin: 0; }
 .progress-transfer { display: flex; align-items: center; gap: var(--space-8); }
 
 /* UI-4 결과 — 두 열. 오른쪽 패널은 창에 고정(520px) */
-.result { display: grid; grid-template-columns: minmax(0, 1fr) 520px; min-height: calc(100vh - var(--header-h)); }
+.result { display: grid; grid-template-columns: minmax(0, 1fr) 520px; min-height: calc(100vh - var(--header-h) - var(--banner-h, 0px)); }
 .result-main { min-width: 0; padding: var(--space-24) 64px 96px 96px; display: flex; flex-direction: column; gap: var(--space-48); }
 .result-top { display: flex; flex-direction: column; gap: var(--space-18); }
 .result-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-16); }
@@ -502,7 +504,8 @@ h1, h2, p { margin: 0; }
 .part-range { font-size: var(--text-13); color: var(--c-ink-2); }
 .part-body { padding: 0 var(--space-10) var(--space-10); display: flex; flex-direction: column; gap: var(--space-4); }
 .panel { min-width: 0; border-left: 1px solid var(--c-line); background: var(--c-faint); }
-.panel-inner { position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h)); display: flex; flex-direction: column; }
+/* 배너가 떠 있으면 배너 · 헤더 아래에 붙고 그만큼 줄어든다 — 질문 입력 영역이 창 밖으로 밀리지 않게(UI-4 규칙) */
+.panel-inner { position: sticky; top: calc(var(--header-h) + var(--banner-h, 0px)); height: calc(100vh - var(--header-h) - var(--banner-h, 0px)); display: flex; flex-direction: column; }
 .tabs { height: 60px; flex-shrink: 0; padding: 0 var(--space-20); display: flex; align-items: flex-end; gap: var(--space-4); border-bottom: 1px solid var(--c-line); }
 .tab {
   height: 52px; padding: 0 var(--space-14); display: flex; align-items: center; gap: var(--space-8);
@@ -521,6 +524,65 @@ h1, h2, p { margin: 0; }
 .segment-time { font-size: var(--text-13); line-height: 1.75; font-weight: 600; color: var(--c-caption); }
 .segment.is-selected .segment-time { color: var(--c-mark-ink); }
 .segment-text { font-size: var(--text-15); line-height: 1.75; }
+.script[hidden], .chat[hidden] { display: none; }
+.tab-count {
+  min-width: 22px; height: 22px; padding: 0 7px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-11); background: var(--c-chip); color: var(--c-ink-2); font-size: var(--text-12); font-weight: 600;
+}
+.chat { flex-grow: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-list { flex-grow: 1; min-height: 0; overflow-y: auto; padding: var(--space-20) var(--space-24); display: flex; flex-direction: column; gap: var(--space-26); }
+.empty-box.is-compact { padding: var(--space-24); border-radius: var(--radius-14); gap: var(--space-6); align-items: flex-start; text-align: left; }
+.empty-box.is-compact .empty-box-title { font-family: inherit; font-size: var(--text-16); }
+.empty-box.is-compact .empty-box-body { font-size: var(--text-14); }
+.turn { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-10); }
+.turn-question {
+  align-self: flex-end; max-width: 84%; padding: var(--space-10) var(--space-14); border-radius: var(--radius-14) var(--radius-14) var(--radius-4) var(--radius-14);
+  background: var(--c-ink); color: var(--c-bg); font-size: var(--text-15); line-height: 1.6; white-space: pre-wrap;
+}
+.turn-reply { display: flex; flex-direction: column; gap: var(--space-8); }
+.turn-answer { font-size: var(--text-15); line-height: 1.75; color: var(--c-ink); }
+.turn-answer.is-dim { color: var(--c-ink-2); }
+.turn-cites { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.turn-cites .time-chip { margin-left: 0; }
+.turn-cites-label { font-size: var(--text-13); color: var(--c-caption); }
+.turn-none {
+  align-self: flex-start; height: 24px; padding: 0 var(--space-8); display: flex; align-items: center;
+  border-radius: var(--radius-6); background: var(--c-chip); color: var(--c-ink-2); font-size: var(--text-12); font-weight: 600;
+}
+.turn-wait { display: flex; align-items: center; gap: var(--space-10); font-size: var(--text-14); color: var(--c-caption); }
+.wait-dots { display: flex; gap: var(--space-4); }
+.wait-dots > span { width: 6px; height: 6px; border-radius: 50%; background: var(--c-line-faint); }
+.turn-fail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-10); font-size: var(--text-14); line-height: 1.6; color: var(--c-danger); }
+.chat-retry {
+  height: 32px; padding: 0 var(--space-12); border-radius: var(--radius-8); border: 1px solid var(--c-line-strong);
+  background: var(--c-card); color: var(--c-ink); font-size: var(--text-13); font-weight: 600; cursor: pointer;
+}
+.chat-input { flex-shrink: 0; padding: var(--space-14) var(--space-20) var(--space-20); border-top: 1px solid var(--c-line); background: var(--c-faint); display: flex; flex-direction: column; gap: var(--space-10); }
+.chat-chips { display: flex; gap: var(--space-6); overflow: hidden; }
+.chat-chip {
+  height: 32px; flex-shrink: 0; padding: 0 var(--space-12); border-radius: var(--radius-16); border: 1px solid var(--c-line-strong);
+  background: var(--c-card); color: var(--c-ink-2); font-size: var(--text-13); white-space: nowrap; cursor: pointer;
+}
+.chat-key { margin: 0; font-size: var(--text-13); line-height: 1.55; color: var(--c-danger-deep); }
+.chat-key a { color: var(--c-danger-deep); font-weight: 600; }
+.chat-box {
+  position: relative; padding: var(--space-8) var(--space-8) var(--space-8) var(--space-14); display: flex; align-items: flex-end; gap: var(--space-8);
+  border-radius: var(--radius-14); border: 1px solid var(--c-line-strong); background: var(--c-card);
+}
+.chat-field { flex-grow: 1; min-width: 0; display: flex; }
+.chat-field textarea {
+  width: 100%; min-width: 0; padding: var(--space-6) 0; border: 0; resize: none; background: transparent;
+  color: var(--c-ink); font: inherit; font-size: var(--text-15); line-height: 1.6;
+}
+.chat-field textarea:focus { outline: none; }
+.chat-box:focus-within { border-color: var(--c-ink); }
+.chat-field textarea:disabled { color: var(--c-caption); cursor: not-allowed; }
+.chat-send {
+  width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--radius-10); background: var(--c-ink); color: var(--c-bg); cursor: pointer;
+}
+.chat-send[aria-disabled="true"] { background: var(--c-line); color: var(--c-caption); cursor: not-allowed; }
+.chat-note { font-size: var(--text-12); color: var(--c-caption); }
 
 /* 창이 좁으면 양옆에 여백만 남긴다 — 좁은 창 디자인은 아직 없다(VA-UI-001 8장) */
 @media (max-width: 1200px) {

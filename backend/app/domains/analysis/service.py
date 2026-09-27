@@ -92,11 +92,21 @@ class AnalysisService:
     - save_transcript(): 자막 · 받아쓰기 결과를 스크립트로
     - generate_summary() · generate_chapters() · generate_questions(): 파이프라인 단계 셋
     - result_of(): 결과 화면 응답 전부
+
+    요약 포트는 생성 단계 셋만 쓴다 — 구간 · 챕터만 읽는 곳(대화 맥락)은 포트 없이 만든다
+    (VA-DOM-002 6장).
     """
 
-    def __init__(self, session: AsyncSession, summarizer: SummarizerPort) -> None:
+    def __init__(self, session: AsyncSession, summarizer: SummarizerPort | None = None) -> None:
         self.session = session
-        self.summarizer = summarizer
+        self._port = summarizer
+
+    @property
+    def summarizer(self) -> SummarizerPort:
+        # 포트 없이 만든 서비스로 생성 단계를 부르면 코드 실수 — 앱 수준에서 internal(500)
+        if self._port is None:
+            raise RuntimeError("요약 포트 없이 만든 AnalysisService로 생성 단계를 불렀다")
+        return self._port
 
     async def segments_of(self, video_id: int) -> list[Segment]:
         """VA-MS-003#AnalysisService.segments_of

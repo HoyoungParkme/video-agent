@@ -1,4 +1,4 @@
-"""OpenAI 공용 클라이언트 — 클라이언트 · 키 확인 · 받아쓰기 · 채팅(VA-MS-007).
+"""OpenAI 공용 클라이언트 — 클라이언트 · 키 확인 · 받아쓰기 · 채팅 · 예외 한 줄(VA-MS-007).
 
 키는 늘 인자로 받는다 — SDK가 OPENAI_API_KEY 환경 변수를 스스로 읽지 않게(MS-005 3장).
 SDK 예외는 그대로 올린다. 키 원문과 메시지 본문은 로그에 남기지 않는다(DEV-6).
@@ -6,7 +6,9 @@ SDK 예외는 그대로 올린다. 키 원문과 메시지 본문은 로그에 �
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -15,6 +17,7 @@ from typing import Any
 from openai import (
     APIConnectionError,
     APIStatusError,
+    APITimeoutError,
     AsyncOpenAI,
     AuthenticationError,
     PermissionDeniedError,
@@ -22,6 +25,7 @@ from openai import (
 )
 
 from app.core.config import config
+from app.infra.errors import OpenAIOutputError
 
 log = logging.getLogger(__name__)
 
@@ -178,3 +182,67 @@ async def chat(
             resp.usage.completion_tokens,
         )
     return resp.choices[0].message.content or ""
+
+
+async def chat_json[T](
+    client: AsyncOpenAI, model: str, messages: list[dict], parse: Callable[[Any], T]
+) -> T:
+    """VA-MS-007#openai.chat_json
+
+    JSON 모드로 부르고 파싱 · 다듬기까지. 형식이 틀리면(JSON 아님 · 키 없음 · 타입 틀림 · 다듬고
+    나니 빔 — parse가 던진다) config.LLM_RETRY만큼 다시 부른다. SDK 예외는 다시 부르지 않는다 —
+    재시도 수는 부르는 쪽이 센다. 요약 · 챕터 · 추천 질문 · 답변이 같이 쓴다.
+
+    Args:
+        client: `client(key)`가 준 클라이언트
+        model: 텍스트 모델
+        messages: 대화 메시지 목록
+        parse: JSON 값 → 결과. 형식이 틀리면 ValueError · KeyError · TypeError
+
+    Returns:
+        parse의 결과
+
+    Raises:
+        OpenAIOutputError: 다시 불러도 형식이 틀렸다(마지막 까닭이 메시지에)
+    """
+    why = ""
+    for _ in range(config.LLM_RETRY + 1):
+        raw = await chat(client, model, messages)
+        try:
+            return parse(json.loads(raw))
+        except (ValueError, KeyError, TypeError) as e:
+            why = str(e) or type(e).__name__
+    raise OpenAIOutputError(f"모델 출력을 읽지 못했어요({why})")
+
+
+def reason_of(e: BaseException) -> str:
+    """VA-MS-007#openai.reason_of
+
+    OpenAI 호출 예외 → 한국어 한 줄. 실패 알림(파이프라인)과 답변 실패(대화)의 '왜'가 이 표
+    하나를 쓴다. 시간 초과가 연결 오류보다 먼저다(하위 클래스).
+
+    Args:
+        e: OpenAI 호출에서 난 예외
+
+    Returns:
+        한 줄
+    """
+    if isinstance(e, APITimeoutError | TimeoutError):
+        return "네트워크 시간 초과"
+    if isinstance(e, APIConnectionError):
+        return "네트워크에 연결할 수 없음"
+    if isinstance(e, OpenAIOutputError):
+        return e.reason
+    status = getattr(e, "status_code", None)
+    if status == 401:
+        return "API 키 인증 실패"
+    if status == 403:
+        return "OpenAI 권한 없음"
+    if status == 429:
+        quota = getattr(e, "code", None) == "insufficient_quota"
+        return "OpenAI 잔액 부족" if quota else "OpenAI 요청 한도 초과"
+    if isinstance(status, int) and status >= 500:
+        return "OpenAI 서버 오류"
+    if isinstance(status, int):
+        return f"OpenAI가 요청을 거절함({status})"
+    return "OpenAI 오류"

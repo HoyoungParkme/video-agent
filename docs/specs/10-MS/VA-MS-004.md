@@ -18,6 +18,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **이 묶음이 아는 것** — `chat_turns` 테이블 하나. 구간 · 챕터는 `AnalysisService`에 `video_id`로 묻고 DTO 목록을 받는다([[VA-DOM-002]] 3.2). 결과를 바꾸지 않는다([[VA-DOM-001]] 4장). 세션은 라우터의 것.
 
+**만들기** — `ChatService(session, answerer)`. 포트는 `ask`만 쓴다 — 영상 목록의 대화 수는 `ChatService(session)`, 구간 · 챕터는 `AnalysisService(session)`로 포트 없이 읽는다([[VA-DOM-002]] 6장).
+
 **설정값(첫 값)**
 
 | 이름 | 첫 값 | 이유 |
@@ -69,7 +71,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 4. `context = context_for(video, q)` — 구간 목록
 5. `history = DB: chat_turns where video_id order by asked_at desc limit config.CHAT_HISTORY_TURNS`를 시간순으로 뒤집는다([[VA-UC-001#UC-H4]] 1b — 대명사가 풀린다)
 6. `model = SettingsService.current_models().text.id`
-7. `draft = AnswererPort.answer(q, context, history, model)` — `config.CHAT_TIMEOUT_SEC` 안에 · if 예외 · 시간 초과 → `! llm-unavailable {reason}` — **저장하지 않는다**([[VA-UI-002#UI-4]] 규칙: 실패한 질문은 기록에 남지 않는다)
+7. `draft = AnswererPort.answer(q, context, history, model)` — `config.CHAT_TIMEOUT_SEC` 안에 · 포트가 올린 `llm-unavailable`(OpenAI 호출 · 출력 형식 실패, 이유는 [[VA-MS-007#openai.reason_of]])은 그대로 · 시간 초과면 `! llm-unavailable {reason: '응답 시간 초과'}`([[VA-UI-002#UI-4]] 9.8 보드 예) — 어느 쪽이든 **저장하지 않는다**([[VA-UI-002#UI-4]] 규칙: 실패한 질문은 기록에 남지 않는다). 그 밖의 예외는 코드 실수라 `internal`
 8. `cited = [s for s in draft.cited_secs if 0 ≤ s ≤ video.duration_sec]` 오름차순 · 중복 제거 — 범위 밖 시각은 버린다(인사이트와 달리 보정하지 않는다. 답의 근거는 모델이 실제로 본 구간에서만 나와야 한다)
 9. **트랜잭션**: `row = DB: chat_turns insert(video_id, question=q, answer=draft.answer, cited_secs=cited, model, asked_at=now)`
 10. `→ ChatTurn(row)`
@@ -87,7 +89,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** `SettingsService.require_key` · `SettingsService.current_models` · [[#ChatService.context_for]] · `AnswererPort.answer`
 
-**테스트 관점** 가짜 포트로: 답 성공 → 행 하나, `count_by_videos` +1 · 포트 예외 → `llm-unavailable`이고 행이 없다 · 빈 질문 · 공백만 → `validation` · `in_progress` 영상 → `result-not-ready`, 포트 호출 없음 · 12턴 있을 때 포트가 받는 `history`는 최근 10개 시간순 · `cited_secs`에 길이 밖 값이 오면 버려진다 · 근거 없음 → `cited_secs=[]` 저장 · 키 없음 → 포트 호출 없음 · 마지막 키 확인이 `network`이고 다시 확인도 실패 → `key-invalid`(`network`), 포트 호출 없음, 행 없음 · 다시 확인이 통과 → 답을 받아 저장한다 · 저장된 행의 `model`이 모델 id다
+**테스트 관점** 가짜 포트로: 답 성공 → 행 하나, `count_by_videos` +1 · 포트가 `llm-unavailable`을 올리면 그대로이고 행이 없다 · 포트가 시간 제한을 넘으면 `llm-unavailable`('응답 시간 초과')이고 행이 없다 · 빈 질문 · 공백만 → `validation` · `in_progress` 영상 → `result-not-ready`, 포트 호출 없음 · 12턴 있을 때 포트가 받는 `history`는 최근 10개 시간순 · `cited_secs`에 길이 밖 값이 오면 버려진다 · 근거 없음 → `cited_secs=[]` 저장 · 키 없음 → 포트 호출 없음 · 마지막 키 확인이 `network`이고 다시 확인도 실패 → `key-invalid`(`network`), 포트 호출 없음, 행 없음 · 다시 확인이 통과 → 답을 받아 저장한다 · 저장된 행의 `model`이 모델 id다
 
 ---
 
@@ -112,17 +114,17 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 **처리**
 1. `segments = AnalysisService.segments_of(video.id)` · `tokens = 어림(글자 수 ÷ 2)`
 2. if `tokens ≤ config.CHAT_TOKEN_LIMIT` → `→ segments` (전부)
-3. `chapters = AnalysisService.chapters_of(video.id)` · 질문을 낱말로 나눈다 — 한글은 2자 이상 어절, 영문 · 숫자는 소문자 단어, 조사 어미는 떼지 않는다(첫 버전)
-4. 챕터마다 점수 = `title + bullets`에 나오는 질문 낱말 수(부분 일치 포함) · 점수 > 0인 챕터를 점수 내림차순, 같으면 시각순으로 앞 `config.CHAT_CHAPTERS`개
+3. `chapters = AnalysisService.chapters_of(video.id)` · 질문을 낱말로 나눈다 — 2자 이상(한글 어절 · 영문 · 숫자 모두, 영문은 소문자로), 조사 어미는 떼지 않는다(첫 버전). 한 글자 낱말은 거의 모든 챕터 글에 들어 있어(영문 'a' · 숫자 '2') 점수를 흐리므로 뺀다
+4. 챕터마다 점수 = `title + bullets`에 나오는 질문 낱말 수(부분 일치 포함 — 질문 낱말이 챕터 글에 들어 있거나, 챕터 글의 2자 이상 낱말이 질문 낱말에 들어 있다. '비용' ⊂ '비용은') · 점수 > 0인 챕터를 점수 내림차순, 같으면 시각순으로 앞 `config.CHAT_CHAPTERS`개
 5. if 점수 > 0인 챕터가 없음 → 최근 턴들의 `cited_secs`가 속한 챕터(이어지는 질문, [[VA-UC-001#UC-H4]] 1b) · 그것도 없으면 앞 `config.CHAT_CHAPTERS`개 챕터
-6. 고른 챕터마다 범위 = `[chapter.start_sec, 다음 챕터.start_sec)`(마지막은 영상 끝) · 그 범위의 구간을 시각순으로 모은다 · 합이 `config.CHAT_TOKEN_LIMIT`를 넘으면 점수 낮은 챕터부터 뺀다
+6. 고른 챕터마다 범위 = `[chapter.start_sec, 다음 챕터.start_sec)`(마지막은 영상 끝) · 그 범위의 구간을 시각순으로 모은다 · 합이 `config.CHAT_TOKEN_LIMIT`를 넘으면 점수 낮은 챕터부터 뺀다. 챕터 하나만 남으면 상한을 넘어도 그대로 보낸다 — 챕터 안을 자르면 질문과 맞는 구간을 잃을 수 있고, 상한은 비용 · 속도를 위한 값이지 모델이 받을 수 있는 양의 한계가 아니다. 첫 챕터는 0초에서 시작하므로([[VA-MS-003#AnalysisService.generate_chapters]] 3번) 스크립트 처음도 어느 챕터 범위에 든다
 7. `→ 구간 목록` (시각순. 챕터 사이가 비어 있어도 그대로 — 모델에게는 `[시각] 문장` 줄이라 빈틈이 보인다)
 
 **출력** `list[Segment]`
 
 **호출하는 것** `AnalysisService.segments_of` · `AnalysisService.chapters_of`
 
-**테스트 관점** 50분 영상 → 구간 전부 · 3시간 영상 + 질문 'RAG 비용' → 제목에 '비용'이 든 챕터의 구간만, 토큰 상한 이하 · 아무 낱말도 안 맞으면 앞 3챕터 · 이어지는 질문('그거 성능은?')은 직전 턴의 근거 챕터 · 고른 구간이 시각순
+**테스트 관점** 50분 영상 → 구간 전부 · 3시간 영상 + 질문 'RAG 비용' → 제목에 '비용'이 든 챕터의 구간만, 토큰 상한 이하 · 조사가 붙은 질문 낱말('비용은')도 제목 낱말('비용')과 맞는다 · 아무 낱말도 안 맞으면 앞 3챕터 · 이어지는 질문('그거 성능은?')은 직전 턴의 근거 챕터 · 고른 구간이 시각순 · 한 글자 낱말('A/B 테스트'의 'a' · 'b')은 점수에 들지 않는다 · 챕터 하나만 남으면 상한을 넘어도 그 챕터의 구간 전부
 
 ---
 

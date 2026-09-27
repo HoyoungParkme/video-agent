@@ -25,6 +25,8 @@ export interface FakeState {
   chatFail: number;
   /** 받아쓴 조각 번호(성공한 것), 받은 차례대로 */
   transcribed: number[];
+  /** 답한 질문마다 — 앞선 턴 수와 받은 스크립트의 첫 · 끝 시각 */
+  asks: { question: string; history: number; first: string | null; last: string | null }[];
 }
 
 /**
