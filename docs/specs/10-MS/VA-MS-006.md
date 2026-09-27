@@ -277,7 +277,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 근거: [[VA-SEQ-001#SEQ-9]] 25~30번 · [[VA-UC-001#UC-H4]] 2~3번, 1b · 3a · [[VA-PRD-001#R6]] · [[VA-MS-004#ChatService.ask]]
 
 **처리**
-1. `end = context[-1].end_sec`(비면 0) · `long = end ≥ 3600` · 본문 = `context`를 [[#timecode.label]]로 `[시각] 문장` 줄로 · 메시지 = `[system, (user, assistant) × history 순서대로, user = "<transcript>\n" + 본문 + "\n</transcript>\n\n" + question]` — 앞선 턴은 질문 · 답을 그대로 보내고, 근거 시각은 답 뒤에 `(근거: 12:40)`로 붙여 대명사가 풀리게. 앞선 턴의 스크립트는 다시 보내지 않는다 — 이번 질문에 맞춘 `context`만 간다([[VA-MS-004#ChatService.context_for]])
+1. `end = context[-1].end_sec`(비면 0) · `long = end ≥ 3600` · 본문 = `context`를 [[#timecode.label]]로 `[시각] 문장` 줄로 · 메시지 = `[system, (user, assistant) × history 순서대로, user = "<transcript>\n" + 본문 + "\n</transcript>\n\n" + question]` — 앞선 턴은 질문 · 답을 그대로 보내고, 근거 시각은 답 뒤에 `(근거: 12:40)`로 붙여 대명사가 풀리게 — 표기는 본문과 같은 `long`으로 쓴다. 모델이 앞선 턴의 시각을 옮겨 적어도 [[#timecode.parse]]가 같은 `end`로 바로 읽는다(짧은 본문이면 1시간 넘는 근거도 `70:00`. `1:10:00`으로 쓰면 끝이 30분인 본문에서는 70초로 읽힌다). 앞선 턴의 스크립트는 다시 보내지 않는다 — 이번 질문에 맞춘 `context`만 간다([[VA-MS-004#ChatService.context_for]])
 2. `system = prompts.render("answer", time_format="h:mm:ss" if long else "mm:ss", not_covered=config.NOT_COVERED_TEXT)`
 3. `EXT: openai.chat_json(client_for(), model, messages, parse)` — JSON 모드 · `config.CHAT_TIMEOUT_SEC`는 서비스가 건다 · `parse`(다듬기): `answer`가 비면 형식 실패 · `times`는 [[#timecode.parse]]`(t, end)`로 초로 바꾸고 못 읽은 것은 버린다, 셋이 넘으면 앞 셋 · 형식 실패 처리는 `summary`와 같다
 4. `→ AnswerDraft(answer, cited_secs=[초 …])` — `answer`가 `config.NOT_COVERED_TEXT`로 시작하면 `cited_secs=[]`로 강제(모델이 시각을 붙여도)
@@ -289,7 +289,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **호출하는 것** `openai.chat_json` · `openai.reason_of` · [[#prompts.render]] · [[#timecode.label]] · [[#timecode.parse]]
 
-**테스트 관점** 가짜 응답으로: 근거 둘 → `cited_secs` 두 개 초 단위 · `config.NOT_COVERED_TEXT`로 시작 + 시각 → `cited_secs=[]` · `history` 3턴 → 메시지 8개(system + 6 + 마지막 user) · 마지막 user 메시지에만 `<transcript>`가 있다 · system이 `answer.md`를 채운 것과 같다 · SDK 5xx → `llm-unavailable`('OpenAI 서버 오류') · 형식이 두 번 틀리면 `llm-unavailable`(그 문장)
+**테스트 관점** 가짜 응답으로: 근거 둘 → `cited_secs` 두 개 초 단위 · `config.NOT_COVERED_TEXT`로 시작 + 시각 → `cited_secs=[]` · `history` 3턴 → 메시지 8개(system + 6 + 마지막 user) · 마지막 user 메시지에만 `<transcript>`가 있다 · 앞선 턴의 근거 표기는 본문을 따른다 — 짧은 본문에서 4200초는 `(근거: 70:00)`, 긴 본문에서 1800초는 `(근거: 0:30:00)` · system이 `answer.md`를 채운 것과 같다 · SDK 5xx → `llm-unavailable`('OpenAI 서버 오류') · 형식이 두 번 틀리면 `llm-unavailable`(그 문장)
 
 ---
 
