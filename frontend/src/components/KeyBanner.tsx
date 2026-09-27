@@ -15,7 +15,9 @@ import { useSettings } from "@/api/client";
 
 const MISSING =
   "OpenAI API 키가 없어서 아직 분석할 수 없어요. 분석해 둔 영상은 키 없이도 읽을 수 있습니다.";
-const OFFLINE = "연결을 확인하지 못했어요 — 인터넷이 되면 분석 버튼을 누를 때 다시 확인합니다";
+/** 연결을 확인하지 못함 — UI-4 키 없음 안내(10.2)도 같은 문장이다 */
+export const OFFLINE =
+  "연결을 확인하지 못했어요 — 인터넷이 되면 분석 버튼을 누를 때 다시 확인합니다";
 
 export default function KeyBanner() {
   const path = usePathname();

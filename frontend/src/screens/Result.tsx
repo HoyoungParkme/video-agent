@@ -34,6 +34,7 @@ import {
   type Result as ResultData,
 } from "@/api/client";
 import EmptyBox from "@/components/EmptyBox";
+import { OFFLINE } from "@/components/KeyBanner";
 import TimeChip, { durationLabel, isLong, timeLabel } from "@/components/TimeChip";
 import Toast, { takeFlash } from "@/components/Toast";
 import { analyzedLabel, languageName } from "@/labels";
@@ -73,11 +74,7 @@ function failureText(e: unknown): string {
 function keyNotice(key: KeyStatus): { text: string; link: boolean } | null {
   if (key.state === "missing") return { text: "API 키가 없어 질문할 수 없어요.", link: true };
   if (key.state !== "invalid") return null;
-  if (key.reason_kind === "network")
-    return {
-      text: "연결을 확인하지 못했어요 — 인터넷이 되면 분석 버튼을 누를 때 다시 확인합니다",
-      link: false,
-    };
+  if (key.reason_kind === "network") return { text: OFFLINE, link: false }; // 배너와 같은 문장
   return { text: `키를 확인하지 못해 질문할 수 없어요 — ${key.reason ?? ""}`, link: true };
 }
 
