@@ -16,3 +16,13 @@ async def counts(session: AsyncSession, video_ids: list[int]) -> dict[int, int]:
         .group_by(ChatTurnRow.video_id)
     )
     return {video_id: n for video_id, n in rows.tuples()}
+
+
+async def turns(session: AsyncSession, video_id: int) -> list[ChatTurnRow]:
+    """영상의 턴 전부, 시간순(같은 시각이면 넣은 순서)."""
+    rows = await session.scalars(
+        select(ChatTurnRow)
+        .where(ChatTurnRow.video_id == video_id)
+        .order_by(ChatTurnRow.asked_at, ChatTurnRow.id)
+    )
+    return list(rows)
