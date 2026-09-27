@@ -201,6 +201,15 @@ export interface Result {
   analyzed_at: string;
 }
 
+/** 질문 하나와 답(VA-API-001 4장 ChatTurn). cited_secs가 비면 '영상에 없는 내용'. */
+export interface ChatTurn {
+  id: number;
+  question: string;
+  answer: string;
+  cited_secs: number[];
+  asked_at: string;
+}
+
 /** problem+json 하나. kind는 `urn:va:` 뒤 — key-rejected · validation 등(VA-API-001 2장). */
 export class ApiError extends Error {
   readonly status: number;
@@ -266,6 +275,11 @@ export const api = {
   retry: (id: number) => call<Job>("POST", `/api/videos/${id}/job/retry`),
   /** GET /api/videos/{id}/result — 결과 전부 */
   result: (id: number) => call<Result>("GET", `/api/videos/${id}/result`),
+  /** GET /api/videos/{id}/chat — 질문 · 답변 기록, 시간순 */
+  chat: (id: number) => call<ChatTurn[]>("GET", `/api/videos/${id}/chat`),
+  /** POST /api/videos/{id}/chat — 질문하고 답을 받는다. 실패하면 저장되지 않는다 */
+  ask: (id: number, question: string) =>
+    call<ChatTurn>("POST", `/api/videos/${id}/chat`, { question }),
 };
 
 // 설정 한 벌을 화면들이 같이 본다 — layout의 배너와 화면이 같은 값을 쓰고, 키를 저장하면 배너가 바로 바뀐다
