@@ -97,11 +97,22 @@ async def test_messages_history_then_transcript_last(chat, answerer) -> None:
     assert messages[1]["content"] == "질문 1"
     assert messages[2]["content"] == "답 1 (근거: 12:40)"  # 대명사가 풀리게 근거 시각을 붙인다
     assert messages[4]["content"] == "답 2"  # 근거 없는 답은 그대로
-    assert messages[6]["content"] == "답 3 (근거: 1:15:00)"  # 1시간 넘는 시각은 h:mm:ss
+    assert messages[6]["content"] == "답 3 (근거: 75:00)"  # 본문(끝 50분)과 같은 표기
     users = [i for i, m in enumerate(messages) if m["role"] == "user"]
     assert [i for i in users if "<transcript>" in messages[i]["content"]] == [7]
     assert messages[7]["content"].startswith("<transcript>\n[00:00] 1번째 문장\n")
     assert messages[7]["content"].endswith("</transcript>\n\n그거 성능은?")
+
+
+async def test_history_times_follow_transcript_format(chat, answerer) -> None:
+    # 모델이 앞선 턴의 근거를 옮겨 적어도 본문과 같은 끝 시각으로 바로 읽힌다
+    chat.replies = [js("답", ["70:00"]), js("답", ["0:30:00"])]
+    short = await answerer.answer("그거는?", segs(1800), [turn(1, [4200.0])], "gpt-5-mini")
+    assert chat.calls[0][2]["content"] == "답 1 (근거: 70:00)"  # '1:10:00'이면 70초로 읽힌다
+    assert short.cited_secs == [4200.0]
+    long = await answerer.answer("그거는?", segs(7200), [turn(1, [1800.0])], "gpt-5-mini")
+    assert chat.calls[1][2]["content"] == "답 1 (근거: 0:30:00)"
+    assert long.cited_secs == [1800.0]
 
 
 async def test_system_prompt_fills_answer_md(chat, answerer) -> None:

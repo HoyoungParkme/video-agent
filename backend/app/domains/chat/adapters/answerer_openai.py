@@ -25,12 +25,12 @@ from app.shared import timecode
 TIMES_MAX = 3
 
 
-def _said(turn: ChatTurn) -> str:
-    # 앞선 답에 근거 시각을 붙여 보낸다 — '그거'가 무엇인지 모델이 알게.
-    # 시각마다 1시간이 넘으면 h:mm:ss
+def _said(turn: ChatTurn, long: bool) -> str:
+    # 앞선 답에 근거 시각을 붙여 보낸다 — '그거'가 무엇인지 모델이 알게. 표기는 본문과 같게 —
+    # 모델이 옮겨 적어도 같은 끝 시각으로 읽힌다(짧은 본문의 '1:10:00'은 70초로 읽힌다)
     if not turn.cited_secs:
         return turn.answer
-    times = ", ".join(timecode.label(s, s >= 3600) for s in turn.cited_secs)
+    times = ", ".join(timecode.label(s, long) for s in turn.cited_secs)
     return f"{turn.answer} (근거: {times})"
 
 
@@ -72,7 +72,7 @@ class AnswererOpenAI:
         for t in history:
             messages += [
                 {"role": "user", "content": t.question},
-                {"role": "assistant", "content": _said(t)},
+                {"role": "assistant", "content": _said(t, long)},
             ]
         messages.append(
             {"role": "user", "content": f"<transcript>\n{lines}\n</transcript>\n\n{question}"}
