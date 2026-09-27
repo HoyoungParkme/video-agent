@@ -517,14 +517,14 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 1. `line = str(e)의 첫 줄(앞뒤 공백 없이)` · if `line`에 한글이 있음 → `→ line` — 앱이 만든 문장이다(`NotImplementedYet` · `OpenAIOutputError` · 파이프라인의 `YtdlpError('자막을 찾지 못했습니다')` · infra의 '시간 제한을 넘었습니다' 등)
 2. else `error_kind(e)`로 —
    - `network` → 시간 초과(`TimeoutError` · `APITimeoutError`)면 '네트워크 시간 초과', 아니면 '네트워크에 연결할 수 없음'
-   - `openai` → 상태 401 'API 키 인증 실패' · 403 'OpenAI 권한 없음' · 429는 `insufficient_quota`면 'OpenAI 잔액 부족', 아니면 'OpenAI 요청 한도 초과' · 5xx 'OpenAI 서버 오류' · 그 밖 상태 'OpenAI가 요청을 거절함({상태})' · 상태 없음 'OpenAI 오류'
+   - `openai` → [[VA-MS-007#openai.reason_of]]의 표(401 'API 키 인증 실패' · 429 잔액 · 한도 · 5xx 'OpenAI 서버 오류' …). 질문 답변 실패도 같은 표를 쓴다 — 두 벌이 되지 않게 infra에 하나
    - `youtube` → `YtdlpError.kind`로 private '비공개 영상' · unavailable '삭제되었거나 볼 수 없는 영상' · geo '이 지역에서 볼 수 없는 영상' · network 'YouTube 연결 실패' · extractor 'yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트' · other 'yt-dlp 오류'
    - `ffmpeg` → 'ffmpeg 처리 실패' · `disk` → '저장 공간 부족'
    - `unknown` → '알 수 없는 오류({예외 클래스 이름})'
 
 **출력** 한 줄(한국어). 화면이 실패 알림 본문의 '왜'로 그대로 쓴다([[VA-UI-002#UI-3]] 5.2)
 
-**호출하는 것** [[#pipeline.error_kind]]
+**호출하는 것** [[#pipeline.error_kind]] · [[VA-MS-007#openai.reason_of]]
 
 **테스트 관점** `APITimeoutError` → '네트워크 시간 초과' · `APIConnectionError` → '네트워크에 연결할 수 없음' · 401 → 'API 키 인증 실패' · 429 `insufficient_quota` → 'OpenAI 잔액 부족' · 503 → 'OpenAI 서버 오류' · 영어 표준 오류의 `YtdlpError(kind=private)` → '비공개 영상' · `NotImplementedYet` · `OpenAIOutputError`는 그 문장 · 여러 줄 한국어 → 첫 줄 · `KeyError('x')` → '알 수 없는 오류(KeyError)'
 
