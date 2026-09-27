@@ -126,6 +126,14 @@ test("3시간 스크립트 — 질문과 맞는 챕터만 보낸다", async ({ p
 
 test("키가 없으면 — 기록은 보이고 질문은 막힌다(10.2)", async ({ page, request }) => {
   const url = await openResult(page, "https://youtu.be/e2eAskVid01");
+  // 키가 있을 때 한 번 물어 둔다 — 이 테스트만 돌려도 기록이 있게
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  await el(page, "7.2").click();
+  await box(page).fill("RAG를 고른 이유는?");
+  await box(page).press("Enter");
+  await expect(page.locator(".turn").last().locator(".turn-answer")).toContainText(
+    "에 대한 답입니다",
+  );
   await page.route("**/api/settings", async (route) => {
     const res = await route.fetch();
     const body = await res.json();
@@ -136,6 +144,8 @@ test("키가 없으면 — 기록은 보이고 질문은 막힌다(10.2)", async
   const sent = (await fakeOpenAI(request, { reset: true })).asks.length;
   await el(page, "7.2").click();
   await expect(page.locator(".turn").first()).toBeVisible(); // 이전 기록은 그대로
+  // 배너가 떠도 패널이 그만큼 줄어 입력 영역이 창 안에 있다(UI-4 규칙)
+  await expect(el(page, "10.5")).toBeInViewport({ ratio: 1 });
   await expect(el(page, "10.2")).toHaveText("API 키가 없어 질문할 수 없어요. 키 넣으러 가기");
   await expect(el(page, "10.2").getByRole("link")).toHaveAttribute("href", "/settings");
   await expect(box(page)).toBeDisabled();

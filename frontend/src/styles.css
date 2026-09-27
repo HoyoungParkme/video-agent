@@ -123,7 +123,7 @@ h1, h2, p { margin: 0; }
 
 /* 공통 1.1 헤더 — VA-UI-001 4.1 */
 .va-header {
-  position: sticky; top: 0; z-index: 10;
+  position: sticky; top: var(--banner-h, 0px); z-index: 10;
   height: var(--header-h); padding: 0 var(--space-40);
   display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--c-line); background: var(--c-bg);
@@ -144,6 +144,7 @@ h1, h2, p { margin: 0; }
 
 /* 공통 1.4 키 없음 배너 — VA-UI-001 4.5 */
 .va-banner {
+  position: sticky; top: 0; z-index: 11;
   min-height: 56px; padding: var(--space-8) var(--space-40);
   display: flex; align-items: center; gap: var(--space-12);
   background: var(--c-danger-soft); color: var(--c-danger-deep); font-size: var(--text-15);
@@ -447,7 +448,7 @@ h1, h2, p { margin: 0; }
 .progress-transfer { display: flex; align-items: center; gap: var(--space-8); }
 
 /* UI-4 결과 — 두 열. 오른쪽 패널은 창에 고정(520px) */
-.result { display: grid; grid-template-columns: minmax(0, 1fr) 520px; min-height: calc(100vh - var(--header-h)); }
+.result { display: grid; grid-template-columns: minmax(0, 1fr) 520px; min-height: calc(100vh - var(--header-h) - var(--banner-h, 0px)); }
 .result-main { min-width: 0; padding: var(--space-24) 64px 96px 96px; display: flex; flex-direction: column; gap: var(--space-48); }
 .result-top { display: flex; flex-direction: column; gap: var(--space-18); }
 .result-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-16); }
@@ -503,7 +504,8 @@ h1, h2, p { margin: 0; }
 .part-range { font-size: var(--text-13); color: var(--c-ink-2); }
 .part-body { padding: 0 var(--space-10) var(--space-10); display: flex; flex-direction: column; gap: var(--space-4); }
 .panel { min-width: 0; border-left: 1px solid var(--c-line); background: var(--c-faint); }
-.panel-inner { position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h)); display: flex; flex-direction: column; }
+/* 배너가 떠 있으면 배너 · 헤더 아래에 붙고 그만큼 줄어든다 — 질문 입력 영역이 창 밖으로 밀리지 않게(UI-4 규칙) */
+.panel-inner { position: sticky; top: calc(var(--header-h) + var(--banner-h, 0px)); height: calc(100vh - var(--header-h) - var(--banner-h, 0px)); display: flex; flex-direction: column; }
 .tabs { height: 60px; flex-shrink: 0; padding: 0 var(--space-20); display: flex; align-items: flex-end; gap: var(--space-4); border-bottom: 1px solid var(--c-line); }
 .tab {
   height: 52px; padding: 0 var(--space-14); display: flex; align-items: center; gap: var(--space-8);
