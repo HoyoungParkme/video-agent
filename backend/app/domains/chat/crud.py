@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,3 +39,25 @@ async def recent(session: AsyncSession, video_id: int, limit: int) -> list[ChatT
         .limit(limit)
     )
     return list(rows)
+
+
+def add(
+    session: AsyncSession,
+    video_id: int,
+    question: str,
+    answer: str,
+    cited_secs: list[float],
+    model: str,
+    asked_at: datetime,
+) -> ChatTurnRow:
+    """새 턴. 커밋은 service가 한다."""
+    row = ChatTurnRow(
+        video_id=video_id,
+        question=question,
+        answer=answer,
+        cited_secs=cited_secs,
+        model=model,
+        asked_at=asked_at,
+    )
+    session.add(row)
+    return row

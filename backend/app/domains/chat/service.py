@@ -5,16 +5,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
+from app.core.errors import LlmUnavailable, ResultNotReady, Validation
+from app.core.settings import settings
 from app.domains.analysis.schemas import Chapter, Segment
 from app.domains.analysis.service import AnalysisService
 from app.domains.chat import crud
 from app.domains.chat.models import ChatTurnRow
+from app.domains.chat.ports import AnswererPort
 from app.domains.chat.schemas import ChatTurn
 
 if TYPE_CHECKING:
@@ -23,6 +28,8 @@ if TYPE_CHECKING:
 # 낱말 나누기 — 한글이 든 어절은 2자 이상, 영문 · 숫자 단어는 소문자로. 조사 · 어미는 떼지 않는다
 _SPLIT = re.compile(r"[^\w]+")
 _HANGUL = re.compile(r"[가-힣]")
+# 질문 글자 상한 — 넘으면 자른다
+QUESTION_MAX = 2000
 
 
 def _turn(row: ChatTurnRow) -> ChatTurn:
@@ -56,12 +63,21 @@ class ChatService:
     """대화 턴을 읽고 쓴다.
 
     - history(): 영상의 대화 턴, 시간순
+    - ask(): 질문 → 맥락 → 모델 → 저장
     - count_by_videos(): 영상마다 턴 수, 쿼리 하나
     - context_for(): 맥락 구간 고르기(전부 또는 관련 챕터)
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, answerer: AnswererPort | None = None) -> None:
         self.session = session
+        self._port = answerer
+
+    @property
+    def answerer(self) -> AnswererPort:
+        # 답변 포트는 ask만 쓴다 — 포트 없이 만든 서비스로 질문하면 코드 실수(500)
+        if self._port is None:
+            raise RuntimeError("답변 포트 없이 만든 ChatService로 질문했다")
+        return self._port
 
     async def history(self, video_id: int) -> list[ChatTurn]:
         """VA-MS-004#ChatService.history
@@ -76,6 +92,48 @@ class ChatService:
             턴 목록. 없으면 빈 목록(결과 없는 영상도 — 에러가 아니다)
         """
         return [_turn(r) for r in await crud.turns(self.session, video_id)]
+
+    async def ask(self, video: Video, question: str) -> ChatTurn:
+        """VA-MS-004#ChatService.ask
+
+        질문 → 맥락(구간 · 최근 턴) → 모델 → 저장. 순서가 규칙이다 — 결과 · 키 · 빈 질문을 먼저 보고
+        모델을 부른다. 답을 받은 뒤 한 번 저장하고, 실패하면 저장하지 않는다. 근거 시각은 영상 길이
+        밖이면 버린다(보정하지 않는다 — 근거는 모델이 실제로 본 구간에서만).
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상
+            question: 입력칸 문장 또는 추천 질문 문장
+
+        Returns:
+            저장한 턴
+
+        Raises:
+            ResultNotReady: 결과가 없다(video_status)
+            KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다
+            Validation: 빈 질문
+            LlmUnavailable: 모델 호출 실패(포트의 이유) · 시간 초과('응답 시간 초과')
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        await settings.require_key()  # 마지막 확인이 연결 실패였으면 여기서 한 번 다시
+        q = question.strip()
+        if not q:
+            raise Validation(errors=[{"field": "question", "message": "비어 있음"}])
+        q = q[:QUESTION_MAX]
+        context = await self.context_for(video, q)
+        recent = await crud.recent(self.session, video.id, config.CHAT_HISTORY_TURNS)
+        history = [_turn(r) for r in reversed(recent)]  # 시간순 — 대명사가 풀린다
+        model = settings.current_models().text.id
+        try:
+            async with asyncio.timeout(config.CHAT_TIMEOUT_SEC):
+                draft = await self.answerer.answer(q, context, history, model)
+        except TimeoutError as e:
+            raise LlmUnavailable(reason="응답 시간 초과") from e
+        cited = sorted({s for s in draft.cited_secs if 0 <= s <= video.duration_sec})
+        row = crud.add(self.session, video.id, q, draft.answer, cited, model, datetime.now(UTC))
+        await self.session.commit()
+        await self.session.refresh(row)
+        return _turn(row)
 
     async def count_by_videos(self, video_ids: list[int]) -> dict[int, int]:
         """VA-MS-004#ChatService.count_by_videos
