@@ -26,3 +26,14 @@ async def turns(session: AsyncSession, video_id: int) -> list[ChatTurnRow]:
         .order_by(ChatTurnRow.asked_at, ChatTurnRow.id)
     )
     return list(rows)
+
+
+async def recent(session: AsyncSession, video_id: int, limit: int) -> list[ChatTurnRow]:
+    """최근 턴 limit개, 새것부터."""
+    rows = await session.scalars(
+        select(ChatTurnRow)
+        .where(ChatTurnRow.video_id == video_id)
+        .order_by(ChatTurnRow.asked_at.desc(), ChatTurnRow.id.desc())
+        .limit(limit)
+    )
+    return list(rows)
