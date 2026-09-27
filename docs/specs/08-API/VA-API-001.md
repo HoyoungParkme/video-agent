@@ -601,7 +601,7 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 
 1. 결과가 없으면 409 `urn:va:result-not-ready`. 영상이 없으면 404.
 2. 저장된 키 확인 — 503 `urn:va:key-missing` 또는 `urn:va:key-invalid`. 키가 없는 동안 화면은 입력칸을 막고 있다([[VA-UI-002#UI-4]] 규칙).
-3. `question`이 비어 있으면 422 `urn:va:validation`.
+3. `question`이 비어 있으면(공백뿐이어도) 422 `urn:va:validation`. 스키마는 글자 수를 막지 않는다 — 빈 문자열도 1 · 2번 뒤에 본다 — 순서가 규칙이다(서비스 `ChatService.ask`).
 4. 맥락은 구간 전부와 최근 턴 10개다. 스크립트가 설정된 토큰 상한을 넘으면 챕터 제목으로 관련 챕터를 고르고 그 구간만 넣는다([[VA-UC-001#UC-H4]] 3b). 사용자에게는 같은 흐름이다.
 5. 답을 받으면 ChatTurn을 저장하고 201로 돌려준다. `Video.chat_turn_count`가 1 는다. 영상에 없는 내용이면 답은 '이 영상에서는 다루지 않습니다' 계열이고 `cited_secs`는 빈 배열이다([[VA-UC-001#UC-H4]] 3a).
 - OpenAI 호출이 실패하면 502 `urn:va:llm-unavailable`(`reason`). **저장하지 않는다.** 화면은 답 자리에 이유와 [다시 시도]를 두고 같은 질문을 다시 보낸다([[VA-UC-001#UC-H4]] 2a).
@@ -1188,7 +1188,6 @@ components:
       properties:
         question:
           type: string
-          minLength: 1
     ExportRequest:
       type: object
       properties:
