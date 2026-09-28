@@ -12,7 +12,8 @@ from sqlalchemy import select
 
 from app.core.config import config
 from app.core.errors import JobExists, JobNotFailed, KeyMissing, NotFound
-from app.domains.job import crud
+from app.domains.analysis.models import TranscriptRow
+from app.domains.job import crud, pipeline
 from app.domains.job.models import (
     AnalysisJobRow,
     AudioChunkRow,
@@ -25,6 +26,7 @@ from app.domains.job.schemas import ChunkPlan, JobError, SttSegment
 from app.domains.job.service import JobService
 from app.domains.video.models import SourceKind
 from app.domains.video.schemas import Video
+from app.domains.video.service import VideoService
 
 T0 = datetime(2026, 9, 23, 3, 0, tzinfo=UTC)
 STT_STAGES = ["download", "transcribe", "summarize", "chapter", "suggest"]
@@ -742,5 +744,38 @@ async def test_retry_without_key_changes_nothing(db, make, env_file) -> None:
     assert (await _job_row(db, job.id)).status == JobStatus.failed
 
 
-async def test_cancel_is_noop(db) -> None:
-    assert await JobService(db).cancel(1) is None
+# --- cancel
+
+
+async def test_cancel_stops_transcription(
+    db, make, monkeypatch, audio_source, audio_split, stt, summarizer, tmp_path
+) -> None:
+    for name, port in [
+        ("audio_source", audio_source),
+        ("audio_split", audio_split),
+        ("stt", stt),
+        ("summarizer", summarizer),
+    ]:
+        monkeypatch.setattr(pipeline, name, port)
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    audio_split.n, stt.delay = 6, 30  # 조각 여섯 — 받아쓰기가 끝나지 않는다
+    row = await make.video(has_captions=False, caption_language=None, caption_kind=None)
+    stages = ["download", "transcribe", "summarize", "chapter", "suggest"]
+    job = await make.job(row.id, JobStatus.running, stages=stages, stt_model="whisper-1")
+    task = asyncio.create_task(pipeline.run(job.id, VideoService.to_dto(row, None, 0)))
+    JobService.tasks[row.id] = task
+    try:
+        while stt.running < 3:  # 조각 셋이 도는 중
+            await asyncio.sleep(0.01)
+        await JobService(db).cancel(row.id)
+    finally:
+        JobService.tasks.pop(row.id, None)
+    assert task.cancelled()
+    assert stt.running == 0  # 조각 태스크도 모두 끝났다
+    status = await db.scalar(select(AnalysisJobRow.status).where(AnalysisJobRow.id == job.id))
+    assert status == JobStatus.running  # 행은 그대로 — 삭제의 cascade가 지운다
+    assert await db.scalar(select(TranscriptRow)) is None  # 반쯤 쓴 스크립트가 없다
+
+
+async def test_cancel_without_task_does_nothing(db) -> None:
+    await JobService(db).cancel(999)  # 도는 태스크가 없다 — 대기 중 · 실패 · 완료 · 없는 영상
