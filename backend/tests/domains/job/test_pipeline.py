@@ -67,6 +67,17 @@ async def _running(make, **kw):
     return VideoService.to_dto(row, None, 0), job
 
 
+async def test_run_or_resume_deleted_job_does_nothing(db, make, ports, tmp_path) -> None:
+    # 워커가 꺼낸 뒤 태스크를 걸기 전에 삭제가 왔다 — 취소할 태스크가 없어 cascade가 행을 지웠다
+    for go in (pipeline.run, pipeline.resume):
+        video, job = await _running(make)
+        async with SessionLocal() as s:
+            await s.delete(await s.get(VideoRow, video.id))
+            await s.commit()
+        await go(job.id, video)  # 실패로 접지 않고 조용히 끝난다
+        assert not (tmp_path / "tmp" / str(video.id)).exists()
+
+
 # --- error_kind
 
 

@@ -41,6 +41,11 @@ async def by_id(session: AsyncSession, job_id: int) -> AnalysisJobRow:
     return (await session.scalars(select(Job).where(Job.id == job_id))).one()
 
 
+async def find(session: AsyncSession, job_id: int) -> AnalysisJobRow | None:
+    """작업 하나. 없으면 None — 워커가 꺼낸 뒤 태스크를 걸기 전에 삭제가 왔을 수 있다."""
+    return await session.scalar(select(Job).where(Job.id == job_id))
+
+
 async def chunks(session: AsyncSession, job_id: int) -> list[AudioChunkRow]:
     """작업의 조각들, 번호순. result는 읽지 않는다 — 폴링 응답에 안 나간다."""
     return list(
