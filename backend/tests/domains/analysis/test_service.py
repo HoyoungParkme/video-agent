@@ -19,6 +19,7 @@ from app.domains.analysis.models import (
 )
 from app.domains.analysis.schemas import CaptionLine, ChapterDraft, Segment, SummaryDraft
 from app.domains.analysis.service import AnalysisService
+from app.domains.chat.schemas import ChatTurn
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
 from app.domains.video.service import VideoService
@@ -438,3 +439,38 @@ async def test_filename_for(db, make) -> None:
     assert await name("workshop_0912.mp4", **local) == "workshop_0912"  # 로컬 파일은 확장자를 뗀다
     empty = await _video(db, make, title=" . ")
     assert AnalysisService.filename_for(empty) == f"video-{empty.id}"
+
+
+async def _analyzed(db, make, summarizer, youtube, **kw):
+    # 요약 · 챕터까지 끝난 50분 영상
+    video = await _video(db, make, duration_sec=3000, **kw)
+    await make.transcript(video.id, ["x"] * 30, step=100)
+    svc = AnalysisService(db, summarizer)
+    await svc.generate_summary(video)
+    await svc.generate_chapters(video)
+    await make.job(video.id, JobStatus.done)
+    return (await VideoService(db, youtube, None).get(video.id)).video
+
+
+async def test_export_markdown(db, make, summarizer, youtube, env_file) -> None:
+    video = await _analyzed(db, make, summarizer, youtube, title="RAG 서비스 1년 운영기")
+    svc = AnalysisService(db)  # 읽기만 — 요약 포트 없이
+    at = video.analyzed_at
+    turns = [ChatTurn(id=1, question="왜?", answer="그래서.", cited_secs=[], asked_at=at)]
+    pre = await svc.export_markdown(video, False, turns)
+    assert (pre.filename, pre.path) == (
+        "RAG 서비스 1년 운영기",
+        "data/export/RAG 서비스 1년 운영기.md",  # 보일 경로 — 컨테이너 안 경로가 아니다
+    )
+    assert pre.markdown.startswith("# RAG 서비스 1년 운영기\n원본: [https://")
+    assert "## 질문 기록" not in pre.markdown  # with_chat이 거짓이면 턴을 받아도 없다
+    empty = await svc.export_markdown(video, True, [])
+    assert empty.markdown.endswith("## 질문 기록\n질문 기록이 없습니다\n")
+    chat = await svc.export_markdown(video, True, turns)
+    assert chat.markdown.endswith("## 질문 기록\n**Q.** 왜?\n**A.** 그래서.\n")
+
+
+async def test_export_markdown_needs_result(db, make) -> None:
+    video = await _video(db, make, JobStatus.running)
+    with pytest.raises(ResultNotReady):
+        await AnalysisService(db).export_markdown(video, False, [])

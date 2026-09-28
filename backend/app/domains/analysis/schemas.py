@@ -79,6 +79,28 @@ class Result(BaseModel):
     analyzed_at: datetime
 
 
+class ExportPreview(BaseModel):
+    """내보낼 마크다운 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`."""
+
+    filename: str
+    path: str
+    markdown: str
+
+
+class ExportResult(BaseModel):
+    """쓴 파일 — path는 보일 경로, bytes는 쓴 바이트 수."""
+
+    filename: str
+    path: str
+    bytes: int
+
+
+class ExportRequest(BaseModel):
+    """파일로 저장 요청. with_chat이면 질문 기록을 맨 끝에 붙인다."""
+
+    with_chat: bool = False
+
+
 @dataclass(frozen=True)
 class CaptionLine:
     """저장 전의 스크립트 한 줄 — 자막 큐 하나 또는 받아쓰기 구간 하나."""

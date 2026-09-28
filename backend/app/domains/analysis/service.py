@@ -17,12 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import config
 from app.core.errors import ResultNotReady
 from app.core.settings import Models, settings
-from app.domains.analysis import crud
+from app.domains.analysis import crud, export
 from app.domains.analysis.models import TranscriptSource
 from app.domains.analysis.ports import SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
+    ExportPreview,
     Insight,
     Part,
     Result,
@@ -34,6 +35,7 @@ from app.domains.analysis.schemas import (
 )
 
 if TYPE_CHECKING:
+    from app.domains.chat.schemas import ChatTurn  # 타입만 — chat을 import하지 않는다
     from app.domains.video.schemas import Video
 
 # 인사이트 수 상한 — 1시간 이하 8, 넘으면 10(PRD R4). 5개보다 적으면 있는 만큼 둔다
@@ -44,6 +46,9 @@ BULLETS_MAX = 3
 _UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
 # 파일 이름 글자 상한
 NAME_MAX = 80
+# 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
+# config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
+EXPORT_SHOWN = "data/export"
 
 
 def _tokens(segments: list[Segment]) -> int:
@@ -453,3 +458,26 @@ class AnalysisService:
             models=Models(stt=t.model, text=s.model),
             analyzed_at=video.analyzed_at,
         )
+
+    async def export_markdown(
+        self, video: Video, with_chat: bool, turns: list[ChatTurn]
+    ) -> ExportPreview:
+        """VA-MS-003#AnalysisService.export_markdown
+
+        내보낼 마크다운 전체와 파일 이름. 결과는 읽기만 한다 — 저장된 것이 바뀌지 않는다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상
+            with_chat: 질문 기록을 맨 끝에 붙일지
+            turns: 그 영상의 대화 턴(라우터가 ChatService.history로). with_chat이 거짓이면 안 쓴다
+
+        Returns:
+            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 마크다운 전체
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다(result_of)
+        """
+        result = await self.result_of(video)
+        name = self.filename_for(video)
+        md = export.build(result, turns if with_chat else None)
+        return ExportPreview(filename=name, path=f"{EXPORT_SHOWN}/{name}.md", markdown=md)
