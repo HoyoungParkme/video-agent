@@ -15,6 +15,7 @@ const INBOX = [
   ["memo_0917.wav", { duration: 1500, audio: true }], // 로컬 음성 — 받아쓰기 필요 판만(시작하지 않는다)
   ["silent_demo.mp4", { duration: 600, audio: false }], // 음성 트랙이 없다
   ["notes.mp4", null], // 영상 · 음성이 아니다(열 수 없다)
+  ["marathon_0901.mp4", { duration: 15150, audio: true }], // S6 — 4:12:30, 3시간 초과
 ];
 
 const args = process.argv.slice(2);
