@@ -359,4 +359,6 @@ class VideoService:
         if await crud.remove(self.session, video_id) == 0:
             raise NotFound(resource="video", id=video_id)
         await self.session.commit()
-        shutil.rmtree(Path(config.DATA_DIR) / "tmp" / str(video_id), ignore_errors=True)
+        # 수백 MB 음성 · 조각 파일일 수 있다 — 지우는 동안 다른 요청을 막지 않게 스레드로
+        tmp = Path(config.DATA_DIR) / "tmp" / str(video_id)
+        await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
