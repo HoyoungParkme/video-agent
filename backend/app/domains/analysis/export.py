@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from app.domains.video.models import SourceKind
+from app.domains.video.schemas import Video
 from app.shared.timecode import label
 
 
@@ -22,3 +24,21 @@ def timecode(sec: float, duration_sec: int) -> str:
         `12:40` 또는 `1:02:03`
     """
     return label(sec, duration_sec >= 3600)
+
+
+def link(sec: float, video: Video) -> str:
+    """VA-MS-003#export.link
+
+    시각 → 마크다운 링크 또는 글자. YouTube면 그 시점(`?t=초`)으로 가는 링크, 로컬 파일은 글자만.
+
+    Args:
+        sec: 초
+        video: 그 영상 — 출처 · 영상 ID · 길이
+
+    Returns:
+        `[12:40](https://youtu.be/{영상ID}?t=760)` 또는 `[12:40]`
+    """
+    t = timecode(sec, video.duration_sec)
+    if video.source_kind == SourceKind.youtube:
+        return f"[{t}](https://youtu.be/{video.source_id}?t={int(sec)})"
+    return f"[{t}]"
