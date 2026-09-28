@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +40,10 @@ if TYPE_CHECKING:
 INSIGHTS_MAX, INSIGHTS_MAX_LONG = 8, 10
 # 챕터 요점 줄 수 상한
 BULLETS_MAX = 3
+# 파일 이름에 쓸 수 없는 글자(윈도 · 맥 · 리눅스 공통)와 제어 문자
+_UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
+# 파일 이름 글자 상한
+NAME_MAX = 80
 
 
 def _tokens(segments: list[Segment]) -> int:
@@ -169,6 +176,27 @@ class AnalysisService:
             elif segments:
                 out.add(min(segments, key=lambda s: abs(s.start_sec - sec)).start_sec)
         return sorted(out)
+
+    @staticmethod
+    def filename_for(video: Video) -> str:
+        """VA-MS-003#AnalysisService.filename_for
+
+        영상 제목 → 내보내기 파일 이름(확장자 없이 — `.md`는 부르는 쪽이 붙인다). 같은 이름이면
+        덮어쓴다 — 번호를 붙이지 않는다(사용자 결정 2026-09-28).
+
+        Args:
+            video: 영상. 로컬 파일이면 제목(파일 이름)의 확장자를 뗀다
+
+        Returns:
+            쓸 수 없는 글자는 `_`, 연속 공백 · 밑줄은 하나, 앞뒤 공백 · 점 없이 80자까지.
+            비면 `video-{id}`
+        """
+        name = video.title
+        if video.source_kind == "local":
+            name = PurePosixPath(name).stem
+        name = _UNSAFE.sub("_", unicodedata.normalize("NFC", name))
+        name = re.sub(r"_+", "_", re.sub(r"\s+", " ", name)).strip(" .")
+        return name[:NAME_MAX].strip(" .") or f"video-{video.id}"
 
     async def save_transcript(
         self,

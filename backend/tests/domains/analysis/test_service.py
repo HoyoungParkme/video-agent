@@ -419,3 +419,22 @@ async def test_reads_without_summarizer_port(db, make) -> None:
     assert [c.title for c in await analysis.chapters_of(video.id)] == ["시작"]
     with pytest.raises(RuntimeError):  # 생성 단계는 포트가 있어야 한다 — 코드 실수
         await analysis.generate_questions(VideoService.to_dto(video, None, 0))
+
+
+# --- 내보내기
+
+
+async def test_filename_for(db, make) -> None:
+    async def name(title: str, **kw) -> str:
+        return AnalysisService.filename_for(await _video(db, make, title=title, **kw))
+
+    assert await name("RAG 서비스 1년 운영기") == "RAG 서비스 1년 운영기"
+    assert await name("a/b:c?") == "a_b_c_"
+    # 연속 공백 · 밑줄은 하나, 끝 점은 뗀다
+    assert await name('x\\y*z"<>|  w__v .') == "x_y_z_ w_v"
+    assert await name("a\tb\x7fc") == "a_b_c"  # 제어 문자도 _
+    assert await name("가" * 200) == "가" * 80
+    local = {"source_kind": "local", "origin": "workshop_0912.mp4", "channel": None}
+    assert await name("workshop_0912.mp4", **local) == "workshop_0912"  # 로컬 파일은 확장자를 뗀다
+    empty = await _video(db, make, title=" . ")
+    assert AnalysisService.filename_for(empty) == f"video-{empty.id}"
