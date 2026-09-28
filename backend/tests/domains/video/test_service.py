@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.core.config import config
 from app.core.db import SessionLocal
@@ -25,7 +25,7 @@ from app.core.errors import (
     UrlInvalid,
     VideoTooLong,
 )
-from app.domains.job.models import JobStatus
+from app.domains.job.models import ChunkState, JobStatus
 from app.domains.job.service import JobService
 from app.domains.video.models import VideoRow
 from app.domains.video.schemas import LocalSource, YouTubeSource
@@ -442,3 +442,65 @@ async def test_get_after_finish(db, make, youtube, probe) -> None:
     detail = await VideoService(db, youtube, probe).get(video.id)
     assert detail.video.status == "analyzed"
     assert detail.video.analyzed_at == detail.job.finished_at is not None
+
+
+# --- delete
+
+
+async def _owned(db, video_id: int, job_id: int) -> dict[str, int]:
+    # 이 영상의 것만 센다 — 같은 DB에 남은 다른 행과 섞이지 않게
+    tables = {
+        "videos": ("id", video_id),
+        "analysis_jobs": ("video_id", video_id),
+        "audio_chunks": ("job_id", job_id),
+        "transcripts": ("video_id", video_id),
+        "chapters": ("video_id", video_id),
+        "chat_turns": ("video_id", video_id),
+    }
+    counts = {}
+    for name, (column, owner) in tables.items():
+        sql = text(f"SELECT count(*) FROM {name} WHERE {column} = :o")
+        counts[name] = await db.scalar(sql, {"o": owner})
+    return counts
+
+
+async def test_delete_removes_everything_of_that_video(
+    db, make, youtube, probe, key, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    row = await make.video(source_id="dQw4w9WgXcQ", origin=WATCH)
+    job = await make.job(row.id, JobStatus.failed, stage="transcribe")
+    await make.chunks(job.id, [ChunkState.done, ChunkState.failed])
+    await make.transcript(row.id, ["하나", "둘"])
+    await make.chapters(row.id, [(0.0, "처음", ["요점"])])
+    await make.turn(row.id, "왜?", "그래서.", at=T0)
+    other = await make.video()
+    await make.transcript(other.id, ["남는다"])
+    tmp = tmp_path / "tmp" / str(row.id)
+    tmp.mkdir(parents=True)
+    (tmp / "3.mp3").write_bytes(b"mp3")  # 실패한 작업이 보존한 조각
+    inbox = tmp_path / "inbox.wav"
+    inbox.write_bytes(b"wav")
+    before = await _owned(db, row.id, job.id)
+    assert all(n > 0 for n in before.values())
+
+    svc = VideoService(db, youtube, probe)
+    await svc.delete(row.id)
+    assert await _owned(db, row.id, job.id) == dict.fromkeys(before, 0)
+    assert not tmp.exists()
+    assert inbox.read_bytes() == b"wav"  # 원본 파일은 건드리지 않는다
+    assert (await svc.get(other.id)).video.id == other.id  # 다른 영상은 그대로
+    with pytest.raises(NotFound):
+        await svc.get(row.id)
+    again = await svc.register(yt())  # 같은 영상을 다시 넣으면 처음부터
+    assert (again.status, again.id != row.id) == ("registered", True)
+
+
+async def test_delete_without_tmp_or_video(db, make, youtube, probe, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    row = await make.video()  # 작업이 없어 임시 폴더도 없다
+    svc = VideoService(db, youtube, probe)
+    await svc.delete(row.id)
+    with pytest.raises(NotFound) as e:
+        await svc.delete(row.id)
+    assert e.value.extra == {"resource": "video", "id": row.id}
