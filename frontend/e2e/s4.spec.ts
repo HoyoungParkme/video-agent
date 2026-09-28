@@ -5,26 +5,11 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
-import { el, fakeOpenAI, inDialog, saveKey } from "./helpers";
+import { el, fakeOpenAI, openResult, saveKey } from "./helpers";
 
 test.beforeEach(async ({ request }) => {
   await saveKey(request);
 });
-
-/** 결과 화면을 연다 — 처음이면 사전 안내에서 분석을 시작하고, 이미 분석했으면 바로 결과로 간다. */
-async function openResult(page: Page, url: string): Promise<string> {
-  await page.goto("/");
-  await el(page, "3.2").locator("input").fill(url);
-  await el(page, "3.3").click();
-  const start = inDialog(page, "6.3");
-  await Promise.race([
-    start.waitFor().catch(() => undefined),
-    page.waitForURL(/\/videos\/\d+$/).catch(() => undefined),
-  ]);
-  if (await start.isVisible()) await start.click();
-  await expect(page).toHaveURL(/\/videos\/\d+$/, { timeout: 30_000 });
-  return page.url();
-}
 
 const box = (page: Page) => el(page, "10.3").locator("textarea");
 

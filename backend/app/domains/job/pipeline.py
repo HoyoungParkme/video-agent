@@ -267,7 +267,9 @@ async def _drive(job_id: int, video: Video, resume: bool) -> None:
     stage: JobStage | None = None
     try:
         async with SessionLocal() as s:
-            row = await crud.by_id(s, job_id)
+            row = await crud.find(s, job_id)
+            if row is None:  # 워커가 꺼낸 뒤 태스크를 걸기 전에 삭제가 왔다 — 행이 cascade로 없다
+                return
             stages = [JobStage(name) for name in row.stages]
             has_chunks = await crud.has_chunks(s, job_id)
         start = _resume_at(stages, row.stage, has_chunks, tmp) if resume else 0

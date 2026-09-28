@@ -92,10 +92,10 @@ class JobService:
     - mark_stage() · finish() · fail(): 파이프라인이 단계마다 부른다
     - fail_orphans() · claim_next() · wake() · wait_for_work(): 서버 시작 정리와 대기열
     - plan_chunks() · mark_chunk(): 받아쓰기 조각 행
-    - retry(): 실패한 작업을 같은 행으로 대기열 끝에 · cancel(): 스텁 — B4(VA-CODE-001)
+    - retry(): 실패한 작업을 같은 행으로 대기열 끝에 · cancel(): 도는 태스크를 멈춘다(삭제가 부른다)
     """
 
-    # 도는 파이프라인 태스크(영상 id → 태스크). 워커가 넣고 빼며, 삭제가 취소한다(B4)
+    # 도는 파이프라인 태스크(영상 id → 태스크). 워커가 넣고 빼며, 삭제가 취소한다(cancel)
     tasks: ClassVar[dict[int, asyncio.Task[None]]] = {}
     # 워커를 깨우는 신호 — 메모리에 있는 것은 이것뿐이고 대기열은 DB의 queued 행이다
     work_event: ClassVar[asyncio.Event] = asyncio.Event()
@@ -646,6 +646,17 @@ class JobService:
     async def cancel(self, video_id: int) -> None:
         """VA-MS-002#JobService.cancel
 
-        도는 태스크 취소. 스텁 — 아무것도 하지 않는다. 삭제(B4)가 채운다(VA-CODE-001 B1).
+        도는 파이프라인 태스크를 취소하고 끝나기를 기다린다 — 파이프라인이 열어 둔 세션과 조각
+        태스크가 닫힐 때까지. 행은 건드리지 않는다(이어서 부르는 VideoService.delete의 cascade가
+        지운다). 워커도 깨우지 않는다 — 행이 남아 있을 때 깨우면 곧 지워질 행을 꺼낼 수 있어,
+        라우터가 삭제 뒤에 wake를 부른다(SEQ-11).
+
+        Args:
+            video_id: 영상 id. 도는 태스크가 없으면(대기 중 · 실패 · 완료) 아무것도 하지 않는다
         """
-        return None
+        task = self.tasks.get(video_id)
+        if task is None:
+            return
+        task.cancel()
+        # wait는 태스크의 CancelledError를 올리지 않는다 — 삭제 요청 자신의 취소는 그대로 전해진다
+        await asyncio.wait({task})

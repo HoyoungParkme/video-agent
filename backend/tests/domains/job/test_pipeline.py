@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.core.config import config
 from app.core.db import SessionLocal
-from app.core.errors import NotImplementedYet
+from app.core.errors import UnsupportedFile
 from app.domains.analysis.models import SegmentRow, SummaryRow, TranscriptRow
 from app.domains.job import pipeline
 from app.domains.job.models import (
@@ -67,6 +67,17 @@ async def _running(make, **kw):
     return VideoService.to_dto(row, None, 0), job
 
 
+async def test_run_or_resume_deleted_job_does_nothing(db, make, ports, tmp_path) -> None:
+    # 워커가 꺼낸 뒤 태스크를 걸기 전에 삭제가 왔다 — 취소할 태스크가 없어 cascade가 행을 지웠다
+    for go in (pipeline.run, pipeline.resume):
+        video, job = await _running(make)
+        async with SessionLocal() as s:
+            await s.delete(await s.get(VideoRow, video.id))
+            await s.commit()
+        await go(job.id, video)  # 실패로 접지 않고 조용히 끝난다
+        assert not (tmp_path / "tmp" / str(video.id)).exists()
+
+
 # --- error_kind
 
 
@@ -84,7 +95,7 @@ def test_error_kind_each() -> None:
     assert kind(FfmpegError("bad", 1)) == ErrorKind.ffmpeg
     assert kind(OSError(errno.ENOSPC, "No space left on device")) == ErrorKind.disk
     assert kind(ValueError("x")) == ErrorKind.unknown
-    assert kind(NotImplementedYet("아직")) == ErrorKind.unknown
+    assert kind(UnsupportedFile("열 수 없는 파일이에요")) == ErrorKind.unknown  # 앱 예외
 
 
 # --- reason_of
@@ -113,7 +124,7 @@ def test_reason_of_each() -> None:
     assert reason(YtdlpError("자막을 찾지 못했습니다", "unavailable")) == "자막을 찾지 못했습니다"
     assert reason(FfmpegError("Invalid data found", 1)) == "ffmpeg 처리 실패"
     assert reason(OSError(errno.ENOSPC, "No space left on device")) == "저장 공간 부족"
-    assert reason(NotImplementedYet("아직 지원하지 않아요")) == "아직 지원하지 않아요"
+    assert reason(UnsupportedFile("열 수 없는 파일이에요")) == "열 수 없는 파일이에요"  # 앱 문장
     assert (
         reason(OpenAIOutputError("모델 출력을 읽지 못했어요(형식)"))
         == "모델 출력을 읽지 못했어요(형식)"

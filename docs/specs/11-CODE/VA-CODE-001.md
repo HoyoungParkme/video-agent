@@ -20,7 +20,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 
 **커밋 규격** — `code(슬라이스): 함수명 — 요약`. 함수 하나 = 커밋 하나, docstring 첫 줄 = MINISPEC 항목 ID. PR = 슬라이스 하나. **커밋 메시지와 PR 본문에 에이전트 표시(`Co-Authored-By` · 세션 링크 · 「Generated with」)를 넣지 않는다** — 제목과 본문만 쓴다(싱크독 규약 STD-001 1.10, 사용자 결정 2026-09-22).
 
-**진행 상황**: 카드 7장 중 **A · B1 · B2 · B3 완료**(A · B1 · B2 2026-09-23, B3 2026-09-27 — PR #1 · #2 · #3 · #4). 다음은 **B4**.
+**진행 상황**: 카드 7장 중 **A · B1 · B2 · B3 완료**(A · B1 · B2 2026-09-23, B3 2026-09-27 — PR #1 · #2 · #3 · #4). **B4 진행 중**(2026-09-28 시작, `feat/card-b4`).
 
 ---
 
@@ -89,8 +89,8 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 | 근거 | [[VA-SCN-001#S5]] · [[VA-UC-001#UC-H5]] · [[VA-UC-001#UC-H6]] · [[VA-UC-001#UC-H7]] · [[VA-SEQ-001#SEQ-10]] · [[VA-SEQ-001#SEQ-11]] · [[VA-PRD-001#R7]] · [[VA-PRD-001#R10]] |
 | 구현 함수 | [[VA-MS-003#AnalysisService.export_markdown]] · [[VA-MS-003#AnalysisService.export_to_file]] · [[VA-MS-003#AnalysisService.filename_for]] · [[VA-MS-003#export.build]] · [[VA-MS-003#export.timecode]] · [[VA-MS-003#export.link]] · [[VA-MS-001#VideoService.delete]] · [[VA-MS-002#JobService.cancel]] — 8개 · 삭제 라우터는 `VideoService.delete` **뒤에** [[VA-MS-002#JobService.wake]]를 부른다([[VA-SEQ-001#SEQ-11]]) · `export.timecode`는 [[VA-MS-006#timecode.label]]을 부른다([[VA-MS-006]] 3장 되먹임) |
 | API | [[VA-API-001#GET/api/videos/{id}/export]] · [[VA-API-001#POST/api/videos/{id}/export]] · [[VA-API-001#DELETE/api/videos/{id}]] |
-| 화면 | [[VA-UI-002#UI-7]] 내보내기(방법 둘 · 체크박스 · 미리 보기 · 실패 한 줄) · [[VA-UI-002#UI-6]] 삭제 확인(지워지는 것 · 남는 것 · 진행 중 영상 · 실패 한 줄) · [[VA-UI-002#UI-4]] 머리의 [내보내기] · 휴지통 · 짧은 알림(공통 1.5 — 내보내기 완료. '이미 분석한 영상입니다'는 B1에서 했다) · [[VA-UI-002#UI-1]] 행 휴지통 · 삭제 뒤 초점 |
-| 테스트 | 구현 함수의 테스트 관점 전부 · `export.build` 스냅샷 둘(YouTube 자막 50분 · 로컬 파트 150분) · **E2E S5**: 며칠 뒤(시각을 흘려) 목록에서 열기 → 질문 → 파일로 저장(`data/export/…md` 내용 확인) → 복사(markdown 전체) → 삭제 → 목록에서 빠짐 → 같은 주소 다시 넣으면 처음부터 · 진행 중 영상 삭제 → 태스크가 취소되고 임시 폴더가 없고, 기다리던 다음 영상이 시작된다 · 대기 중 영상 삭제 → 대기열에서 빠지고 뒤 영상의 차례가 당겨진다 |
+| 화면 | [[VA-UI-002#UI-7]] 내보내기(방법 둘 · 체크박스 · 미리 보기 · 실패 한 줄) · [[VA-UI-002#UI-6]] 삭제 확인(지워지는 것 · 남는 것 · 진행 중 영상 · 실패 한 줄) · [[VA-UI-002#UI-4]] 머리의 [내보내기] · 휴지통 · 짧은 알림(공통 1.5 — 내보내기 완료. '이미 분석한 영상입니다'는 B1에서 했다) · [[VA-UI-002#UI-1]] 행 휴지통 · 삭제 뒤 초점 · 프록시 시간 제한 60초([[VA-DOM-002]] 6장 프런트 — B3이 이 카드로 넘긴 것) |
+| 테스트 | 구현 함수의 테스트 관점 전부 · `export.build` 스냅샷 둘(YouTube 자막 50분 · 로컬 파트 150분) · **E2E S5**: 며칠 뒤(시각을 흘려) 목록에서 열기 → 질문 → 파일로 저장(`data/export/…md` 내용 확인) → 복사(markdown 전체) → 삭제 → 목록에서 빠짐 → 같은 주소 다시 넣으면 처음부터 · 진행 중 영상 삭제 → 태스크가 취소되고 임시 폴더가 없고, 기다리던 다음 영상이 시작된다 · 대기 중 영상 삭제 → 대기열에서 빠지고 뒤 영상의 차례가 당겨진다 · E2E 가짜: 가짜 yt-dlp에 S5 영상 하나와 삭제 · 대기열 영상 셋(가짜 OpenAI 채팅 지연으로 붙잡는다) · 저장 실패는 저장 폴더 자리에 파일을 두어 만든다 · 며칠 뒤는 브라우저 시각을 `page.clock`으로 7일 뒤에 둔다 |
 | 스텁 | 남은 스텁 셋(`DELETE` · `export` · `cancel`) 전부 해제. 이 카드 뒤에 스텁이 없다 |
 | 선행 | B3 |
 | 완료 | — |

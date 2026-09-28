@@ -7,19 +7,28 @@
 
 from __future__ import annotations
 
+import asyncio
+import errno
+import os
+import re
+import tempfile
+import unicodedata
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
-from app.core.errors import ResultNotReady
+from app.core.errors import ExportFailed, ResultNotReady
 from app.core.settings import Models, settings
-from app.domains.analysis import crud
+from app.domains.analysis import crud, export
 from app.domains.analysis.models import TranscriptSource
 from app.domains.analysis.ports import SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
+    ExportPreview,
+    ExportResult,
     Insight,
     Part,
     Result,
@@ -31,12 +40,32 @@ from app.domains.analysis.schemas import (
 )
 
 if TYPE_CHECKING:
+    from app.domains.chat.schemas import ChatTurn  # 타입만 — chat을 import하지 않는다
     from app.domains.video.schemas import Video
 
 # 인사이트 수 상한 — 1시간 이하 8, 넘으면 10(PRD R4). 5개보다 적으면 있는 만큼 둔다
 INSIGHTS_MAX, INSIGHTS_MAX_LONG = 8, 10
 # 챕터 요점 줄 수 상한
 BULLETS_MAX = 3
+# 파일 이름에 쓸 수 없는 글자(윈도 · 맥 · 리눅스 공통)와 제어 문자
+_UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
+# 파일 이름 상한 — 글자 수, 그리고 UTF-8 바이트(파일 이름 한도 255바이트에 `.md`를 붙인다)
+NAME_MAX = 80
+NAME_BYTES_MAX = 250
+# 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
+# config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
+EXPORT_SHOWN = "data/export"
+# 파일을 쓰지 못한 까닭 — errno로 고른 한 줄(MS-003 v5).
+# 화면이 '파일을 저장하지 못했어요 — {이유}'로 보인다
+_NO_FOLDER = "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)"
+WRITE_REASONS = {
+    errno.EACCES: "쓰기 권한이 없음",
+    errno.EPERM: "쓰기 권한이 없음",
+    errno.ENOSPC: "디스크 공간이 부족함",
+    errno.EROFS: "읽기 전용 폴더",
+    errno.EEXIST: _NO_FOLDER,
+    errno.ENOTDIR: _NO_FOLDER,
+}
 
 
 def _tokens(segments: list[Segment]) -> int:
@@ -83,6 +112,21 @@ def _sample(segments: list[Segment], limit: int) -> list[Segment]:
     around = sorted(segments, key=lambda s: abs(s.seq - segments[mid].seq))
     picked = take(segments) + take(around) + take(segments[::-1])
     return sorted({s.seq: s for s in picked}.values(), key=lambda s: s.seq)
+
+
+def _write(folder: Path, name: str, data: bytes) -> None:
+    # 같은 폴더의 임시 파일에 쓴 뒤 바꿔 끼운다 — 쓰다 멈춰도 반쯤 쓴 파일이 남지 않는다.
+    # mkstemp는 0600으로 만들어 보통 파일처럼(0644) 읽히게 바꾼다 — 노트 앱이 읽는 파일이다
+    folder.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".export-", suffix=".md")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, folder / name)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 class AnalysisService:
@@ -169,6 +213,31 @@ class AnalysisService:
             elif segments:
                 out.add(min(segments, key=lambda s: abs(s.start_sec - sec)).start_sec)
         return sorted(out)
+
+    @staticmethod
+    def filename_for(video: Video) -> str:
+        """VA-MS-003#AnalysisService.filename_for
+
+        영상 제목 → 내보내기 파일 이름(확장자 없이 — `.md`는 부르는 쪽이 붙인다). 같은 이름이면
+        덮어쓴다 — 번호를 붙이지 않는다(사용자 결정 2026-09-28).
+
+        Args:
+            video: 영상. 로컬 파일이면 제목(파일 이름)의 확장자를 뗀다
+
+        Returns:
+            쓸 수 없는 글자는 `_`, 연속 공백 · 밑줄은 하나, 앞뒤 공백 · 점 없이 80자까지.
+            UTF-8로 250바이트를 넘으면 더 자른다(이모지처럼 4바이트 글자가 많은 제목).
+            비면 `video-{id}`
+        """
+        name = video.title
+        if video.source_kind == "local":
+            name = PurePosixPath(name).stem
+        name = _UNSAFE.sub("_", unicodedata.normalize("NFC", name))
+        name = re.sub(r"_+", "_", re.sub(r"\s+", " ", name)).strip(" .")
+        name = name[:NAME_MAX]
+        while len(name.encode()) > NAME_BYTES_MAX:
+            name = name[:-1]
+        return name.strip(" .") or f"video-{video.id}"
 
     async def save_transcript(
         self,
@@ -425,3 +494,55 @@ class AnalysisService:
             models=Models(stt=t.model, text=s.model),
             analyzed_at=video.analyzed_at,
         )
+
+    async def export_markdown(
+        self, video: Video, with_chat: bool, turns: list[ChatTurn]
+    ) -> ExportPreview:
+        """VA-MS-003#AnalysisService.export_markdown
+
+        내보낼 마크다운 전체와 파일 이름. 결과는 읽기만 한다 — 저장된 것이 바뀌지 않는다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상
+            with_chat: 질문 기록을 맨 끝에 붙일지
+            turns: 그 영상의 대화 턴(라우터가 ChatService.history로). with_chat이 거짓이면 안 쓴다
+
+        Returns:
+            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 마크다운 전체
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다(result_of)
+        """
+        result = await self.result_of(video)
+        name = self.filename_for(video)
+        md = export.build(result, turns if with_chat else None)
+        return ExportPreview(filename=name, path=f"{EXPORT_SHOWN}/{name}.md", markdown=md)
+
+    async def export_to_file(
+        self, video: Video, with_chat: bool, turns: list[ChatTurn]
+    ) -> ExportResult:
+        """VA-MS-003#AnalysisService.export_to_file
+
+        같은 마크다운을 다시 만들어 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않는다.
+        같은 이름이 있으면 덮어쓴다. 폴더가 없으면 만든다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상
+            with_chat: 질문 기록을 맨 끝에 붙일지
+            turns: 그 영상의 대화 턴. with_chat이 거짓이면 안 쓴다
+
+        Returns:
+            파일 이름 · 보일 경로 · 쓴 바이트 수
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+            ExportFailed: 쓰지 못했다(path는 보일 경로, reason은 errno로 고른 한 줄)
+        """
+        pre = await self.export_markdown(video, with_chat, turns)
+        data = pre.markdown.encode("utf-8")
+        try:
+            await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{pre.filename}.md", data)
+        except OSError as e:
+            reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
+            raise ExportFailed(path=pre.path, reason=reason) from e
+        return ExportResult(filename=pre.filename, path=pre.path, bytes=len(data))

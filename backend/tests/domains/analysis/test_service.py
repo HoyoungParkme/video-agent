@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from sqlalchemy import func, select
 
-from app.core.errors import ResultNotReady
+from app.core.config import config
+from app.core.errors import ExportFailed, ResultNotReady
 from app.domains.analysis import crud
 from app.domains.analysis.models import (
     ChapterRow,
@@ -19,6 +22,7 @@ from app.domains.analysis.models import (
 )
 from app.domains.analysis.schemas import CaptionLine, ChapterDraft, Segment, SummaryDraft
 from app.domains.analysis.service import AnalysisService
+from app.domains.chat.schemas import ChatTurn
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
 from app.domains.video.service import VideoService
@@ -419,3 +423,104 @@ async def test_reads_without_summarizer_port(db, make) -> None:
     assert [c.title for c in await analysis.chapters_of(video.id)] == ["시작"]
     with pytest.raises(RuntimeError):  # 생성 단계는 포트가 있어야 한다 — 코드 실수
         await analysis.generate_questions(VideoService.to_dto(video, None, 0))
+
+
+# --- 내보내기
+
+
+async def test_filename_for(db, make) -> None:
+    async def name(title: str, **kw) -> str:
+        return AnalysisService.filename_for(await _video(db, make, title=title, **kw))
+
+    assert await name("RAG 서비스 1년 운영기") == "RAG 서비스 1년 운영기"
+    assert await name("a/b:c?") == "a_b_c_"
+    # 연속 공백 · 밑줄은 하나, 끝 점은 뗀다
+    assert await name('x\\y*z"<>|  w__v .') == "x_y_z_ w_v"
+    assert await name("a\tb\x7fc") == "a_b_c"  # 제어 문자도 _
+    assert await name("가" * 200) == "가" * 80
+    emoji = await name("🔥" * 80)  # 4바이트 글자 — 80자면 320바이트
+    assert len(emoji.encode()) <= 250 and emoji == "🔥" * 62
+    local = {"source_kind": "local", "origin": "workshop_0912.mp4", "channel": None}
+    assert await name("workshop_0912.mp4", **local) == "workshop_0912"  # 로컬 파일은 확장자를 뗀다
+    empty = await _video(db, make, title=" . ")
+    assert AnalysisService.filename_for(empty) == f"video-{empty.id}"
+
+
+async def _analyzed(db, make, summarizer, youtube, **kw):
+    # 요약 · 챕터까지 끝난 50분 영상
+    video = await _video(db, make, duration_sec=3000, **kw)
+    await make.transcript(video.id, ["x"] * 30, step=100)
+    svc = AnalysisService(db, summarizer)
+    await svc.generate_summary(video)
+    await svc.generate_chapters(video)
+    await make.job(video.id, JobStatus.done)
+    return (await VideoService(db, youtube, None).get(video.id)).video
+
+
+async def test_export_markdown(db, make, summarizer, youtube, env_file) -> None:
+    video = await _analyzed(db, make, summarizer, youtube, title="RAG 서비스 1년 운영기")
+    svc = AnalysisService(db)  # 읽기만 — 요약 포트 없이
+    at = video.analyzed_at
+    turns = [ChatTurn(id=1, question="왜?", answer="그래서.", cited_secs=[], asked_at=at)]
+    pre = await svc.export_markdown(video, False, turns)
+    assert (pre.filename, pre.path) == (
+        "RAG 서비스 1년 운영기",
+        "data/export/RAG 서비스 1년 운영기.md",  # 보일 경로 — 컨테이너 안 경로가 아니다
+    )
+    assert pre.markdown.startswith("# RAG 서비스 1년 운영기\n원본: [https://")
+    assert "## 질문 기록" not in pre.markdown  # with_chat이 거짓이면 턴을 받아도 없다
+    empty = await svc.export_markdown(video, True, [])
+    assert empty.markdown.endswith("## 질문 기록\n질문 기록이 없습니다\n")
+    chat = await svc.export_markdown(video, True, turns)
+    assert chat.markdown.endswith("## 질문 기록\n**Q.** 왜?\n**A.** 그래서.\n")
+
+
+async def test_export_markdown_needs_result(db, make) -> None:
+    video = await _video(db, make, JobStatus.running)
+    with pytest.raises(ResultNotReady):
+        await AnalysisService(db).export_markdown(video, False, [])
+
+
+async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))  # 폴더가 아직 없다
+    video = await _analyzed(db, make, summarizer, youtube, title="RAG 서비스 1년 운영기")
+    svc = AnalysisService(db)
+    done = await svc.export_to_file(video, False, [])
+    pre = await svc.export_markdown(video, False, [])
+    written = tmp_path / "data" / "export" / "RAG 서비스 1년 운영기.md"
+    assert written.read_text(encoding="utf-8") == pre.markdown  # 같은 마크다운을 다시 만든다
+    assert (done.filename, done.path, done.bytes) == (
+        pre.filename,
+        "data/export/RAG 서비스 1년 운영기.md",
+        len(pre.markdown.encode()),
+    )
+    assert oct(written.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
+    await svc.export_to_file(video, True, [])  # 두 번 저장하면 덮어쓴다
+    assert written.read_text(encoding="utf-8").endswith("질문 기록이 없습니다\n")
+    assert [p.name for p in written.parent.iterdir()] == [written.name]  # 임시 파일이 남지 않는다
+
+
+async def test_export_to_file_where_folder_is_a_file(
+    db, make, summarizer, youtube, env_file, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    (tmp_path / "export").write_text("")  # 저장 폴더 자리에 파일
+    video = await _analyzed(db, make, summarizer, youtube, title="제목")
+    with pytest.raises(ExportFailed) as e:
+        await AnalysisService(db).export_to_file(video, False, [])
+    assert e.value.extra == {
+        "path": "data/export/제목.md",  # 보일 경로
+        "reason": "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)",
+    }
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root는 읽기 전용 폴더에도 쓴다")
+async def test_export_to_file_without_permission(
+    db, make, summarizer, youtube, env_file, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    (tmp_path / "export").mkdir(mode=0o555)
+    video = await _analyzed(db, make, summarizer, youtube, title="제목")
+    with pytest.raises(ExportFailed) as e:
+        await AnalysisService(db).export_to_file(video, False, [])
+    assert e.value.extra["reason"] == "쓰기 권한이 없음"

@@ -176,14 +176,14 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **처리**
 1. `task = self.tasks.get(video_id)` · if 없음 → `→ None` (돌고 있지 않다 — 대기 중 · 실패 · 완료. 대기 중인 작업은 행이 지워지면 대기열에서 빠진 것이다)
-2. `task.cancel()` · `await task`를 `CancelledError`를 삼키며 기다린다 — 파이프라인이 열어 둔 세션이 닫힐 때까지
+2. `task.cancel()` · `await asyncio.wait({task})`로 끝나기를 기다린다 — 파이프라인이 열어 둔 세션과 조각 태스크가 닫힐 때까지. `wait`는 태스크의 `CancelledError`를 올리지 않는다. `await task`를 `except CancelledError`로 감싸면 삭제 요청 자신이 취소될 때 그 취소까지 삼킨다
 3. `→ None`. 행은 건드리지 않는다 — 라우터가 이어서 부르는 `VideoService.delete`의 cascade가 지운다. **워커를 깨우지 않는다** — 라우터가 삭제 뒤에 [[#JobService.wake]]를 부른다(시퀀스 되먹임 #8)
 
 **출력** 없음
 
 **호출하는 것** 없음
 
-**테스트 관점** 돌고 있는 작업을 취소하면 태스크가 끝나 있다(`task.done()`) · 취소 뒤 DB에 반쯤 쓰인 행이 없다 · 없는 영상에 불러도 예외 없음
+**테스트 관점** 돌고 있는 작업을 취소하면 태스크가 끝나 있다(`task.done()`) · 받아쓰기 중(조각 태스크가 도는 중)에 취소해도 조각 태스크가 모두 끝나 있다 · 취소 뒤 DB에 반쯤 쓰인 행이 없다 · 없는 영상에 불러도 예외 없음
 
 ---
 
@@ -427,7 +427,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 근거: [[VA-SEQ-001#SEQ-3]] · [[VA-SEQ-001#SEQ-4]] · [[VA-UC-001#UC-H0]] 4~7번 · [[VA-UC-001#UC-S2]] · [[VA-UC-001#UC-S4]]
 
 **처리** — 워커([[#pipeline.worker]])가 띄운 백그라운드 태스크 안. 서비스 호출마다 세션 하나
-1. `stages = DB: analysis_jobs where id`의 `stages`(짧은 세션) · `tmp = config.DATA_DIR / "tmp" / str(video.id)` · `FS: mkdir`
+1. `stages = DB: analysis_jobs where id`의 `stages`(짧은 세션) · 행이 없으면 `→ None` — 워커가 꺼낸 뒤 태스크를 걸기 전에 삭제가 왔다(그때는 취소할 태스크가 없어 cascade가 행을 지웠다). 실패로 접지 않고 임시 폴더도 만들지 않는다 · `tmp = config.DATA_DIR / "tmp" / str(video.id)` · `FS: mkdir`
 2. `for stage in stages:` `JobService.mark_stage(job_id, stage)` 뒤 단계 실행 —
    - `download` · if `video.has_captions` → `(lines, lang, kind) = AudioSourcePort.captions(video.source_id)` · if `None`(등록 뒤 자막이 사라짐 — 단계 목록에 받아쓰기가 없다) → `! YtdlpError('자막을 찾지 못했습니다', kind=unavailable)`, `youtube`로 접힌다 · `AnalysisService.save_transcript(video.id, caption_manual if kind == manual else caption_auto, lang, None, lines)` · else → `audio = AudioSourcePort.download_audio(video.source_id, tmp)`
    - `extract` → `audio = AudioSourcePort.extract_audio(config.INBOX_DIR / video.origin, tmp)`
@@ -442,7 +442,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** [[#JobService.mark_stage]] · [[#JobService.finish]] · [[#JobService.fail]] · [[#pipeline.transcribe_stage]] · [[#pipeline.error_kind]] · [[#pipeline.reason_of]] · `AudioSourcePort.captions` · `download_audio` · `extract_audio` · `AnalysisService.save_transcript` · `generate_summary` · `generate_chapters` · `generate_questions`
 
-**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다 · 자막이 사라져 `captions`가 None → `failed`, `error.kind=youtube` · 로컬 음성(wav) → `extract_audio`로 바꾼 `tmp` 안 mp3를 나누고, inbox 원본은 그대로 남는다
+**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다 · 자막이 사라져 `captions`가 None → `failed`, `error.kind=youtube` · 로컬 음성(wav) → `extract_audio`로 바꾼 `tmp` 안 mp3를 나누고, inbox 원본은 그대로 남는다 · 작업 행이 없으면(그 사이 지워짐) 아무것도 하지 않고 끝난다 — 실패를 쓰지 않고 임시 폴더도 없다
 
 ---
 
@@ -453,7 +453,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 근거: [[VA-SEQ-001#SEQ-6]] 21~26번 · [[VA-UC-001#UC-S3]] 3a3 · [[VA-UC-001#UC-S4]] 1b
 
 **처리**
-1. `row = DB: analysis_jobs where id` · `start_at = row.stages.index(row.stage)` — 실패한 단계
+1. `row = DB: analysis_jobs where id` — 없으면 `run`과 같이 아무것도 하지 않는다 · `start_at = row.stages.index(row.stage)` — 실패한 단계
 2. `run`과 같은 반복을 `stages[start_at:]`부터. 단 —
    - `download` · `extract`에서 실패했으면 처음부터와 같다(임시 파일이 지워졌다)
    - `transcribe`에서 실패했으면 조각 행이 있을 때는 음성 파일이 필요 없다(`audio = None`) — `transcribe_stage`는 `done`이 아닌 조각만, 남아 있는 조각 파일로 보낸다. 조각 행이 없으면(바꾸다 · 나누다 멈춤) — 로컬 음성은 받아쓰기 단계가 늘 다시 바꾼다([[#pipeline.run]]). `tmp / audio.mp3`가 있어도 바꾸다 멈춘 반쪽일 수 있어서다. 그 밖은 `audio = tmp / audio.mp3`(내려받기 · 추출이 다 쓴 파일 — 그 단계가 끝나야 받아쓰기로 넘어온다) · 없으면 `stages`에서 앞 단계(`download` · `extract`)를 찾아 그 단계부터

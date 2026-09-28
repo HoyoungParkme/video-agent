@@ -24,6 +24,12 @@ const VIDEOS = {
     step: 10,
     width: 70,
   },
+  // 며칠 뒤 다시 열어 묻고 내보내고 지운다 — S5
+  e2eNoteVid1: { title: "벡터 DB 운영 노트", duration: 1800, subtitles: { ko: [] } },
+  // 대기열에서 지운다 — 도는 영상 · 기다리는 영상 둘(s5)
+  e2eDelRun01: { title: "지울 영상 — 도는 중", duration: 1200, subtitles: { ko: [] } },
+  e2eDelWait1: { title: "지울 영상 — 기다리는 중", duration: 1200, subtitles: { ko: [] } },
+  e2eDelWait2: { title: "뒤에 기다리는 영상", duration: 1200, subtitles: { ko: [] } },
   // 자막 없는 영상 — 받아쓰기 필요 판(s1)
   e2eNoCapt01: { title: "자막 없는 강연", duration: 1800, subtitles: {} },
   // 자막 없는 영상을 끝까지 — 음성 내려받기 · 추출 · 받아쓰기(대기열에서 다시 시도의 앞 영상)

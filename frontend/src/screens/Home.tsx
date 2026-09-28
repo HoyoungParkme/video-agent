@@ -1,17 +1,18 @@
 /**
  * VA-UI-002#UI-1 홈 — 2 제목 영역 · 3 YouTube 링크 카드(3.1 · 3.2 · 3.3 분석 · 3.4 · 3.5) · 4 내 파일 카드
  * (4.1 · 4.2 inbox 목록 · 4.3 파일 행 · 4.4 빈 안내 · 4.5 · 4.6 선택한 파일 분석) · 5 목록 머리(5.1 · 5.2 · 5.3) ·
- * 6 분석한 영상 목록(6.1 ~ 6.7) · 7 빈 상태 상자. 키 없음 배너(1)는 layout의 공통 1.4다.
+ * 6 분석한 영상 목록(6.1 ~ 6.8) · 7 빈 상태 상자. 키 없음 배너(1)는 layout의 공통 1.4다.
  * 분석(3.3) · 선택한 파일 분석(4.6)은 등록 응답의 status로 갈 곳을 정한다 — registered면 UI-2, analyzed면
  * UI-4와 짧은 알림, 그 밖은 UI-3. 대기 표시는 누른 버튼에, 그동안은 어느 쪽도 새 요청을 보내지 않는다.
- * 채우지 않은 것: 3.4는 서버 문구 한 줄뿐 · 로컬 등록 실패는 시작 불가 판에 서버 이유 그대로(종류별 판은 B5) ·
- * 행 휴지통(6.8)은 B4.
+ * 행 휴지통(6.8)은 모든 상태의 행에 있고 UI-6을 연다. 지우면 목록을 다시 받고, 초점은 바로 아래 행 →
+ * 바로 위 행 → 「분석한 영상」 제목(5.1) 순으로 간다. UI-4에서 지우고 왔으면 5.1에 둔다.
+ * 채우지 않은 것: 3.4는 서버 문구 한 줄뿐 · 로컬 등록 실패는 시작 불가 판에 서버 이유 그대로(종류별 판은 B5).
  */
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   api,
@@ -30,6 +31,7 @@ import EmptyBox from "@/components/EmptyBox";
 import { durationLabel } from "@/components/TimeChip";
 import { flash } from "@/components/Toast";
 import { analyzedLabel, stageName } from "@/labels";
+import Delete, { takeListFocus, TrashIcon } from "@/screens/Delete";
 import Estimate, { Blocked } from "@/screens/Estimate";
 
 const EMPTY_TITLE = "아직 분석한 영상이 없어요";
@@ -42,9 +44,13 @@ function inProgress(v: VideoSummary): boolean {
   return v.job.status === "queued" || v.job.status === "running";
 }
 
-/** 분석한 영상 목록. 진행 중 · 대기 중 행이 있으면 3초마다 다시 받는다. 받기 전에는 null. */
-function useVideos(): VideoSummary[] | null {
+/**
+ * 분석한 영상 목록. 진행 중 · 대기 중 행이 있으면 3초마다 다시 받는다. 받기 전에는 null.
+ * drop은 지운 행을 곧바로 빼고 다시 받는다 — 기다리던 영상이 돌기 시작했을 수 있다.
+ */
+function useVideos(): [VideoSummary[] | null, (id: number) => void] {
   const [rows, setRows] = useState<VideoSummary[] | null>(null);
+  const [round, setRound] = useState(0);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -63,8 +69,12 @@ function useVideos(): VideoSummary[] | null {
       alive = false;
       clearTimeout(timer);
     };
+  }, [round]);
+  const drop = useCallback((id: number) => {
+    setRows((prev) => prev && prev.filter((r) => r.id !== id));
+    setRound((n) => n + 1);
   }, []);
-  return rows;
+  return [rows, drop];
 }
 
 /** inbox 파일 목록 — 처음 한 번. 서버가 아직 뜨는 중이면 3초마다 다시. 받기 전에는 null. */
@@ -150,13 +160,21 @@ function SourceIcon({ local }: { local: boolean }) {
   );
 }
 
-function VideoRow({ v, first }: { v: VideoSummary; first: boolean }) {
+function VideoRow({
+  v,
+  first,
+  onDelete,
+}: {
+  v: VideoSummary;
+  first: boolean;
+  onDelete: () => void;
+}) {
   const status = rowStatus(v);
   const href = v.status === "analyzed" ? `/videos/${v.id}` : `/videos/${v.id}/progress`;
   // 요소 번호는 첫 행에만 — 와이어프레임이 한 행에 번호를 매겼다
   const el = (no: string) => (first ? no : undefined);
   return (
-    <div className="video-row">
+    <div className="video-row" data-video={v.id}>
       <Link href={href} className="video-row-link" data-el={el("6.1")}>
         <span className="icon-tile" data-el={el("6.2")}>
           <SourceIcon local={v.source_kind === "local"} />
@@ -183,6 +201,15 @@ function VideoRow({ v, first }: { v: VideoSummary; first: boolean }) {
           )}
         </span>
       </Link>
+      <button
+        type="button"
+        className="icon-btn video-row-trash"
+        aria-label={`${v.title} 분석 결과 삭제`}
+        data-el={el("6.8")}
+        onClick={onDelete}
+      >
+        <TrashIcon />
+      </button>
     </div>
   );
 }
@@ -190,9 +217,13 @@ function VideoRow({ v, first }: { v: VideoSummary; first: boolean }) {
 export default function Home() {
   const router = useRouter();
   const settings = useSettings();
-  const videos = useVideos();
+  const [videos, dropVideo] = useVideos();
   const inbox = useInbox();
   const analyzeButton = useRef<HTMLButtonElement>(null);
+  const listTitle = useRef<HTMLHeadingElement>(null);
+  // 휴지통으로 연 영상(UI-6)과, 지운 뒤 초점을 둘 곳(행 id 또는 5.1)
+  const [deleting, setDeleting] = useState<VideoSummary | null>(null);
+  const focusAfter = useRef<number | "title" | null>(null);
   const fileButton = useRef<HTMLButtonElement>(null);
   const [url, setUrl] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
@@ -233,6 +264,33 @@ export default function Home() {
     } else {
       router.push(`/videos/${v.id}/progress`);
     }
+  }
+
+  // UI-4에서 지우고 왔으면 「분석한 영상」 제목에 초점(UI-6 규칙, 사용자 결정 2026-09-28)
+  useEffect(() => {
+    if (takeListFocus()) listTitle.current?.focus();
+  }, []);
+
+  // 지운 뒤 — 연 휴지통이 없어졌으므로 바로 아래 행 → 바로 위 행 → 5.1(UI-1 규칙). 행이 빠진 목록이
+  // 그려진 뒤에 옮긴다
+  useEffect(() => {
+    const target = focusAfter.current;
+    if (target === null) return;
+    focusAfter.current = null;
+    const link =
+      target === "title"
+        ? null
+        : document.querySelector<HTMLElement>(`[data-video="${target}"] .video-row-link`);
+    (link ?? listTitle.current)?.focus();
+  }, [videos]);
+
+  function deleted(id: number) {
+    // 이웃은 지금 그려진 목록에서 — 지우는 사이(도는 작업 멈추기) 목록을 다시 받았을 수 있다
+    const node = document.querySelector<HTMLElement>(`[data-video="${id}"]`);
+    const next = (node?.nextElementSibling ?? node?.previousElementSibling) as HTMLElement | null;
+    focusAfter.current = next?.dataset.video ? Number(next.dataset.video) : "title";
+    setDeleting(null);
+    dropVideo(id);
   }
 
   function keyFailed(e: unknown): boolean {
@@ -418,7 +476,13 @@ export default function Home() {
       <section aria-labelledby="list-title" className="home-list">
         <div className="home-list-head" data-el="5">
           <div className="home-list-title">
-            <h2 id="list-title" tabIndex={-1} className="section-title" data-el="5.1">
+            <h2
+              id="list-title"
+              ref={listTitle}
+              tabIndex={-1}
+              className="section-title"
+              data-el="5.1"
+            >
               분석한 영상
             </h2>
             <span className="home-list-count" data-el="5.2">
@@ -432,7 +496,7 @@ export default function Home() {
         {videos !== null && videos.length > 0 && (
           <div className="video-list" data-el="6">
             {videos.map((v, i) => (
-              <VideoRow key={v.id} v={v} first={i === 0} />
+              <VideoRow key={v.id} v={v} first={i === 0} onDelete={() => setDeleting(v)} />
             ))}
           </div>
         )}
@@ -453,6 +517,14 @@ export default function Home() {
           estimate={opened.estimate}
           othersRunning={opened.othersRunning}
           onClose={() => setOpened(null)}
+        />
+      )}
+      {deleting && (
+        <Delete
+          video={deleting}
+          turns={deleting.chat_turn_count}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => deleted(deleting.id)}
         />
       )}
       {cannot && (

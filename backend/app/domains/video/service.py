@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import os
 import re
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -108,6 +109,7 @@ class VideoService:
     - list_inbox(): inbox 파일 목록(길이까지)
     - register(): 키 확인 → 형식 → 정보 → 길이 상한 → 중복 → 생성 또는 덮어쓰기
     - list() · get(): 작업이 있는 영상 목록(최근 순) · 영상 하나와 최근 작업
+    - delete(): 영상과 딸린 것 전부 — 행은 cascade, 임시 폴더는 커밋 뒤
     - info_of() · to_dto(): 출처별 정보 조회 · 행 → Video
     """
 
@@ -339,3 +341,24 @@ class VideoService:
         job = await self.jobs.latest(video_id)
         count = (await self.chats.count_by_videos([video_id])).get(video_id, 0)
         return VideoDetail(video=self.to_dto(row, job, count), job=job)
+
+    async def delete(self, video_id: int) -> None:
+        """VA-MS-001#VideoService.delete
+
+        영상과 딸린 것 전부 — 작업 · 조각 · 스크립트 · 요약 · 챕터 · 추천 질문 · 대화는 FK cascade가
+        지우고(앱이 자식을 차례로 지우지 않는다), 커밋 뒤 임시 폴더 `data/tmp/{id}`를 지운다.
+        진행 중 작업은 라우터가 먼저 JobService.cancel로 멈춘다 — 여기서는 멈춰 있다고 본다.
+        inbox 원본은 건드리지 않는다(INFRA C4).
+
+        Args:
+            video_id: 영상 id
+
+        Raises:
+            NotFound: 영상이 없다(resource=video)
+        """
+        if await crud.remove(self.session, video_id) == 0:
+            raise NotFound(resource="video", id=video_id)
+        await self.session.commit()
+        # 수백 MB 음성 · 조각 파일일 수 있다 — 지우는 동안 다른 요청을 막지 않게 스레드로
+        tmp = Path(config.DATA_DIR) / "tmp" / str(video_id)
+        await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)

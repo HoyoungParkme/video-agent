@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime, timedelta
+
 from app.core.config import config
 from app.domains.job.models import JobStatus
+from app.domains.job.service import JobService
 
 PROBLEM = "application/problem+json"
 URL = "https://youtu.be/dQw4w9WgXcQ"
@@ -129,11 +133,47 @@ async def test_inbox_without_mount_is_internal(api, tmp_path, monkeypatch) -> No
     assert (r.status_code, r.json()["type"]) == (500, "urn:va:internal")
 
 
-async def test_delete_is_stub(api, make) -> None:
+async def test_delete_video(api, make) -> None:
     row = await make.video()
+    await make.job(row.id)  # 끝난 작업
     r = await api.delete(f"/api/videos/{row.id}")
-    assert (r.status_code, r.headers["content-type"], r.json()["type"]) == (
-        501,
+    assert (r.status_code, r.content) == (204, b"")
+    assert (await api.get(f"/api/videos/{row.id}")).status_code == 404
+    again = await api.delete(f"/api/videos/{row.id}")
+    assert (again.status_code, again.headers["content-type"], again.json()["type"]) == (
+        404,
         PROBLEM,
-        "urn:va:not-implemented",
+        "urn:va:not-found",
     )
+
+
+async def test_delete_running_stops_task_then_wakes(api, make) -> None:
+    running = await make.video()
+    await make.job(running.id, JobStatus.running)
+    waiting = await make.video()
+    await make.job(waiting.id, JobStatus.queued)
+    task = asyncio.create_task(asyncio.sleep(30))  # 도는 파이프라인 자리
+    JobService.tasks[running.id] = task
+    JobService.work_event.clear()
+    try:
+        r = await api.delete(f"/api/videos/{running.id}")
+    finally:
+        JobService.tasks.pop(running.id, None)
+    assert r.status_code == 204
+    assert task.cancelled()  # 먼저 멈췄다
+    assert JobService.work_event.is_set()  # 지운 뒤 워커를 깨웠다 — 기다리던 영상이 돈다
+    job = (await api.get(f"/api/videos/{waiting.id}/job")).json()
+    assert (job["status"], job["queue_position"]) == ("queued", 1)  # 워커가 곧 꺼낸다
+
+
+async def test_delete_queued_moves_queue_up(api, make) -> None:
+    ahead = await make.video()
+    await make.job(ahead.id, JobStatus.running)
+    rows = [await make.video() for _ in range(2)]
+    t0 = datetime.now(UTC)
+    for i, row in enumerate(rows):
+        await make.job(row.id, JobStatus.queued, at=t0 + timedelta(seconds=i))
+    last = f"/api/videos/{rows[1].id}/job"
+    assert (await api.get(last)).json()["queue_position"] == 2
+    assert (await api.delete(f"/api/videos/{rows[0].id}")).status_code == 204
+    assert (await api.get(last)).json()["queue_position"] == 1  # 차례가 당겨진다

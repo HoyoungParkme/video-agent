@@ -1,7 +1,8 @@
 /**
  * 공통 1.2 다이얼로그 틀 — 덮개 위 흰 카드, 가로 가운데 · 세로 위(VA-UI-002 1.2, 모양은 VA-UI-001 4.3).
  * 열리면 초점이 안으로 들어가 밖으로 나가지 않고, 닫히면 연 버튼으로 돌아간다.
- * Esc는 늘 닫기다. 덮개 누름은 closeOnOverlay일 때만(UI-6은 닫히지 않는다). 쓰는 화면은 B1 · B4부터.
+ * Esc는 늘 onClose다 — 잠가야 하면(보내는 중) 부르는 쪽이 무시한다. 덮개 누름은 closeOnOverlay일 때만
+ * (UI-6은 닫히지 않는다). 쓰는 화면은 UI-2 · UI-6 · UI-7.
  */
 "use client";
 
@@ -21,6 +22,8 @@ interface Props {
   closeOnOverlay?: boolean;
   /** 처음 초점을 받을 요소의 CSS 선택자. 없으면 첫 초점 가능한 요소 */
   initialFocus?: string;
+  /** 요소 번호(data-el) — UI-6 · UI-7은 다이얼로그 자체가 1이다 */
+  el?: string;
   children: ReactNode;
 }
 
@@ -36,6 +39,7 @@ export default function Dialog({
   onClose,
   closeOnOverlay = true,
   initialFocus,
+  el,
   children,
 }: Props) {
   const box = useRef<HTMLDivElement>(null);
@@ -93,6 +97,7 @@ export default function Dialog({
         aria-modal="true"
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
+        data-el={el}
       >
         {children}
       </div>

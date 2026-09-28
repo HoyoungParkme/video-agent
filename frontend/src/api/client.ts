@@ -210,6 +210,20 @@ export interface ChatTurn {
   asked_at: string;
 }
 
+/** 내보낼 마크다운 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`. */
+export interface ExportPreview {
+  filename: string;
+  path: string;
+  markdown: string;
+}
+
+/** 쓴 파일 — path는 짧은 알림 '{path}에 저장했어요'에 들어간다. */
+export interface ExportResult {
+  filename: string;
+  path: string;
+  bytes: number;
+}
+
 /** problem+json 하나. kind는 `urn:va:` 뒤 — key-rejected · validation 등(VA-API-001 2장). */
 export class ApiError extends Error {
   readonly status: number;
@@ -246,6 +260,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
       current.key.reason_kind === "network"
     )
       loadSettings().catch(() => undefined); // 받지 못하면 배너는 그대로
+    if (res.status === 204) return undefined as T; // 본문 없음(삭제)
     return (await res.json()) as T;
   }
   let problem: Record<string, unknown> = {};
@@ -290,6 +305,14 @@ export const api = {
   /** POST /api/videos/{id}/chat — 질문하고 답을 받는다. 실패하면 저장되지 않는다 */
   ask: (id: number, question: string) =>
     call<ChatTurn>("POST", `/api/videos/${id}/chat`, { question }),
+  /** GET /api/videos/{id}/export — 내보낼 마크다운 전체와 파일 이름. UI-7이 열 때 · 3을 바꿀 때 */
+  exportPreview: (id: number, withChat: boolean) =>
+    call<ExportPreview>("GET", `/api/videos/${id}/export?with_chat=${withChat}`),
+  /** POST /api/videos/{id}/export — 같은 마크다운을 서버가 data/export/에 쓴다 */
+  exportFile: (id: number, withChat: boolean) =>
+    call<ExportResult>("POST", `/api/videos/${id}/export`, { with_chat: withChat }),
+  /** DELETE /api/videos/{id} — 영상과 딸린 것 전부. 도는 분석은 멈추고 대기 중이면 대기열에서 빠진다 */
+  deleteVideo: (id: number) => call<void>("DELETE", `/api/videos/${id}`),
 };
 
 // 설정 한 벌을 화면들이 같이 본다 — layout의 배너와 화면이 같은 값을 쓰고, 키를 저장하면 배너가 바로 바뀐다

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import column, select, table
+from sqlalchemy import column, delete, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.video.models import VideoRow
@@ -54,3 +54,9 @@ def overwrite(row: VideoRow, info: SourceInfo) -> None:
 def rename(row: VideoRow, origin: str) -> None:
     """로컬 파일의 지금 이름 — 작업이 있어도 origin만 고친다(다시 시도가 이 경로를 읽는다)."""
     row.origin = origin
+
+
+async def remove(session: AsyncSession, video_id: int) -> int:
+    """영상 행 하나를 지운다 — 딸린 행은 DB의 FK cascade가 지운다. 지운 행 수(없으면 0)."""
+    result = await session.execute(delete(VideoRow).where(VideoRow.id == video_id))
+    return result.rowcount
