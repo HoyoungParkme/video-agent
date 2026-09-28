@@ -285,12 +285,12 @@ export default function Home() {
   }, [videos]);
 
   function deleted(id: number) {
-    const rows = videos ?? [];
-    const at = rows.findIndex((r) => r.id === id);
-    const next = rows[at + 1] ?? rows[at - 1];
+    // 이웃은 지금 그려진 목록에서 — 지우는 사이(도는 작업 멈추기) 목록을 다시 받았을 수 있다
+    const node = document.querySelector<HTMLElement>(`[data-video="${id}"]`);
+    const next = (node?.nextElementSibling ?? node?.previousElementSibling) as HTMLElement | null;
+    focusAfter.current = next?.dataset.video ? Number(next.dataset.video) : "title";
     setDeleting(null);
     dropVideo(id);
-    focusAfter.current = next ? next.id : "title";
   }
 
   function keyFailed(e: unknown): boolean {
