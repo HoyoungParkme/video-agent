@@ -73,7 +73,7 @@ async def _run(*args: str, timeout: float | None = None) -> bytes:
     except OSError as e:
         raise YtdlpError(f"yt-dlp를 실행하지 못했습니다({type(e).__name__})", "other") from None
     try:
-        limit = timeout or config.PROC_TIMEOUT_SEC
+        limit = config.PROC_TIMEOUT_SEC if timeout is None else timeout  # 0도 0초다
         out, err = await asyncio.wait_for(proc.communicate(), limit)
     except TimeoutError:
         raise YtdlpError("시간 제한을 넘었습니다", "network") from None
@@ -85,20 +85,21 @@ async def _run(*args: str, timeout: float | None = None) -> bytes:
     return out
 
 
-async def info(url: str) -> dict:
+async def info(url: str, timeout: float | None = None) -> dict:
     """VA-MS-007#ytdlp.info
 
     영상 정보를 JSON으로 받는다. 내려받지 않는다.
 
     Args:
         url: YouTube 주소. 재생 목록 주소면 그 영상 하나만
+        timeout: 시간 제한(초). 없으면 PROC_TIMEOUT_SEC — 등록은 INFO_TIMEOUT_SEC를 준다(사람이
+            web 프록시 60초 뒤에서 기다린다). 파이프라인은 주지 않는다(백그라운드)
 
     Returns:
         yt-dlp의 JSON 그대로 — id · title · channel · duration · subtitles · automatic_captions 등
     """
-    # 등록 요청 안에서 돌아 사람이 기다린다 — 키 확인과 더해 web 프록시 60초 안에 들게
     args = ("--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", url)
-    out = await _run(*args, timeout=config.INFO_TIMEOUT_SEC)
+    out = await _run(*args, timeout=timeout)
     try:
         return json.loads(out)
     except ValueError:
