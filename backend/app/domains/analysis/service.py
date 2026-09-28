@@ -49,8 +49,9 @@ INSIGHTS_MAX, INSIGHTS_MAX_LONG = 8, 10
 BULLETS_MAX = 3
 # 파일 이름에 쓸 수 없는 글자(윈도 · 맥 · 리눅스 공통)와 제어 문자
 _UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
-# 파일 이름 글자 상한
+# 파일 이름 상한 — 글자 수, 그리고 UTF-8 바이트(파일 이름 한도 255바이트에 `.md`를 붙인다)
 NAME_MAX = 80
+NAME_BYTES_MAX = 250
 # 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
 # config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
 EXPORT_SHOWN = "data/export"
@@ -225,6 +226,7 @@ class AnalysisService:
 
         Returns:
             쓸 수 없는 글자는 `_`, 연속 공백 · 밑줄은 하나, 앞뒤 공백 · 점 없이 80자까지.
+            UTF-8로 250바이트를 넘으면 더 자른다(이모지처럼 4바이트 글자가 많은 제목).
             비면 `video-{id}`
         """
         name = video.title
@@ -232,7 +234,10 @@ class AnalysisService:
             name = PurePosixPath(name).stem
         name = _UNSAFE.sub("_", unicodedata.normalize("NFC", name))
         name = re.sub(r"_+", "_", re.sub(r"\s+", " ", name)).strip(" .")
-        return name[:NAME_MAX].strip(" .") or f"video-{video.id}"
+        name = name[:NAME_MAX]
+        while len(name.encode()) > NAME_BYTES_MAX:
+            name = name[:-1]
+        return name.strip(" .") or f"video-{video.id}"
 
     async def save_transcript(
         self,

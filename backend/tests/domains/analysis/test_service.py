@@ -438,6 +438,8 @@ async def test_filename_for(db, make) -> None:
     assert await name('x\\y*z"<>|  w__v .') == "x_y_z_ w_v"
     assert await name("a\tb\x7fc") == "a_b_c"  # 제어 문자도 _
     assert await name("가" * 200) == "가" * 80
+    emoji = await name("🔥" * 80)  # 4바이트 글자 — 80자면 320바이트
+    assert len(emoji.encode()) <= 250 and emoji == "🔥" * 62
     local = {"source_kind": "local", "origin": "workshop_0912.mp4", "channel": None}
     assert await name("workshop_0912.mp4", **local) == "workshop_0912"  # 로컬 파일은 확장자를 뗀다
     empty = await _video(db, make, title=" . ")
