@@ -184,6 +184,10 @@ export default function Estimate({ video, estimate, othersRunning, onClose }: Pr
       await api.startJob(video.id);
       router.replace(`/videos/${video.id}/progress`);
     } catch (e) {
+      // 다른 창에서 먼저 시작했다 — 실패가 아니다. 잠금을 둔 채 그 작업의 UI-3으로(UI-2 규칙)
+      if (e instanceof ApiError && e.kind === "job-exists") {
+        return router.replace(`/videos/${video.id}/progress`);
+      }
       if (e instanceof ApiError && (e.kind === "key-missing" || e.kind === "key-invalid")) {
         void loadSettings();
       }
