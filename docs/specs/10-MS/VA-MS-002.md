@@ -518,7 +518,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 2. else `error_kind(e)`로 —
    - `network` → 시간 초과(`TimeoutError` · `APITimeoutError`)면 '네트워크 시간 초과', 아니면 '네트워크에 연결할 수 없음'
    - `openai` → [[VA-MS-007#openai.reason_of]]의 표(401 'API 키 인증 실패' · 429 잔액 · 한도 · 5xx 'OpenAI 서버 오류' …). 질문 답변 실패도 같은 표를 쓴다 — 두 벌이 되지 않게 infra에 하나
-   - `youtube` → `ytdlp.REASONS[e.kind]`([[VA-MS-007]] 0장 — private '비공개 영상' · unavailable '삭제되었거나 볼 수 없는 영상' · geo '이 지역에서 볼 수 없는 영상' · network 'YouTube 연결 실패' · extractor 'yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트' · other 'yt-dlp 오류'). 등록의 `source-unavailable`과 같은 표다
+   - `youtube` → `ytdlp.REASONS[e.kind]`([[VA-MS-007]] 0장 — private '비공개 영상' · unavailable '삭제되었거나 볼 수 없는 영상' · geo '이 지역에서 볼 수 없는 영상' · network 'YouTube 연결 실패' · extractor 'yt-dlp가 영상을 읽지 못함(yt-dlp 업데이트 필요)' · other 'yt-dlp 오류'). 등록의 `source-unavailable`과 같은 표다
    - `ffmpeg` → 'ffmpeg 처리 실패' · `disk` → '저장 공간 부족'
    - `unknown` → '알 수 없는 오류({예외 클래스 이름})'
 
