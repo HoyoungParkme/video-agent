@@ -183,7 +183,7 @@ async def test_info_of_youtube_unavailable(db, youtube, unavailable, probe) -> N
     youtube.error = unavailable
     with pytest.raises(SourceUnavailable) as e:
         await VideoService(db, youtube, probe).info_of(yt())
-    assert e.value.extra["reason"] == "비공개 영상이에요"
+    assert e.value.extra["reason"] == "비공개 영상"
 
 
 def local(name: str) -> LocalSource:

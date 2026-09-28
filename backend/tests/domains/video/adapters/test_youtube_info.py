@@ -67,18 +67,19 @@ async def test_no_duration(raw) -> None:
     raw["duration"] = None  # 라이브 · 예정
     with pytest.raises(SourceUnavailable) as e:
         await YouTubeInfoAdapter().info(URL)
-    assert e.value.extra["reason"] == "길이를 알 수 없는 영상이에요"
+    assert e.value.extra["reason"] == "길이를 알 수 없는 영상(라이브 · 예정)"
 
 
 @pytest.mark.parametrize(
     ("kind", "reason", "hint"),
     [
-        ("private", "비공개 영상이에요", None),
-        ("unavailable", "삭제되었거나 볼 수 없는 영상이에요", None),
-        ("geo", "이 지역에서는 볼 수 없는 영상이에요", None),
-        ("network", "YouTube에 연결하지 못했어요", None),
-        ("extractor", "yt-dlp가 이 영상을 읽지 못했어요", "yt-dlp 업데이트"),
-        ("other", "영상 정보를 읽지 못했어요", None),
+        # 분석 실패 알림과 같은 명사구 — 시작 불가 판 '영상 정보를 가져오지 못했어요 — {이유}'
+        ("private", "비공개 영상", None),
+        ("unavailable", "삭제되었거나 볼 수 없는 영상", None),
+        ("geo", "이 지역에서 볼 수 없는 영상", None),
+        ("network", "YouTube 연결 실패", None),
+        ("extractor", "yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트", "yt-dlp 업데이트"),
+        ("other", "yt-dlp 오류", None),
     ],
 )
 async def test_ytdlp_errors(monkeypatch, kind, reason, hint) -> None:
