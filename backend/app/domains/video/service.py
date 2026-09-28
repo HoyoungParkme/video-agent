@@ -103,6 +103,12 @@ def _check_inbox_name(name: str) -> None:
         raise NotFound(resource="inbox_file", id=name)
 
 
+def _check_length(duration_sec: int) -> None:
+    # 3시간 상한(PRD N2) — 길이를 실어야 화면이 시작 불가 판에 보인다. info_of 한곳에서만 부른다
+    if duration_sec > config.MAX_DURATION_SEC:
+        raise VideoTooLong(duration_sec=duration_sec, max_sec=config.MAX_DURATION_SEC)
+
+
 class VideoService:
     """영상 행과 그 응답 형태. 상태(status)를 계산하는 곳은 to_dto 하나다.
 
@@ -209,8 +215,9 @@ class VideoService:
 
         출처에서 영상 정보를 읽는다. YouTube는 포트가 정보만 받는다(내려받지 않는다).
         로컬 파일은 길이 · 음성 트랙을 재고 내용 SHA-256을 출처 식별자로 쓴다 — 이름을 바꿔도
-        같은 영상이다. 해시는 스레드에서 1MB씩(수 GB면 몇 초 — 화면은 버튼 대기 표시). 3시간이
-        넘으면 해시 전에 거절한다 — 4시간짜리 큰 파일을 다 읽고 나서 거절하지 않게.
+        같은 영상이다. 해시는 스레드에서 1MB씩(수 GB면 몇 초 — 화면은 버튼 대기 표시).
+        길이 상한(3시간)은 여기 한곳에서 본다 — YouTube는 정보를 받은 뒤, 로컬은 해시 전에
+        (4시간짜리 큰 파일을 다 읽고 나서 거절하지 않게).
 
         Args:
             req: YouTube 주소 또는 inbox 파일 이름
@@ -222,16 +229,17 @@ class VideoService:
             SourceUnavailable: YouTube 정보를 못 가져왔다
             UnsupportedFile: 파일을 열 수 없다(포트)
             NoAudioTrack: 음성 트랙이 없는 파일
-            VideoTooLong: 로컬 파일이 3시간을 넘는다(해시 전)
+            VideoTooLong: 3시간을 넘는다(로컬은 해시 전)
         """
         if isinstance(req, YouTubeSource):
-            return await self.youtube_info.info(req.url)
+            info = await self.youtube_info.info(req.url)
+            _check_length(info.duration_sec)
+            return info
         path = Path(config.INBOX_DIR) / req.path
         duration, has_audio = await self.media_probe.probe(str(path))
         if not has_audio:
             raise NoAudioTrack(duration_sec=duration)
-        if duration > config.MAX_DURATION_SEC:
-            raise VideoTooLong(duration_sec=duration, max_sec=config.MAX_DURATION_SEC)
+        _check_length(duration)  # 해시 전에
         return SourceInfo(
             source_kind=SourceKind.local,
             source_id=await asyncio.to_thread(_sha256, path),
@@ -261,8 +269,7 @@ class VideoService:
         Raises:
             KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다
             UrlInvalid · PathOutsideInbox · UnsupportedFile · NotFound: 형식
-            SourceUnavailable · NoAudioTrack: 정보 조회(info_of)
-            VideoTooLong: 3시간 초과
+            SourceUnavailable · NoAudioTrack · VideoTooLong: 정보 조회와 길이 상한(info_of)
         """
         await settings.check_stored_key()  # 분석 버튼을 누를 때 확인한다(UI-5 규칙)
         await settings.require_key()
@@ -272,8 +279,6 @@ class VideoService:
         else:
             _check_inbox_name(req.path)
         info = await self.info_of(req)
-        if info.duration_sec > config.MAX_DURATION_SEC:
-            raise VideoTooLong(duration_sec=info.duration_sec, max_sec=config.MAX_DURATION_SEC)
         row = await crud.by_source_id(self.session, info.source_id)
         job: JobSummary | None = None
         if row is not None:

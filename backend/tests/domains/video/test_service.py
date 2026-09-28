@@ -180,6 +180,14 @@ async def test_info_of_youtube_asks_port(db, youtube, probe) -> None:
     assert (info.source_id, info.has_captions, info.caption_kind) == ("dQw4w9WgXcQ", True, "manual")
 
 
+async def test_info_of_youtube_too_long(db, youtube, probe) -> None:
+    # 길이 상한은 info_of 한곳 — register가 다시 보지 않는다(MS-001 v6)
+    youtube.duration = 15150  # 4:12:30
+    with pytest.raises(VideoTooLong) as e:
+        await VideoService(db, youtube, probe).info_of(yt())
+    assert e.value.extra == {"duration_sec": 15150, "max_sec": 10800}
+
+
 async def test_info_of_long_local_file_rejected_before_hashing(
     db, youtube, probe, tmp_path, monkeypatch
 ) -> None:
