@@ -74,7 +74,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
    - if `req.source == youtube` → `vid = 영상 ID 추출(req.url)`. 받는 형태는 셋: `youtube.com/watch?v={id}` · `youtu.be/{id}` · `youtube.com/shorts/{id}` (`www.` · `m.` 허용, `id`는 `[A-Za-z0-9_-]{11}`) · if 못 뽑음 → `! url-invalid {accepted: [watch, youtu.be, shorts]}`
    - else → `name = req.path` · if `/`·`\`가 들어 있거나 `.`으로 시작하거나 `..`이 들어 있음 → `! path-outside-inbox` · if 확장자 ∉ `ACCEPTED` → `! unsupported-file {reason: 받지 않는 형식, accepted}` · `path = config.INBOX_DIR / name` · if 파일 없음 → `! not-found {resource: inbox_file, id: name}`
 3. `info = info_of(req)` — 정보 조회. `source-unavailable` · `unsupported-file` · `no-audio-track`은 거기서 난다
-4. if `info.duration_sec > config.MAX_DURATION_SEC` → `! video-too-long {duration_sec, max_sec}` (길이는 알려야 화면이 시작 불가 판에 보인다)
+4. if `info.duration_sec > config.MAX_DURATION_SEC` → `! video-too-long {duration_sec, max_sec}` (길이는 알려야 화면이 시작 불가 판에 보인다). 로컬 파일은 `info_of`가 해시 전에 이미 본다
 5. **트랜잭션**: `row = DB: videos where source_id = info.source_id` (중복 판정 — YouTube는 영상 ID, 로컬은 내용 해시라 주소 형태 · 파일 이름이 달라도 같다)
    - if `row` 있음 → `job = JobService.latest(row.id)` · if `job is None`(사전 안내에서 취소했던 영상) → `DB: videos update row ← info` (title · channel · duration_sec · origin · has_captions · caption_language · caption_kind. `id` · `created_at`은 그대로) · else → 그대로 둔다. 단 로컬 파일이고 `origin`이 다르면(이름을 바꿨다) `origin`만 지금 이름으로 고친다 — 다시 시도하는 파이프라인이 `INBOX_DIR / origin`을 읽는다([[VA-MS-002#pipeline.resume]]). 제목은 그대로
    - else → `row = DB: videos insert(info)` · `job = None`
@@ -171,15 +171,15 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **처리**
 - if `req.source == youtube` → `info = YouTubeInfoPort.info(req.url)` · if 실패 → `! source-unavailable {reason, hint}` (`hint`는 yt-dlp 추출기 오류일 때 'yt-dlp 업데이트', 아니면 null. [[VA-INFRA-001#C7]]) · `→ SourceInfo(youtube, source_id=영상 ID, title, channel, duration_sec, origin=정규화한 주소 https://www.youtube.com/watch?v={id}, has_captions, caption_language, caption_kind)` — 수동 자막이 있으면 `manual`, 자동뿐이면 `auto`, 없으면 `has_captions=false`
-- else → `(duration_sec, has_audio) = MediaProbePort.probe(path)` · if 못 열음 → `! unsupported-file {reason, accepted}` · if `not has_audio` → `! no-audio-track {duration_sec}` · `sha = FS: 파일을 1MB씩 읽어 SHA-256` (수 GB면 몇 초 걸린다 — 화면은 버튼 대기 표시) · `→ SourceInfo(local, source_id=sha, title=파일 이름, channel=None, duration_sec, origin=파일 이름, has_captions=False, None, None)`
+- else → `(duration_sec, has_audio) = MediaProbePort.probe(path)` · if 못 열음 → `! unsupported-file {reason, accepted}` · if `not has_audio` → `! no-audio-track {duration_sec}` · if `duration_sec > config.MAX_DURATION_SEC` → `! video-too-long {duration_sec, max_sec}` — 해시보다 먼저 본다(4시간짜리 큰 파일을 다 읽고 나서 거절하지 않게, 카드 B5) · `sha = FS: 파일을 1MB씩 읽어 SHA-256` (수 GB면 몇 초 걸린다 — 화면은 버튼 대기 표시) · `→ SourceInfo(local, source_id=sha, title=파일 이름, channel=None, duration_sec, origin=파일 이름, has_captions=False, None, None)`
 
 **출력** `SourceInfo`
 
-**예외** `source-unavailable` · `unsupported-file` · `no-audio-track`
+**예외** `source-unavailable` · `unsupported-file` · `no-audio-track` · `video-too-long`(로컬)
 
 **호출하는 것** `YouTubeInfoPort.info` · `MediaProbePort.probe`
 
-**테스트 관점** 가짜 포트로: 비공개 영상 → `source-unavailable`에 `reason` 있음 · 수동 자막 + 자동 자막 → `manual` · 자동만 → `auto` · 자막 없음 → `has_captions=false`, 언어 null · 음성 없는 mp4 → `no-audio-track`에 길이 있음 · 같은 내용의 파일 둘 → 같은 `source_id` · mp3 → `has_audio=true`로 통과
+**테스트 관점** 가짜 포트로: 비공개 영상 → `source-unavailable`에 `reason` 있음 · 수동 자막 + 자동 자막 → `manual` · 자동만 → `auto` · 자막 없음 → `has_captions=false`, 언어 null · 음성 없는 mp4 → `no-audio-track`에 길이 있음 · 4시간 로컬 파일 → 해시를 읽지 않고 `video-too-long` · 같은 내용의 파일 둘 → 같은 `source_id` · mp3 → `has_audio=true`로 통과
 
 ---
 
@@ -203,5 +203,5 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 ## 3. 미결사항
 
 - [ ] `list_inbox`의 길이 재기 캐시 — 파일 수십 개면 ffprobe 수십 번. 수정 시각 + 크기를 키로 메모리에 둘지. 첫 버전은 캐시 없음, 동시 4개([[VA-DOM-002]] 7장과 같은 항목)
-- [ ] `info_of`의 SHA-256이 수 GB 파일에서 몇 초 걸린다 — 화면 대기 표시로 충분한지, 앞 64MB만 해시할지. 앞부분만 하면 같은 앞부분을 가진 다른 파일이 같은 영상으로 판정될 수 있어 첫 버전은 전체
+- [ ] `info_of`의 SHA-256이 수 GB 파일에서 몇 초 걸린다 — 화면 대기 표시로 충분한지, 앞 64MB만 해시할지. 앞부분만 하면 같은 앞부분을 가진 다른 파일이 같은 영상으로 판정될 수 있어 첫 버전은 전체 · 느린 디스크(WSL의 Windows 드라이브 등)에서는 수십 초라 web 프록시 60초([[VA-DOM-002]] 6장)에 닿을 수 있다 — 넘기면 화면은 연결 오류인데 서버는 등록을 마친다(다시 누르면 같은 영상으로 열린다). 카드 C에서 실제 파일로 재고 정한다(카드 B5)
 - [x] UI-1이 열려 있는 동안 `list`를 다시 부르는 주기 — [[VA-SEQ-001]] 3장과 같은 항목. 결정(카드 B1): 진행 중 · 대기 중 행이 있는 동안 3초, 없으면 부르지 않는다([[VA-UI-002#UI-1]] 규칙)

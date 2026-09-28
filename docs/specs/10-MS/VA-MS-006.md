@@ -97,10 +97,10 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 근거: [[VA-SEQ-001#SEQ-1]] 13~15번 · [[VA-UC-001#UC-H1]] 2번, 2a · [[VA-UC-001#UC-S1]] 1번 · [[VA-INFRA-001#C7]] · [[VA-MS-001#VideoService.info_of]]
 
 **처리**
-1. `raw = EXT: ytdlp.info(url)` — 정보만, 내려받기 없음. if `YtdlpError` → `! source-unavailable {reason: 원인 한 줄(비공개 · 삭제 · 지역 제한 · 네트워크를 가려 한국어로), hint: 추출기 오류면 'yt-dlp 업데이트' else None}`
+1. `raw = EXT: ytdlp.info(url)` — 정보만, 내려받기 없음. if `YtdlpError` → `! source-unavailable {reason: ytdlp.REASONS[e.kind], hint: 추출기 오류면 'yt-dlp 업데이트' else None}` — 이유는 분석 실패 알림과 같은 표의 명사구다([[VA-MS-007]] 0장). 화면이 '영상 정보를 가져오지 못했어요 — {이유}'로 보인다
 2. `vid = raw.id`
 3. 자막 — [[#captions.pick]]`(raw)` · 트랙이 있으면 `(has_captions, caption_language, caption_kind)` = `(True, 언어, manual 또는 auto)` · 없으면 `(False, None, None)`
-4. `→ SourceInfo(source_kind=youtube, source_id=vid, title=raw.title, channel=raw.channel 또는 uploader, duration_sec=int(raw.duration), origin=f"https://www.youtube.com/watch?v={vid}", has_captions, caption_language, caption_kind)` · if `duration`이 없음(라이브 · 예정) → `! source-unavailable {reason: 길이를 알 수 없는 영상}`
+4. `→ SourceInfo(source_kind=youtube, source_id=vid, title=raw.title, channel=raw.channel 또는 uploader, duration_sec=int(raw.duration), origin=f"https://www.youtube.com/watch?v={vid}", has_captions, caption_language, caption_kind)` · if `duration`이 없음(라이브 · 예정) → `! source-unavailable {reason: '길이를 알 수 없는 영상(라이브 · 예정)'}`
 
 **출력** `SourceInfo`
 
@@ -108,7 +108,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **호출하는 것** `ytdlp.info` ([[VA-MS-007#ytdlp.info]]) · [[#captions.pick]]
 
-**테스트 관점** 가짜 `ytdlp.info`로: 수동 ko + 자동 en-orig → `manual` · `ko` · 자동(원래 언어)만 → `auto` · 번역 자동 자막만 → `has_captions=False` · 자막 없음 → `has_captions=False` · 비공개 오류 → `source-unavailable`에 한국어 `reason` · 추출기 오류 → `hint` 있음 · `channel`이 없으면 `uploader`
+**테스트 관점** 가짜 `ytdlp.info`로: 수동 ko + 자동 en-orig → `manual` · `ko` · 자동(원래 언어)만 → `auto` · 번역 자동 자막만 → `has_captions=False` · 자막 없음 → `has_captions=False` · 비공개 오류 → `source-unavailable`의 `reason`이 '비공개 영상'(`ytdlp.REASONS`) · 시간 제한 초과 → 'YouTube 연결 실패' · 추출기 오류 → `hint` 있음 · `channel`이 없으면 `uploader`
 
 ---
 
