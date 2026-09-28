@@ -77,7 +77,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 **표에 없는 예외도 problem+json으로 나간다.** 서버는 포괄 핸들러로 `urn:va:internal`(500)을 만든다. 클라이언트가 problem+json을 전제로 파싱하는데 평문 500이 나가면 오류를 읽지도 못한다.
 
-**problem+json이 아닌 오류 응답은 api에 닿지 못한 것이다.** api는 늘 problem+json으로 답하므로, 평문 오류(예: 500 'Internal Server Error')는 web 프록시가 api에 닿지 못해 대신 답한 것이다. 화면은 fetch 자체가 실패한 것과 같이 서버에 닿지 못함으로 다룬다([[VA-UI-002#UI-1]] 규칙 — '…을 확인하지 못했어요 — 서버에 연결할 수 없음', 카드 B5).
+**problem+json이 아닌 오류 응답은 web 프록시가 대신 답한 것이다.** api는 늘 problem+json으로 답한다. 평문 오류(500 'Internal Server Error')는 web 프록시가 api 대신 답한 것이다 — api가 꺼졌거나, 프록시 시간 제한(60초, [[VA-DOM-002]] 6장)을 넘었다. 프록시는 둘을 같은 500으로 답해 가를 수 없다. 화면은 fetch 자체가 실패한 것과 같이 '서버에 연결할 수 없음'으로 다룬다([[VA-UI-002#UI-1]] 규칙, 카드 B5). 60초를 넘는 요청이 없게 하는 것이 먼저다 — 남은 하나는 큰 로컬 파일 등록의 해시다(VA-MS-001 미결, 카드 C).
 
 **에러 17종마다 라우터 테스트가 있다.** HTTP 응답으로 `type` · `status` · `content-type: application/problem+json` · 확장 필드를 본다. 화면이 `type`으로 입력 오류 · 배너 · 시작 불가 판을 고르기 때문이다(카드 B5).
 
