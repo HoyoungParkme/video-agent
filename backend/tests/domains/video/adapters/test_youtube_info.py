@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.config import config
 from app.core.errors import SourceUnavailable
 from app.domains.video.adapters.youtube_info import YouTubeInfoAdapter
 from app.infra import ytdlp
@@ -25,7 +26,7 @@ def raw(monkeypatch) -> dict:
         "automatic_captions": {"en-orig": [], "en": [], "ko": []},
     }
 
-    async def info(url: str) -> dict:
+    async def info(url: str, timeout: float | None = None) -> dict:
         return data
 
     monkeypatch.setattr(ytdlp, "info", info)
@@ -83,10 +84,23 @@ async def test_no_duration(raw) -> None:
     ],
 )
 async def test_ytdlp_errors(monkeypatch, kind, reason, hint) -> None:
-    async def info(url: str) -> dict:
+    async def info(url: str, timeout: float | None = None) -> dict:
         raise YtdlpError("ERROR: [youtube] abcdefghijk: Private video", kind)
 
     monkeypatch.setattr(ytdlp, "info", info)
     with pytest.raises(SourceUnavailable) as e:
         await YouTubeInfoAdapter().info(URL)
     assert e.value.extra == {"reason": reason, "hint": hint}  # 한국어 이유, 영어 원문은 싣지 않는다
+
+
+async def test_info_read_has_register_limit(monkeypatch) -> None:
+    # 등록 요청 안이라 INFO_TIMEOUT_SEC를 준다 — 파이프라인의 자막 고르기는 주지 않는다(MS-006 v13)
+    seen: list[float | None] = []
+
+    async def info(url: str, timeout: float | None = None) -> dict:
+        seen.append(timeout)
+        return {"id": "abcdefghijk", "title": "제목", "duration": 60}
+
+    monkeypatch.setattr(ytdlp, "info", info)
+    await YouTubeInfoAdapter().info(URL)
+    assert seen == [config.INFO_TIMEOUT_SEC]

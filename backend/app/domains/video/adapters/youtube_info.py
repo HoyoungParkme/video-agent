@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.core.config import config
 from app.core.errors import SourceUnavailable
 from app.domains.video.models import CaptionKind, SourceKind
 from app.domains.video.schemas import SourceInfo
@@ -32,7 +33,8 @@ class YouTubeInfoAdapter:
                 또는 길이가 없는 영상
         """
         try:
-            raw = await ytdlp.info(url)
+            # 등록 요청 안이라 사람이 기다린다 — 키 확인과 더해 web 프록시 60초 안(MS-007 0장)
+            raw = await ytdlp.info(url, timeout=config.INFO_TIMEOUT_SEC)
         except YtdlpError as e:
             raise SourceUnavailable(
                 reason=ytdlp.REASONS[e.kind], hint=HINT if e.kind == "extractor" else None
