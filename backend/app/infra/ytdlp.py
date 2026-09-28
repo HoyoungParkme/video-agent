@@ -18,13 +18,14 @@ from app.infra.errors import YtdlpError, YtdlpKind
 WATCH = "https://www.youtube.com/watch?v={}"
 
 # 실패 종류 → 사람에게 보일 이유 한 줄(명사구). 등록의 source-unavailable과 분석 실패 알림이 같이
-# 쓴다 — 표가 두 벌이면 같은 실패가 화면마다 다르게 적힌다(MS-007 0장)
+# 쓴다 — 표가 두 벌이면 같은 실패가 화면마다 다르게 적힌다(MS-007 0장). 줄표(—)는 넣지 않는다 —
+# 시작 불가 판이 '영상 정보를 가져오지 못했어요 — {이유}'로 뒤에 붙인다
 REASONS: dict[YtdlpKind, str] = {
     "private": "비공개 영상",
     "unavailable": "삭제되었거나 볼 수 없는 영상",
     "geo": "이 지역에서 볼 수 없는 영상",
     "network": "YouTube 연결 실패",
-    "extractor": "yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트",
+    "extractor": "yt-dlp가 영상을 읽지 못함(yt-dlp 업데이트 필요)",
     "other": "yt-dlp 오류",
 }
 

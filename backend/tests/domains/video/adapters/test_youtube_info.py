@@ -79,7 +79,7 @@ async def test_no_duration(raw) -> None:
         ("unavailable", "삭제되었거나 볼 수 없는 영상", None),
         ("geo", "이 지역에서 볼 수 없는 영상", None),
         ("network", "YouTube 연결 실패", None),
-        ("extractor", "yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트", "yt-dlp 업데이트"),
+        ("extractor", "yt-dlp가 영상을 읽지 못함(yt-dlp 업데이트 필요)", "yt-dlp 업데이트"),
         ("other", "yt-dlp 오류", None),
     ],
 )
