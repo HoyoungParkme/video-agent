@@ -327,6 +327,7 @@ h1, h2, p { margin: 0; }
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: var(--radius-10); background: transparent; color: var(--c-ink-2); cursor: pointer;
 }
+.icon-btn[aria-disabled="true"] { cursor: default; }
 .back-link {
   align-self: flex-start; height: var(--tap); display: flex; align-items: center; gap: var(--space-6);
   color: var(--c-ink-2); font-size: var(--text-15); text-decoration: none;
@@ -405,6 +406,29 @@ h1, h2, p { margin: 0; }
 .delete-box.is-gone { background: var(--c-danger-soft); }
 .delete-box.is-gone .delete-box-label { color: var(--c-danger-deep); }
 .delete-box.is-gone .delete-box-text { color: var(--c-danger-deepest); }
+
+/* UI-7 내보내기 — 다이얼로그(폭 660, 위 80) */
+.export { display: flex; flex-direction: column; gap: var(--space-20); }
+.export-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); }
+.export-method {
+  min-height: 84px; padding: var(--space-14) var(--space-16); display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-6);
+  border-radius: var(--radius-12); border: 2px solid var(--c-line); background: var(--c-card); color: var(--c-ink);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.export-method.is-on { border-color: var(--c-teal); background: var(--c-teal-soft); }
+.export-method[aria-disabled="true"] { cursor: default; }
+.export-method-name { display: flex; align-items: center; gap: var(--space-8); font-size: var(--text-16); font-weight: 600; }
+.export-method-path { font-family: var(--font-mono); font-size: var(--text-12); color: var(--c-ink-3); overflow-wrap: anywhere; }
+.export-method-note { font-size: var(--text-13); color: var(--c-ink-3); }
+.export-chat { min-height: var(--tap); display: flex; align-items: center; gap: var(--space-10); font-size: var(--text-15); cursor: pointer; }
+.export-chat input { width: 18px; height: 18px; margin: 0; accent-color: var(--c-teal); }
+.export-preview { display: flex; flex-direction: column; gap: var(--space-8); }
+.export-preview-label { font-size: var(--text-13); font-weight: 600; color: var(--c-ink-3); }
+/* 앞부분만 — 최대 높이에서 잘리고 스크롤하지 않는다(UI-7 4.1) */
+.export-preview-box {
+  margin: 0; max-height: 220px; overflow: hidden; padding: var(--space-16) var(--space-18); border-radius: var(--radius-12);
+  background: var(--c-ink); color: var(--c-preview-ink); font-family: var(--font-mono); font-size: var(--text-13); line-height: 1.7; white-space: pre-wrap;
+}
 
 /* UI-3 분석 진행 — 내용 폭 920px */
 .progress { max-width: 920px; margin: 0 auto; padding: var(--space-28) 0 var(--space-28); display: flex; flex-direction: column; gap: var(--space-24); }
