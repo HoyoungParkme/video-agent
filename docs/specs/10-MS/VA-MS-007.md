@@ -18,6 +18,8 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 **예외 클래스** — `infra/errors.py`에 셋: `YtdlpError(reason, kind)`(`kind` ∈ `private` · `unavailable` · `geo` · `network` · `extractor` · `other`), `FfmpegError(reason, returncode)`, `OpenAIOutputError(reason)`. OpenAI는 SDK 예외를 그대로 낸다(`APIConnectionError` · `APIStatusError` · `APITimeoutError`). 셋째는 모델 출력이 형식에 맞지 않을 때 [[#openai.chat_json]]이 다시 불러도 못 맞추면 던진다([[VA-MS-006]] 0장 「출력은 JSON 모드」). 어댑터 옆이 아니라 여기 두는 것은 파이프라인이 어댑터 묶음을 import하지 않고 종류를 가르게 하려는 것이다. 어댑터 · 파이프라인이 이것으로 `ErrorKind`를 정한다([[VA-MS-002#pipeline.error_kind]]).
 
+**yt-dlp 실패 이유** — `ytdlp.REASONS`는 `YtdlpError.kind` → 사람에게 보일 이유 한 줄(명사구) 표다: `private` '비공개 영상' · `unavailable` '삭제되었거나 볼 수 없는 영상' · `geo` '이 지역에서 볼 수 없는 영상' · `network` 'YouTube 연결 실패' · `extractor` 'yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트' · `other` 'yt-dlp 오류'. 등록의 `source-unavailable`([[VA-MS-006#youtube_info.info]])과 분석 실패 알림([[VA-MS-002#pipeline.reason_of]])이 같이 쓴다 — 표가 두 벌이면 같은 실패가 화면마다 다르게 적힌다(카드 B5, [[#openai.reason_of]]와 같은 이유)
+
 **자식 프로세스** — yt-dlp · ffmpeg는 `asyncio.create_subprocess_exec`로 띄운다(셸 없이, 인자 목록으로 — 경로에 공백 · 특수 문자가 있어도 안전). 표준 입력은 닫는다(`DEVNULL` — ffmpeg가 터미널 입력을 읽지 않게). 표준 오류는 모아서 예외 `reason`에 마지막 3줄을 넣는다. 시간 제한은 `config.PROC_TIMEOUT_SEC`(첫 값 1800 — 3시간 영상 추출도 30분이면 끝난다). **시간 제한을 넘거나 부른 쪽이 취소하면**(작업 취소 · 서버 끄기) 자식 프로세스를 죽이고 끝나기를 기다린다 — 주인 없이 돌며 임시 폴더에 쓰지 않게. 실행 파일을 띄우지 못하거나(없음 · 권한) JSON이어야 할 출력이 JSON이 아니면 그 모듈의 예외(`YtdlpError(kind=other)` · `FfmpegError`)로 낸다.
 
 **설정값(첫 값)**
@@ -25,6 +27,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | 이름 | 첫 값 | 이유 |
 |---|---|---|
 | `config.PROC_TIMEOUT_SEC` | 1800 | 자식 프로세스 상한 |
+| `config.INFO_TIMEOUT_SEC` | 40 | 등록 때 영상 정보 읽기([[#ytdlp.info]]) 상한. 누를 때의 키 확인(10초)과 더해도 web 프록시 60초([[VA-DOM-002]] 6장) 안에 든다. 넘으면 `kind=network` |
 | `config.YTDLP_BIN` · `config.FFMPEG_BIN` · `config.FFPROBE_BIN` | `yt-dlp` · `ffmpeg` · `ffprobe` | 이미지에 든 실행 파일([[VA-INFRA-001#C8]]) |
 | `config.OPENAI_TIMEOUT_SEC` | 120 | 조각 하나 받아쓰기 · 긴 요약 호출의 상한 |
 | `config.OPENAI_BASE_URL` | None | OpenAI 주소. 비우면 공식 주소. E2E가 가짜 OpenAI 서버를 가리킬 때만 채운다 — 사용자가 채울 값이 아니다 |
@@ -61,7 +64,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 근거: [[VA-INFRA-001#C7]] · [[VA-MS-006#youtube_info.info]] · [[VA-MS-006#audio_source.captions]]
 
 **처리**
-1. `PROC: yt-dlp --dump-single-json --skip-download --no-playlist --no-warnings {url}` — 정보만. 재생 목록 주소면 그 영상 하나만
+1. `PROC: yt-dlp --dump-single-json --skip-download --no-playlist --no-warnings {url}` — 정보만. 재생 목록 주소면 그 영상 하나만. 시간 제한은 `config.INFO_TIMEOUT_SEC`다(다른 yt-dlp 호출은 `PROC_TIMEOUT_SEC`) — 등록 요청 안에서 돌아 사람이 기다린다
 2. if 종료 코드 ≠ 0 → 표준 오류에서 종류를 가른다(대소문자 무시, **앞의 것이 이긴다** — YouTube는 비공개 · 지역 제한도 `Video unavailable.`로 시작한다): `Private video` · `video is private` → `private` · `available in your country` · `geo restriction` → `geo` · `Video unavailable` · `removed` → `unavailable` · `Unable to download webpage` · `getaddrinfo` · `timed out` → `network` · `Unsupported URL` · `Unable to extract` → `extractor` · 그 밖 → `other` · `! YtdlpError(reason=표준 오류 끝 3줄, kind)`
 3. `→ json.loads(표준 출력)` — `id` · `title` · `channel` · `uploader` · `duration` · `subtitles` · `automatic_captions` · `is_live`를 쓴다
 
@@ -69,7 +72,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 **예외** `YtdlpError`
 
-**테스트 관점** 고정 JSON을 내는 가짜 실행 파일로: 필드가 그대로 · 종료 코드 1 + 'Private video' → `kind=private` · 'Video unavailable. The uploader has not made this video available in your country' → `geo` · 'Unable to extract' → `extractor` · 시간 제한 초과 → `YtdlpError(kind=network)` · 셸을 거치지 않는다(인자에 `;`가 있어도 명령이 안 된다) · 실행 파일이 없음 · 표준 출력이 JSON이 아님 → `YtdlpError(kind=other)` · 부른 쪽이 취소하면 자식 프로세스가 죽는다
+**테스트 관점** 고정 JSON을 내는 가짜 실행 파일로: 필드가 그대로 · 종료 코드 1 + 'Private video' → `kind=private` · 'Video unavailable. The uploader has not made this video available in your country' → `geo` · 'Unable to extract' → `extractor` · `INFO_TIMEOUT_SEC` 초과 → `YtdlpError(kind=network)` · 셸을 거치지 않는다(인자에 `;`가 있어도 명령이 안 된다) · 실행 파일이 없음 · 표준 출력이 JSON이 아님 → `YtdlpError(kind=other)` · 부른 쪽이 취소하면 자식 프로세스가 죽는다
 
 ---
 
