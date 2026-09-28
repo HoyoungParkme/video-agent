@@ -1,6 +1,7 @@
 """/api/inbox · /api/videos · /api/videos/{id} — HTTP 입출력만(VA-API-001 3.2 · 3.3).
 
-라우터가 서비스 둘을 차례로 부르는 곳이 있다 — 등록 뒤의 예상치(JobService.estimate).
+라우터가 서비스 둘을 차례로 부르는 곳이 있다 — 등록 뒤의 예상치(JobService.estimate), 삭제 전의
+취소와 삭제 뒤의 깨우기(JobService.cancel · wake).
 판단 없이 A의 결과를 B에 넘길 뿐이다(VA-DOM-002 3.1). 다른 묶음의 라우터도
 video_service로 영상을 먼저 읽는다.
 """
@@ -13,7 +14,6 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
-from app.core.errors import NotImplementedYet
 from app.domains.job.service import JobService
 from app.domains.video.schemas import (
     InboxListing,
@@ -68,6 +68,11 @@ async def get_video(video_id: int, videos: Videos) -> VideoDetail:
 
 
 @router.delete("/videos/{video_id}", status_code=204)
-async def delete_video(video_id: int) -> None:
-    """영상 삭제 — 스텁(B4)."""
-    raise NotImplementedYet("삭제는 아직 지원하지 않아요")
+async def delete_video(video_id: int, videos: Videos, jobs: Jobs) -> None:
+    """영상과 딸린 것 전부. 도는 작업을 먼저 멈추고, 지운 뒤 워커를 깨운다(SEQ-11).
+
+    깨우기가 먼저면 워커가 곧 지워질 행을 꺼내거나, 취소된 작업의 running 행 때문에 다시 잠든다.
+    """
+    await jobs.cancel(video_id)
+    await videos.delete(video_id)
+    jobs.wake()
