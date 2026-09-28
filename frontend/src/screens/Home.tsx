@@ -244,10 +244,8 @@ export default function Home() {
     othersRunning: boolean;
   } | null>(null);
   const [cannot, setCannot] = useState<BlockedInfo | null>(null);
-  // 처음 열면 맨 위 파일이 골라져 있다. 고른 파일이 다시 받은 목록에 없으면 다시 맨 위(UI-1 규칙)
-  const chosen = inbox?.files.some((f) => f.name === picked)
-    ? picked
-    : (inbox?.files[0]?.name ?? null);
+  // 처음 열면 맨 위 파일이 골라져 있다(UI-1 규칙)
+  const chosen = picked ?? inbox?.files[0]?.name ?? null;
   const inboxEmpty = inbox !== null && inbox.files.length === 0;
   // 키를 받기 전에는 막지 않는다 — 받은 뒤 막힘이 정해진다
   const blocked = settings ? keyBlocks(settings.key) : false;
@@ -337,7 +335,12 @@ export default function Home() {
     } catch (e) {
       if (keyFailed(e)) return; // 배너만
       setCannot(blockedOf(e, "file"));
-      if (e instanceof ApiError && e.kind === "not-found") reloadInbox(); // inbox에서 사라진 파일
+      if (e instanceof ApiError && e.kind === "not-found") {
+        // inbox에서 사라진 파일 — 목록을 다시 받고 처음 열 때처럼 맨 위를 고른다. 고른 이름을 남겨
+        // 두면 같은 이름의 파일이 돌아왔을 때 누르지 않은 파일로 옮겨 간다(UI-1 규칙)
+        setPicked(null);
+        reloadInbox();
+      }
     } finally {
       setBusy(null);
     }
