@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from sqlalchemy import func, select
 
-from app.core.errors import ResultNotReady
+from app.core.config import config
+from app.core.errors import ExportFailed, ResultNotReady
 from app.domains.analysis import crud
 from app.domains.analysis.models import (
     ChapterRow,
@@ -474,3 +477,48 @@ async def test_export_markdown_needs_result(db, make) -> None:
     video = await _video(db, make, JobStatus.running)
     with pytest.raises(ResultNotReady):
         await AnalysisService(db).export_markdown(video, False, [])
+
+
+async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))  # 폴더가 아직 없다
+    video = await _analyzed(db, make, summarizer, youtube, title="RAG 서비스 1년 운영기")
+    svc = AnalysisService(db)
+    done = await svc.export_to_file(video, False, [])
+    pre = await svc.export_markdown(video, False, [])
+    written = tmp_path / "data" / "export" / "RAG 서비스 1년 운영기.md"
+    assert written.read_text(encoding="utf-8") == pre.markdown  # 같은 마크다운을 다시 만든다
+    assert (done.filename, done.path, done.bytes) == (
+        pre.filename,
+        "data/export/RAG 서비스 1년 운영기.md",
+        len(pre.markdown.encode()),
+    )
+    assert oct(written.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
+    await svc.export_to_file(video, True, [])  # 두 번 저장하면 덮어쓴다
+    assert written.read_text(encoding="utf-8").endswith("질문 기록이 없습니다\n")
+    assert [p.name for p in written.parent.iterdir()] == [written.name]  # 임시 파일이 남지 않는다
+
+
+async def test_export_to_file_where_folder_is_a_file(
+    db, make, summarizer, youtube, env_file, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    (tmp_path / "export").write_text("")  # 저장 폴더 자리에 파일
+    video = await _analyzed(db, make, summarizer, youtube, title="제목")
+    with pytest.raises(ExportFailed) as e:
+        await AnalysisService(db).export_to_file(video, False, [])
+    assert e.value.extra == {
+        "path": "data/export/제목.md",  # 보일 경로
+        "reason": "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)",
+    }
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root는 읽기 전용 폴더에도 쓴다")
+async def test_export_to_file_without_permission(
+    db, make, summarizer, youtube, env_file, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    (tmp_path / "export").mkdir(mode=0o555)
+    video = await _analyzed(db, make, summarizer, youtube, title="제목")
+    with pytest.raises(ExportFailed) as e:
+        await AnalysisService(db).export_to_file(video, False, [])
+    assert e.value.extra["reason"] == "쓰기 권한이 없음"

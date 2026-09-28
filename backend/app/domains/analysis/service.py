@@ -7,15 +7,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import errno
+import os
 import re
+import tempfile
 import unicodedata
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
-from app.core.errors import ResultNotReady
+from app.core.errors import ExportFailed, ResultNotReady
 from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.models import TranscriptSource
@@ -24,6 +28,7 @@ from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
     ExportPreview,
+    ExportResult,
     Insight,
     Part,
     Result,
@@ -49,6 +54,17 @@ NAME_MAX = 80
 # 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
 # config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
 EXPORT_SHOWN = "data/export"
+# 파일을 쓰지 못한 까닭 — errno로 고른 한 줄(MS-003 v5).
+# 화면이 '파일을 저장하지 못했어요 — {이유}'로 보인다
+_NO_FOLDER = "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)"
+WRITE_REASONS = {
+    errno.EACCES: "쓰기 권한이 없음",
+    errno.EPERM: "쓰기 권한이 없음",
+    errno.ENOSPC: "디스크 공간이 부족함",
+    errno.EROFS: "읽기 전용 폴더",
+    errno.EEXIST: _NO_FOLDER,
+    errno.ENOTDIR: _NO_FOLDER,
+}
 
 
 def _tokens(segments: list[Segment]) -> int:
@@ -95,6 +111,21 @@ def _sample(segments: list[Segment], limit: int) -> list[Segment]:
     around = sorted(segments, key=lambda s: abs(s.seq - segments[mid].seq))
     picked = take(segments) + take(around) + take(segments[::-1])
     return sorted({s.seq: s for s in picked}.values(), key=lambda s: s.seq)
+
+
+def _write(folder: Path, name: str, data: bytes) -> None:
+    # 같은 폴더의 임시 파일에 쓴 뒤 바꿔 끼운다 — 쓰다 멈춰도 반쯤 쓴 파일이 남지 않는다.
+    # mkstemp는 0600으로 만들어 보통 파일처럼(0644) 읽히게 바꾼다 — 노트 앱이 읽는 파일이다
+    folder.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".export-", suffix=".md")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, folder / name)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 class AnalysisService:
@@ -481,3 +512,32 @@ class AnalysisService:
         name = self.filename_for(video)
         md = export.build(result, turns if with_chat else None)
         return ExportPreview(filename=name, path=f"{EXPORT_SHOWN}/{name}.md", markdown=md)
+
+    async def export_to_file(
+        self, video: Video, with_chat: bool, turns: list[ChatTurn]
+    ) -> ExportResult:
+        """VA-MS-003#AnalysisService.export_to_file
+
+        같은 마크다운을 다시 만들어 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않는다.
+        같은 이름이 있으면 덮어쓴다. 폴더가 없으면 만든다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상
+            with_chat: 질문 기록을 맨 끝에 붙일지
+            turns: 그 영상의 대화 턴. with_chat이 거짓이면 안 쓴다
+
+        Returns:
+            파일 이름 · 보일 경로 · 쓴 바이트 수
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+            ExportFailed: 쓰지 못했다(path는 보일 경로, reason은 errno로 고른 한 줄)
+        """
+        pre = await self.export_markdown(video, with_chat, turns)
+        data = pre.markdown.encode("utf-8")
+        try:
+            await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{pre.filename}.md", data)
+        except OSError as e:
+            reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
+            raise ExportFailed(path=pre.path, reason=reason) from e
+        return ExportResult(filename=pre.filename, path=pre.path, bytes=len(data))
