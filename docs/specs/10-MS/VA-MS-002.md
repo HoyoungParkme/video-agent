@@ -176,14 +176,14 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **처리**
 1. `task = self.tasks.get(video_id)` · if 없음 → `→ None` (돌고 있지 않다 — 대기 중 · 실패 · 완료. 대기 중인 작업은 행이 지워지면 대기열에서 빠진 것이다)
-2. `task.cancel()` · `await task`를 `CancelledError`를 삼키며 기다린다 — 파이프라인이 열어 둔 세션이 닫힐 때까지
+2. `task.cancel()` · `await asyncio.wait({task})`로 끝나기를 기다린다 — 파이프라인이 열어 둔 세션과 조각 태스크가 닫힐 때까지. `wait`는 태스크의 `CancelledError`를 올리지 않는다. `await task`를 `except CancelledError`로 감싸면 삭제 요청 자신이 취소될 때 그 취소까지 삼킨다
 3. `→ None`. 행은 건드리지 않는다 — 라우터가 이어서 부르는 `VideoService.delete`의 cascade가 지운다. **워커를 깨우지 않는다** — 라우터가 삭제 뒤에 [[#JobService.wake]]를 부른다(시퀀스 되먹임 #8)
 
 **출력** 없음
 
 **호출하는 것** 없음
 
-**테스트 관점** 돌고 있는 작업을 취소하면 태스크가 끝나 있다(`task.done()`) · 취소 뒤 DB에 반쯤 쓰인 행이 없다 · 없는 영상에 불러도 예외 없음
+**테스트 관점** 돌고 있는 작업을 취소하면 태스크가 끝나 있다(`task.done()`) · 받아쓰기 중(조각 태스크가 도는 중)에 취소해도 조각 태스크가 모두 끝나 있다 · 취소 뒤 DB에 반쯤 쓰인 행이 없다 · 없는 영상에 불러도 예외 없음
 
 ---
 

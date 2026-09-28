@@ -26,7 +26,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 | `config.TEXT_TOKEN_LIMIT` | 40000 | 한 번에 보내는 스크립트 토큰 상한. 분당 200토큰이면 200분이라 3시간 상한 안의 영상은 대부분 한 번에 간다 — 말이 아주 빠르거나 글자가 많은 스크립트만 구간 처리로 간다 |
 | `config.CHAPTER_MINUTES` | 6 | 챕터 하나가 맡는 분. 목표 챕터 수 = 길이(분) ÷ 6 |
 | `config.PART_THRESHOLD_SEC` | 3600 | 이보다 길면 파트를 만든다([[VA-PRD-001#R5]]) |
-| `config.EXPORT_DIR` | `data/export` | 파일로 저장 위치([[VA-UI-001]] 7장 14) |
+| `config.EXPORT_DIR` | `{DATA_DIR}/export` | 파일로 저장하는 곳([[VA-UI-001]] 7장 14). 컨테이너 안에서는 `/app/data/export`다 — 화면에는 이 경로가 아니라 보일 경로 `data/export/{파일 이름}.md`를 준다(저장소 폴더 기준, compose가 `./data`를 붙인다. inbox의 `INBOX_DISPLAY_PATH`와 같은 이유) |
 
 **요약 · 챕터 · 추천 질문의 실행 순서는 파이프라인이 정한다** — 핵심 요약 → 챕터 → 추천 질문([[VA-DOM-002]] 5장 10). 세 함수는 서로를 부르지 않고 각자 `segments`를 읽는다.
 
@@ -205,7 +205,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 **처리**
 1. `result = result_of(video)` — `result-not-ready`는 여기서 난다
 2. `md = export.build(result, turns if with_chat else None)`
-3. `name = filename_for(video)` · `→ ExportPreview(filename=name, path=f"{config.EXPORT_DIR}/{name}.md", markdown=md)`
+3. `name = filename_for(video)` · `→ ExportPreview(filename=name, path=f"data/export/{name}.md", markdown=md)` — `path`는 보일 경로다(UI-7 2.1 · 짧은 알림). 쓰는 곳은 `export_to_file`이 `config.EXPORT_DIR`로 정한다
 
 **출력** `ExportPreview`. `markdown`은 전체 — 화면이 앞부분만 보이고 클립보드는 전체를 쓴다
 
@@ -225,7 +225,16 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **처리**
 1. `pre = export_markdown(video, with_chat, turns)` — 같은 마크다운을 다시 만든다. 화면이 보낸 본문을 쓰지 않는다
-2. `FS: mkdir(config.EXPORT_DIR)` · `FS: pre.path에 UTF-8로 쓰기(덮어쓰기, 임시 파일에 쓴 뒤 rename)` · if `OSError` → `! export-failed {path, reason: 오류 문구 한 줄}`
+2. `FS: mkdir(config.EXPORT_DIR)` · `FS: {config.EXPORT_DIR}/{pre.filename}.md에 UTF-8로 쓰기(덮어쓰기, 같은 폴더의 임시 파일에 쓴 뒤 rename)` · if `OSError` → `! export-failed {path: pre.path, reason}` — `path`는 보일 경로, `reason`은 errno로 고른 한 줄이다(화면이 '파일을 저장하지 못했어요 — {이유}'로 보인다, [[VA-UI-002#UI-7]] 5.1)
+
+| errno | reason |
+|---|---|
+| `EACCES` · `EPERM` | 쓰기 권한이 없음 |
+| `ENOSPC` | 디스크 공간이 부족함 |
+| `EROFS` | 읽기 전용 폴더 |
+| `EEXIST` · `ENOTDIR` | 저장 폴더를 만들 수 없음(그 자리에 파일이 있다) |
+| 그 밖 | 파일을 쓸 수 없음 |
+
 3. `→ ExportResult(filename=pre.filename, path=pre.path, bytes=쓴 바이트 수)`
 
 **출력** `ExportResult`(201)
@@ -234,7 +243,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** [[#AnalysisService.export_markdown]]
 
-**테스트 관점** 파일이 생기고 내용이 `export_markdown`과 같다 · 두 번 저장하면 덮어쓴다 · 폴더가 없으면 만든다 · 쓸 수 없는 폴더 → `export-failed`에 `path`
+**테스트 관점** 파일이 `config.EXPORT_DIR`에 생기고 내용이 `export_markdown`과 같다 · 두 번 저장하면 덮어쓴다 · 폴더가 없으면 만든다 · 폴더 자리에 파일이 있으면 `export-failed`(`path`는 보일 경로, `reason` '저장 폴더를 만들 수 없음(그 자리에 파일이 있다)') · 임시 파일이 남지 않는다
 
 ---
 
@@ -276,7 +285,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 3. 빈 줄 · `> {summary.one_liner}`
 4. `## 핵심 인사이트` · 인사이트마다 `{seq}. {text} {L(source_secs[0])} {L(…)}` — 시각은 문장 끝에 전부
 5. `## 챕터` · if 파트 있음 → 파트마다 `### {part.title} ({T(start)} – {T(end)})` 아래에 챕터 · 챕터는 `#### {L(start_sec)} {title}`와 `- {bullet}` ×N · 파트 없으면 챕터를 `### {L(start_sec)} {title}`로
-6. `## 스크립트` · 구간마다 `{L(start_sec)} {text}` 한 줄 · 출처 한 줄을 절 제목 아래에: `자막(수동) · ko` 꼴(화면 8.1과 같은 문구)
+6. `## 스크립트` · 출처 한 줄을 절 제목 아래에 · 구간마다 `{L(start_sec)} {text}` 한 줄. 출처 줄은 화면 8.1과 같은 문구다 — `자막(수동) · {언어}` · `자막(자동) · {언어}` · `받아쓰기 {transcript.model} · {언어}`. {언어}는 언어 코드의 이름(ko 한국어 · en 영어 · ja 일본어 · zh 중국어 · es 스페인어 · fr 프랑스어 · de 독일어 · pt 포르투갈어 · ru 러시아어 · vi 베트남어, 표에 없으면 코드 그대로)이고 표는 화면(`frontend/src/labels.ts`)과 같은 사본이다 — 서버와 화면이 따로 그려 한 벌로 둘 수 없다
 7. if `turns is not None` → `## 질문 기록` · 턴마다 `**Q.** {question}` · `**A.** {answer}` · 근거가 있으면 `근거: {L(sec)} …` · 빈 줄 · 턴이 없으면 `질문 기록이 없습니다`
 8. `→ 문자열` (줄바꿈 `\n`, 끝에 빈 줄 하나)
 
@@ -284,7 +293,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** [[#export.timecode]] · [[#export.link]]
 
-**테스트 관점** 스냅샷 테스트: 자막 있는 50분 YouTube 결과 → 예상 문자열과 일치 · 로컬 150분 결과(파트 있음) → 원본 줄에 링크 없음, 파트 제목 줄 있음, 시각이 `h:mm:ss` · `turns=None`과 `[]`의 차이 · 인사이트의 시각 두 개가 모두 나온다
+**테스트 관점** 스냅샷 테스트: 자막 있는 50분 YouTube 결과 → 예상 문자열과 일치 · 로컬 150분 결과(파트 있음) → 원본 줄에 링크 없음, 파트 제목 줄 있음, 시각이 `h:mm:ss` · `turns=None`과 `[]`의 차이 · 인사이트의 시각 두 개가 모두 나온다 · 출처 줄이 화면 8.1과 같다(`자막(수동) · 한국어` · `받아쓰기 whisper-1 · 한국어`)
 
 ---
 
@@ -317,7 +326,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 ## 3. 미결사항
 
 - [x] (반영: 클래스 명세 v10) **되먹임** — `clamp_secs`가 가장 가까운 구간 시각으로 보정하려면 `segments`를 받아야 한다. 클래스 명세 4.3의 `clamp_secs(secs, duration_sec)`에 인자 하나를 더한다([[VA-DOM-002#AnalysisService]]). 시그니처만 바뀌고 규칙은 그대로
-- [ ] 같은 제목의 영상 둘을 내보내면 파일이 서로 덮어쓴다(`filename_for`). 뒤에 `-{id}`를 붙일지 사용자 확인 — 붙이면 화면의 경로 표시도 바뀐다
+- [x] 같은 제목의 영상 둘을 내보내면 파일이 서로 덮어쓴다(`filename_for`). 뒤에 `-{id}`를 붙일지 — 결정(사용자 2026-09-28): 붙이지 않는다. 제목만 쓰고 같은 이름이면 덮어쓴다 — 노트 앱에서 보기 좋은 이름을 두고, 저장 경로는 UI-7 2.1이 미리 보인다
 - [ ] 스크립트 토큰 수 세기 — `tiktoken`으로 정확히 셀지, 글자 수 ÷ 2로 어림할지. 첫 버전은 어림(의존성 없음). `config.TEXT_TOKEN_LIMIT`가 여유 있으니 오차가 문제되지 않는다
 - [ ] 파트 제목 — 포트가 파트를 안 주면 첫 챕터 제목을 쓴다(`generate_chapters` 5번). 파트 제목만 따로 모델에 묻는 호출을 더할지
 - [ ] 중간 요약을 재료로 한 최종 요약의 품질 — 챕터를 재료로 쓰는 [[VA-UC-001#UC-S4]] 1a2와 결과가 다를 수 있다. 품질을 보고 실행 순서(챕터 먼저)로 되돌릴지([[VA-DOM-002]] 5장 10)
