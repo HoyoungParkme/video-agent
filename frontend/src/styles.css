@@ -363,6 +363,8 @@ h1, h2, p { margin: 0; }
 .video-row-status.is-done { font-weight: 400; }
 .video-row-status.is-active { color: var(--c-teal); }
 .video-row-status.is-failed { color: var(--c-danger); }
+.video-row-trash { color: var(--c-caption); }
+.video-row-trash:hover { color: var(--c-danger); }
 .mini-bar { width: 160px; height: 4px; border-radius: var(--radius-2); background: var(--c-line); display: block; overflow: hidden; }
 .mini-bar-fill { height: 4px; display: block; background: var(--c-teal); }
 
