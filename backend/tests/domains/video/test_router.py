@@ -6,8 +6,10 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from app.core.config import config
+from app.core.errors import SourceUnavailable
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
+from app.infra.openai import ReasonKind
 
 PROBLEM = "application/problem+json"
 URL = "https://youtu.be/dQw4w9WgXcQ"
@@ -177,3 +179,41 @@ async def test_delete_queued_moves_queue_up(api, make) -> None:
     assert (await api.get(last)).json()["queue_position"] == 2
     assert (await api.delete(f"/api/videos/{rows[0].id}")).status_code == 204
     assert (await api.get(last)).json()["queue_position"] == 1  # 차례가 당겨진다
+
+
+def _problem(r, status: int, kind: str) -> dict:
+    # problem+json 모양 — 공통 넷(type · title · status · detail)과 content-type(API-001 2장)
+    assert (r.status_code, r.headers["content-type"]) == (status, PROBLEM)
+    body = r.json()
+    assert (body["type"], body["status"]) == (f"urn:va:{kind}", status)
+    assert body["title"] and body["detail"]
+    return body
+
+
+async def test_register_problems(api, key, verify, youtube, probe, tmp_path, monkeypatch) -> None:
+    """등록이 내는 에러 — 종류마다 problem+json과 확장 필드. 화면이 시작 불가 판 · 배너를 고른다."""
+    yt = {"source": "youtube", "url": URL}
+    youtube.error = SourceUnavailable(reason="비공개 영상", hint=None)
+    body = _problem(await api.post("/api/videos", json=yt), 502, "source-unavailable")
+    assert (body["reason"], body["hint"]) == ("비공개 영상", None)
+
+    youtube.error, youtube.duration = None, 15150  # 4:12:30
+    body = _problem(await api.post("/api/videos", json=yt), 422, "video-too-long")
+    assert (body["duration_sec"], body["max_sec"]) == (15150, 10800)
+
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    local = {"source": "local", "path": "notes.txt"}
+    body = _problem(await api.post("/api/videos", json=local), 422, "unsupported-file")
+    assert body["reason"] and "mp4" in body["accepted"]
+    local["path"] = "../a.mp4"
+    _problem(await api.post("/api/videos", json=local), 422, "path-outside-inbox")
+    (tmp_path / "marathon.mp4").write_bytes(b"x")
+    probe.files = {"marathon.mp4": (15150, True)}
+    local["path"] = "marathon.mp4"
+    body = _problem(await api.post("/api/videos", json=local), 422, "video-too-long")
+    assert body["duration_sec"] == 15150
+
+    verify.fail = ReasonKind.auth  # 누를 때 키 확인이 실패한다 — 다른 무엇보다 먼저
+    body = _problem(await api.post("/api/videos", json=yt), 503, "key-invalid")
+    assert (body["reason_kind"], body["reason"]) == ("auth", "인증에 실패했습니다")
+    assert body["checked_at"]

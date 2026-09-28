@@ -1,5 +1,6 @@
 // 가짜 OpenAI — E2E의 api가 여기로 보낸다(VA-MS-007 openai.client의 base_url).
-// 키 확인(GET /v1/models): 맞는 키는 하나뿐이고 나머지는 인증 실패(401).
+// 키 확인(GET /v1/models): 맞는 키는 하나뿐이고 나머지는 인증 실패(401). /control의 models로 키 확인만
+// 끊거나(drop — 인터넷 끊김) 맞는 키도 거절한다(401 — 저장한 뒤 키가 폐기됨).
 // 채팅(POST /v1/chat/completions): system 문구로 요약 · 챕터 · 추천 질문 · 질문 답변을 가려 JSON을 준다.
 // 답변은 받은 스크립트의 첫 · 끝 시각과 앞선 턴으로 흉내 내고, 받은 것을 기록(asks)에 남긴다.
 // 1시간 넘는 영상(챕터 지시에 '파트 2~5개')이면 파트로 묶은 챕터를 준다. 시각은 스크립트(100초마다 한 줄) 안에 든다.
@@ -18,6 +19,7 @@ const state = {
   sttDelayMs: 0,
   sttFail: null, // { seq, times, drop? } — 그 조각을 times번 실패시킨다. drop이면 500 대신 연결을 끊는다
   chatFail: 0, // 다음 채팅 몇 번을 500으로
+  models: null, // 키 확인 — null이면 보통, "drop"이면 연결을 끊고, 401이면 맞는 키도 거절한다
   transcribed: [], // 받아쓴 조각 번호(성공한 것), 받은 차례대로
   asks: [], // 답한 질문마다 { question, history(앞선 턴 수), first, last(받은 스크립트의 첫 · 끝 시각) }
 };
@@ -181,17 +183,19 @@ createServer(async (req, res) => {
       // 비우기가 먼저 — 같은 요청의 설정값을 지우지 않게. 남은 실패도 비운다(앞 테스트가 도중에 끝났을 때)
       if (body.reset) {
         Object.assign(state, { chats: 0, transcriptions: 0, transcribed: [], asks: [] });
-        Object.assign(state, { sttFail: null, chatFail: 0 });
+        Object.assign(state, { sttFail: null, chatFail: 0, models: null });
       }
       if (typeof body.chat_delay_ms === "number") state.chatDelayMs = body.chat_delay_ms;
       if (typeof body.stt_delay_ms === "number") state.sttDelayMs = body.stt_delay_ms;
       if (body.stt_fail !== undefined) state.sttFail = body.stt_fail;
       if (typeof body.chat_fail === "number") state.chatFail = body.chat_fail;
+      if (body.models !== undefined) state.models = body.models;
     }
     return send(res, 200, state);
   }
   if (req.method === "GET" && req.url?.startsWith("/v1/models")) {
-    if (req.headers.authorization === `Bearer ${GOOD_KEY}`) {
+    if (state.models === "drop") return req.socket.destroy(); // 인터넷 끊김
+    if (state.models === null && req.headers.authorization === `Bearer ${GOOD_KEY}`) {
       return send(res, 200, {
         object: "list",
         data: [{ id: "gpt-5-mini", object: "model", created: 0, owned_by: "openai" }],

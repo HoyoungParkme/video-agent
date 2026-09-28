@@ -32,7 +32,7 @@ from app.domains.job.models import AudioChunkRow, ChunkState, ErrorKind, JobStag
 from app.domains.job.ports import AudioSourcePort, AudioSplitPort, SttPort
 from app.domains.job.schemas import JobError
 from app.domains.job.service import JobService
-from app.infra import openai
+from app.infra import openai, ytdlp
 from app.infra.errors import FfmpegError, OpenAIOutputError, YtdlpError
 
 if TYPE_CHECKING:
@@ -49,15 +49,6 @@ summarizer: SummarizerPort | None = None
 # 내려받기 · 추출 · 로컬 음성 변환이 쓰는 이름(infra/ffmpeg.extract_audio)
 AUDIO_NAME = "audio.mp3"
 _HANGUL = re.compile(r"[가-힣]")
-# yt-dlp 실패 종류 → 이유 한 줄(실패 알림 본문의 '왜')
-_YTDLP_REASONS = {
-    "private": "비공개 영상",
-    "unavailable": "삭제되었거나 볼 수 없는 영상",
-    "geo": "이 지역에서 볼 수 없는 영상",
-    "network": "YouTube 연결 실패",
-    "extractor": "yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트",
-    "other": "yt-dlp 오류",
-}
 
 
 def _need[P](port: P | None, name: str) -> P:
@@ -129,7 +120,8 @@ def reason_of(e: BaseException) -> str:
     if kind == ErrorKind.openai:
         return openai.reason_of(e)  # 질문 답변 실패와 같은 표
     if kind == ErrorKind.youtube:
-        return _YTDLP_REASONS.get(getattr(e, "kind", "other"), _YTDLP_REASONS["other"])
+        # 등록의 source-unavailable과 같은 표(MS-007 0장)
+        return ytdlp.REASONS.get(getattr(e, "kind", "other"), ytdlp.REASONS["other"])
     if kind == ErrorKind.ffmpeg:
         return "ffmpeg 처리 실패"
     if kind == ErrorKind.disk:

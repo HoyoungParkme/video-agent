@@ -6,6 +6,8 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 export const GOOD_KEY = "sk-e2e-good-000000000000000000"; // e2e/fake-openai.mjs와 같은 값
 // E2E api의 데이터 폴더(playwright.config.ts의 DATA_DIR) — 내보낸 파일 · 임시 폴더를 본다
 export const DATA = path.join(__dirname, ".tmp", "data");
+// E2E inbox(playwright.config.ts의 INBOX_DIR) — 파일을 넣고 지워 본다
+export const INBOX = path.join(__dirname, ".tmp", "inbox");
 const FAKE = "http://127.0.0.1:8190";
 
 export const el = (page: Page, no: string) => page.locator(`[data-el="${no}"]`);
@@ -31,6 +33,7 @@ export interface FakeState {
   sttDelayMs: number;
   sttFail: { seq: number; times: number; drop?: boolean } | null;
   chatFail: number;
+  models: "drop" | 401 | null;
   /** 받아쓴 조각 번호(성공한 것), 받은 차례대로 */
   transcribed: number[];
   /** 답한 질문마다 — 앞선 턴 수와 받은 스크립트의 첫 · 끝 시각 */
@@ -39,7 +42,8 @@ export interface FakeState {
 
 /**
  * 가짜 OpenAI를 조절하거나 지금 값을 읽는다 — 채팅 · 받아쓰기 지연, 조각 하나를 몇 번 실패시킬지
- * (drop이면 500 대신 연결을 끊는다 — 인터넷 끊김), 다음 채팅 몇 번을 실패시킬지.
+ * (drop이면 500 대신 연결을 끊는다 — 인터넷 끊김), 다음 채팅 몇 번을 실패시킬지, 키 확인(models)을
+ * 끊을지(drop) 맞는 키도 거절할지(401).
  * reset이면 부른 수 · 받은 조각 기록 · 남은 실패를 비운다(같은 요청의 설정값은 그 뒤에 들어간다).
  */
 export async function fakeOpenAI(
@@ -49,6 +53,7 @@ export async function fakeOpenAI(
     stt_delay_ms?: number;
     stt_fail?: { seq: number; times: number; drop?: boolean } | null;
     chat_fail?: number;
+    models?: "drop" | 401 | null;
     reset?: boolean;
   } = {},
 ): Promise<FakeState> {

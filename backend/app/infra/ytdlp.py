@@ -17,6 +17,18 @@ from app.infra.errors import YtdlpError, YtdlpKind
 
 WATCH = "https://www.youtube.com/watch?v={}"
 
+# 실패 종류 → 사람에게 보일 이유 한 줄(명사구). 등록의 source-unavailable과 분석 실패 알림이 같이
+# 쓴다 — 표가 두 벌이면 같은 실패가 화면마다 다르게 적힌다(MS-007 0장). 줄표(—)는 넣지 않는다 —
+# 시작 불가 판이 '영상 정보를 가져오지 못했어요 — {이유}'로 뒤에 붙인다
+REASONS: dict[YtdlpKind, str] = {
+    "private": "비공개 영상",
+    "unavailable": "삭제되었거나 볼 수 없는 영상",
+    "geo": "이 지역에서 볼 수 없는 영상",
+    "network": "YouTube 연결 실패",
+    "extractor": "yt-dlp가 영상을 읽지 못함(yt-dlp 업데이트 필요)",
+    "other": "yt-dlp 오류",
+}
+
 # 앞의 것이 이긴다 — YouTube는 비공개 · 지역 제한도 'Video unavailable. …'로 시작한다
 _KINDS: list[tuple[YtdlpKind, tuple[str, ...]]] = [
     ("private", ("private video", "video is private")),
@@ -48,8 +60,9 @@ async def _reap(proc: asyncio.subprocess.Process) -> None:
         await proc.wait()
 
 
-async def _run(*args: str) -> bytes:
-    """yt-dlp 한 번. 성공하면 표준 출력, 아니면 YtdlpError. 시간 제한을 넘으면 network."""
+async def _run(*args: str, timeout: float | None = None) -> bytes:
+    """yt-dlp 한 번. 성공하면 표준 출력, 아니면 YtdlpError. 시간 제한(기본 PROC_TIMEOUT_SEC)을
+    넘으면 network."""
     try:
         proc = await asyncio.create_subprocess_exec(
             config.YTDLP_BIN,
@@ -61,7 +74,8 @@ async def _run(*args: str) -> bytes:
     except OSError as e:
         raise YtdlpError(f"yt-dlp를 실행하지 못했습니다({type(e).__name__})", "other") from None
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), config.PROC_TIMEOUT_SEC)
+        limit = config.PROC_TIMEOUT_SEC if timeout is None else timeout  # 0도 0초다
+        out, err = await asyncio.wait_for(proc.communicate(), limit)
     except TimeoutError:
         raise YtdlpError("시간 제한을 넘었습니다", "network") from None
     finally:
@@ -72,18 +86,21 @@ async def _run(*args: str) -> bytes:
     return out
 
 
-async def info(url: str) -> dict:
+async def info(url: str, timeout: float | None = None) -> dict:
     """VA-MS-007#ytdlp.info
 
     영상 정보를 JSON으로 받는다. 내려받지 않는다.
 
     Args:
         url: YouTube 주소. 재생 목록 주소면 그 영상 하나만
+        timeout: 시간 제한(초). 없으면 PROC_TIMEOUT_SEC — 등록은 INFO_TIMEOUT_SEC를 준다(사람이
+            web 프록시 60초 뒤에서 기다린다). 파이프라인은 주지 않는다(백그라운드)
 
     Returns:
         yt-dlp의 JSON 그대로 — id · title · channel · duration · subtitles · automatic_captions 등
     """
-    out = await _run("--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", url)
+    args = ("--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", url)
+    out = await _run(*args, timeout=timeout)
     try:
         return json.loads(out)
     except ValueError:

@@ -28,6 +28,7 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
     "memo_0917.wav",
     "silent_demo.mp4",
     "notes.mp4",
+    "marathon_0901.mp4",
   ]);
   await expect(el(page, "4.3")).toHaveAttribute("aria-pressed", "true");
   await expect(el(page, "4.3").locator(".file-length")).toHaveText("2:30:00");
@@ -139,10 +140,10 @@ test("inbox 음성 파일 — 받아쓰기 필요 판의 음성 문구, 취소�
 test("시작할 수 없는 파일 — 음성 트랙 없음 · 영상 아님", async ({ page }) => {
   await page.goto("/");
 
-  // 음성 트랙이 없는 영상 — 서버 이유와 길이
+  // 음성 트랙이 없는 영상 — 이유와 길이(UI-2 7.1 규칙)
   await fileRow(page, "silent_demo.mp4").click();
   await el(page, "4.6").click();
-  await expect(inDialog(page, "7.1")).toHaveText("음성이 없는 파일이에요");
+  await expect(inDialog(page, "7.1")).toHaveText("받아쓸 음성이 없는 파일이에요");
   await expect(inDialog(page, "7.2")).toHaveText("길이 10:00");
   await expect(inDialog(page, "7.3")).toBeFocused();
   await page.keyboard.press("Escape");

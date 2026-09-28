@@ -46,8 +46,19 @@ async def test_info_failure_kinds(fake, stderr: str, kind: str) -> None:
     assert stderr in e.value.reason
 
 
-async def test_info_timeout_is_network(fake, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("timeout", [0.3, 0])
+async def test_info_timeout_is_network(fake, timeout: float) -> None:
+    # 부른 쪽이 준 시간 제한 — 등록은 INFO_TIMEOUT_SEC를 준다. 0도 0초다(없음으로 보지 않는다)
+    fake.behave(sleep=5)
+    with pytest.raises(YtdlpError) as e:
+        await ytdlp.info("https://youtu.be/x", timeout=timeout)
+    assert e.value.kind == "network"
+
+
+async def test_info_without_timeout_uses_proc_limit(fake, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 파이프라인(자막 고르기)은 주지 않는다 — 백그라운드라 등록의 40초가 아니라 PROC_TIMEOUT_SEC
     monkeypatch.setattr(config, "PROC_TIMEOUT_SEC", 0.3)
+    monkeypatch.setattr(config, "INFO_TIMEOUT_SEC", 60)
     fake.behave(sleep=5)
     with pytest.raises(YtdlpError) as e:
         await ytdlp.info("https://youtu.be/x")

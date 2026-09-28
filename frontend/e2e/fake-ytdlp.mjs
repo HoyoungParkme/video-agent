@@ -34,6 +34,12 @@ const VIDEOS = {
   e2eNoCapt01: { title: "자막 없는 강연", duration: 1800, subtitles: {} },
   // 자막 없는 영상을 끝까지 — 음성 내려받기 · 추출 · 받아쓰기(대기열에서 다시 시도의 앞 영상)
   e2eNoCapt02: { title: "자막 없는 좌담", duration: 1200, subtitles: {} },
+  // 잘 안 되는 경우들 — S6. 비공개 영상은 yt-dlp가 표준 오류로 알린다
+  e2ePrivate1: { error: "Private video. Sign in if you've been granted access to this video" },
+  e2eLong4h01: { title: "하루 종일 컨퍼런스 녹화", duration: 15150, subtitles: { ko: [] } }, // 4:12:30
+  e2eOffline1: { title: "연결이 돌아온 뒤의 발표", duration: 1500, subtitles: { ko: [] } },
+  e2eJobExst1: { title: "다른 창에서 시작한 발표", duration: 1500, subtitles: { ko: [] } },
+  e2eDirect01: { title: "주소로 바로 여는 발표", duration: 1500, subtitles: { ko: [] } },
 };
 
 const args = process.argv.slice(2);
@@ -43,6 +49,11 @@ const video = id ? VIDEOS[id] : undefined;
 
 if (!video) {
   process.stderr.write(`ERROR: [youtube] ${id}: Video unavailable\n`);
+  process.exit(1);
+}
+
+if (video.error) {
+  process.stderr.write(`ERROR: [youtube] ${id}: ${video.error}\n`);
   process.exit(1);
 }
 

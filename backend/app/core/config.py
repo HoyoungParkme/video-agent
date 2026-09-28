@@ -118,6 +118,8 @@ class Config(BaseSettings):
 
     # infra — MS-007
     PROC_TIMEOUT_SEC: float = 1800
+    # 등록 때 yt-dlp 영상 정보 읽기 상한 — 누를 때의 키 확인(10초)과 더해 web 프록시 60초 안(MS-007)
+    INFO_TIMEOUT_SEC: float = 40
     YTDLP_BIN: str = "yt-dlp"
     FFMPEG_BIN: str = "ffmpeg"
     FFPROBE_BIN: str = "ffprobe"

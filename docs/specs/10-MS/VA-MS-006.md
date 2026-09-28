@@ -97,10 +97,10 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 근거: [[VA-SEQ-001#SEQ-1]] 13~15번 · [[VA-UC-001#UC-H1]] 2번, 2a · [[VA-UC-001#UC-S1]] 1번 · [[VA-INFRA-001#C7]] · [[VA-MS-001#VideoService.info_of]]
 
 **처리**
-1. `raw = EXT: ytdlp.info(url)` — 정보만, 내려받기 없음. if `YtdlpError` → `! source-unavailable {reason: 원인 한 줄(비공개 · 삭제 · 지역 제한 · 네트워크를 가려 한국어로), hint: 추출기 오류면 'yt-dlp 업데이트' else None}`
+1. `raw = EXT: ytdlp.info(url, timeout=config.INFO_TIMEOUT_SEC)` — 정보만, 내려받기 없음. 등록 요청 안이라 사람이 기다린다 — 키 확인과 더해 web 프록시 60초 안([[VA-MS-007]] 0장). if `YtdlpError` → `! source-unavailable {reason: ytdlp.REASONS[e.kind], hint: 추출기 오류면 'yt-dlp 업데이트' else None}` — 이유는 분석 실패 알림과 같은 표의 명사구다([[VA-MS-007]] 0장). 화면이 '영상 정보를 가져오지 못했어요 — {이유}'로 보인다
 2. `vid = raw.id`
 3. 자막 — [[#captions.pick]]`(raw)` · 트랙이 있으면 `(has_captions, caption_language, caption_kind)` = `(True, 언어, manual 또는 auto)` · 없으면 `(False, None, None)`
-4. `→ SourceInfo(source_kind=youtube, source_id=vid, title=raw.title, channel=raw.channel 또는 uploader, duration_sec=int(raw.duration), origin=f"https://www.youtube.com/watch?v={vid}", has_captions, caption_language, caption_kind)` · if `duration`이 없음(라이브 · 예정) → `! source-unavailable {reason: 길이를 알 수 없는 영상}`
+4. `→ SourceInfo(source_kind=youtube, source_id=vid, title=raw.title, channel=raw.channel 또는 uploader, duration_sec=int(raw.duration), origin=f"https://www.youtube.com/watch?v={vid}", has_captions, caption_language, caption_kind)` · if `duration`이 없음(라이브 · 예정) → `! source-unavailable {reason: '길이를 알 수 없는 영상(라이브 · 예정)'}`
 
 **출력** `SourceInfo`
 
@@ -108,7 +108,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **호출하는 것** `ytdlp.info` ([[VA-MS-007#ytdlp.info]]) · [[#captions.pick]]
 
-**테스트 관점** 가짜 `ytdlp.info`로: 수동 ko + 자동 en-orig → `manual` · `ko` · 자동(원래 언어)만 → `auto` · 번역 자동 자막만 → `has_captions=False` · 자막 없음 → `has_captions=False` · 비공개 오류 → `source-unavailable`에 한국어 `reason` · 추출기 오류 → `hint` 있음 · `channel`이 없으면 `uploader`
+**테스트 관점** 가짜 `ytdlp.info`로: 수동 ko + 자동 en-orig → `manual` · `ko` · 자동(원래 언어)만 → `auto` · 번역 자동 자막만 → `has_captions=False` · 자막 없음 → `has_captions=False` · 비공개 오류 → `source-unavailable`의 `reason`이 '비공개 영상'(`ytdlp.REASONS`) · `ytdlp.info`에 `INFO_TIMEOUT_SEC`를 준다 · 시간 제한 초과 → 'YouTube 연결 실패' · 추출기 오류 → `hint` 있음 · `channel`이 없으면 `uploader`
 
 ---
 
@@ -134,7 +134,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 근거: [[VA-SEQ-001#SEQ-3]] 3~4번 · [[VA-UC-001#UC-S2]] 1~2번 · [[VA-PRD-001#R3]]
 
 **처리**
-1. `raw = EXT: ytdlp.info(f"https://www.youtube.com/watch?v={video_id}")` · `(키, 언어, kind) = `[[#captions.pick]]`(raw)` — [[#youtube_info.info]]와 같은 함수 · if 없음 → `→ None`
+1. `raw = EXT: ytdlp.info(f"https://www.youtube.com/watch?v={video_id}")` — 시간 제한을 주지 않는다(`PROC_TIMEOUT_SEC` — 백그라운드라 기다리는 사람이 없다) · `(키, 언어, kind) = `[[#captions.pick]]`(raw)` — [[#youtube_info.info]]와 같은 함수 · if 없음 → `→ None`
 2. `vtt = EXT: ytdlp.captions(video_id, 키, kind)` — VTT 원문
 3. VTT 파싱 → `CaptionLine(start_sec, end_sec, text)` — 큐마다 시각 두 개와 텍스트. 큐는 빈 줄로만 나눈다 — 공백 한 칸짜리 줄은 빈 줄이 아니다(YouTube 자동 자막은 큐 첫 줄에 그것을 둔다) · 시가 없는 표기(`mm:ss.mmm`)도 읽는다 · 태그(`<c>` · `<00:00:01.000>` · `<v 화자>`) 제거 · HTML 엔티티를 푼다 · 빈 줄 제외. 큐 안의 줄 나눔은 4번까지 둔다
 4. 자동 자막이면 **굴러가는 중복**을 없앤다 — 같은 텍스트가 잇달아 오면 하나로(끝 시각은 뒤 것) · 아니면 뒤 큐가 앞 큐의 텍스트를 **첫 줄로** 되풀이할 때 그 줄을 뗀다 — 줄 단위로 견준다(글자로 견주면 앞이 '네'이고 새 줄이 '네 맞습니다'일 때 '맞습니다'로 잘린다) · 텍스트가 비면 큐를 뺀다. 순서가 규칙이다 — 떼기를 먼저 하면 같은 텍스트의 큐가 합쳐지지 않고 사라진다. 수동 자막은 큐를 그대로 둔다

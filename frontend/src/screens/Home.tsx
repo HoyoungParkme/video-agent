@@ -6,7 +6,8 @@
  * UI-4와 짧은 알림, 그 밖은 UI-3. 대기 표시는 누른 버튼에, 그동안은 어느 쪽도 새 요청을 보내지 않는다.
  * 행 휴지통(6.8)은 모든 상태의 행에 있고 UI-6을 연다. 지우면 목록을 다시 받고, 초점은 바로 아래 행 →
  * 바로 위 행 → 「분석한 영상」 제목(5.1) 순으로 간다. UI-4에서 지우고 왔으면 5.1에 둔다.
- * 채우지 않은 것: 3.4는 서버 문구 한 줄뿐 · 로컬 등록 실패는 시작 불가 판에 서버 이유 그대로(종류별 판은 B5).
+ * 등록 실패는 셋으로 가른다 — 3.4는 형식 오류 · 빈 칸만(빈 칸은 서버에 묻지 않는다), 키 오류는 배너만,
+ * 그 밖은 UI-2 시작 불가 판(7, 문구는 blockedOf). 고른 파일이 inbox에서 사라졌으면 목록을 다시 받는다.
  */
 "use client";
 
@@ -32,8 +33,10 @@ import { durationLabel } from "@/components/TimeChip";
 import { flash } from "@/components/Toast";
 import { analyzedLabel, stageName } from "@/labels";
 import Delete, { takeListFocus, TrashIcon } from "@/screens/Delete";
-import Estimate, { Blocked } from "@/screens/Estimate";
+import Estimate, { Blocked, blockedOf, type BlockedInfo } from "@/screens/Estimate";
 
+/** 입력 오류(3.4) — 받는 주소 형태를 알린다. 형식이 틀렸거나 비었을 때만(UI-1 규칙) */
+const URL_HINT = "YouTube 주소를 넣어 주세요 — watch · youtu.be · shorts 주소를 받아요";
 const EMPTY_TITLE = "아직 분석한 영상이 없어요";
 const EMPTY_BODY = "위에 링크를 붙여 넣거나 inbox 폴더에 파일을 넣어 보세요.";
 const EMPTY_BODY_NO_KEY = `설정에서 OpenAI API 키를 넣은 뒤, ${EMPTY_BODY}`;
@@ -77,9 +80,13 @@ function useVideos(): [VideoSummary[] | null, (id: number) => void] {
   return [rows, drop];
 }
 
-/** inbox 파일 목록 — 처음 한 번. 서버가 아직 뜨는 중이면 3초마다 다시. 받기 전에는 null. */
-function useInbox(): InboxListing | null {
+/**
+ * inbox 파일 목록 — 처음 한 번, 그리고 reload를 부를 때. 서버가 아직 뜨는 중이면 3초마다 다시.
+ * 받기 전에는 null.
+ */
+function useInbox(): [InboxListing | null, () => void] {
   const [listing, setListing] = useState<InboxListing | null>(null);
+  const [round, setRound] = useState(0);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -96,8 +103,9 @@ function useInbox(): InboxListing | null {
       alive = false;
       clearTimeout(timer);
     };
-  }, []);
-  return listing;
+  }, [round]);
+  const reload = useCallback(() => setRound((n) => n + 1), []);
+  return [listing, reload];
 }
 
 /** 파일 크기(4.3) — '1.8 GB' · '640 MB' · '12 KB'. */
@@ -218,7 +226,7 @@ export default function Home() {
   const router = useRouter();
   const settings = useSettings();
   const [videos, dropVideo] = useVideos();
-  const inbox = useInbox();
+  const [inbox, reloadInbox] = useInbox();
   const analyzeButton = useRef<HTMLButtonElement>(null);
   const listTitle = useRef<HTMLHeadingElement>(null);
   // 휴지통으로 연 영상(UI-6)과, 지운 뒤 초점을 둘 곳(행 id 또는 5.1)
@@ -235,7 +243,7 @@ export default function Home() {
     estimate: EstimateData;
     othersRunning: boolean;
   } | null>(null);
-  const [cannot, setCannot] = useState<{ reason: string; durationSec: number | null } | null>(null);
+  const [cannot, setCannot] = useState<BlockedInfo | null>(null);
   // 처음 열면 맨 위 파일이 골라져 있다(UI-1 규칙)
   const chosen = picked ?? inbox?.files[0]?.name ?? null;
   const inboxEmpty = inbox !== null && inbox.files.length === 0;
@@ -302,6 +310,7 @@ export default function Home() {
   async function analyze() {
     if (blocked) return toSettingsIfBlocked();
     if (busy) return; // 대기 표시 중에는 새 요청을 보내지 않는다
+    if (!url.trim()) return setUrlError(URL_HINT); // 빈 칸은 서버에 묻지 않는다 — 키 확인도 없이
     // 입력칸에서 Enter로 눌렀어도 연 버튼은 3.3 — 다이얼로그가 닫히면 초점이 여기로 돌아온다(공통 1.2)
     analyzeButton.current?.focus();
     setBusy("url");
@@ -309,8 +318,9 @@ export default function Home() {
     try {
       route(await api.register(url));
     } catch (e) {
-      keyFailed(e);
-      setUrlError(e instanceof ApiError ? e.reason : "서버에 닿지 못했어요");
+      // 3.4는 형식 전용 · 키 오류는 배너만 · 그 밖은 시작 불가 판(UI-1 규칙)
+      if (e instanceof ApiError && e.kind === "url-invalid") setUrlError(URL_HINT);
+      else if (!keyFailed(e)) setCannot(blockedOf(e, "url"));
     } finally {
       setBusy(null);
     }
@@ -323,13 +333,13 @@ export default function Home() {
     try {
       route(await api.registerLocal(chosen));
     } catch (e) {
-      if (!keyFailed(e)) {
-        // 시작할 수 없는 파일 — 이유와 (알면) 길이. 종류별 문구는 B5
-        const duration = e instanceof ApiError ? e.body.duration_sec : null;
-        setCannot({
-          reason: e instanceof ApiError ? e.reason : "서버에 닿지 못했어요",
-          durationSec: typeof duration === "number" ? duration : null,
-        });
+      if (keyFailed(e)) return; // 배너만
+      setCannot(blockedOf(e, "file"));
+      if (e instanceof ApiError && e.kind === "not-found") {
+        // inbox에서 사라진 파일 — 목록을 다시 받고 처음 열 때처럼 맨 위를 고른다. 고른 이름을 남겨
+        // 두면 같은 이름의 파일이 돌아왔을 때 누르지 않은 파일로 옮겨 간다(UI-1 규칙)
+        setPicked(null);
+        reloadInbox();
       }
     } finally {
       setBusy(null);

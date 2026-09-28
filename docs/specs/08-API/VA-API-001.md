@@ -77,6 +77,10 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 **표에 없는 예외도 problem+json으로 나간다.** 서버는 포괄 핸들러로 `urn:va:internal`(500)을 만든다. 클라이언트가 problem+json을 전제로 파싱하는데 평문 500이 나가면 오류를 읽지도 못한다.
 
+**problem+json이 아닌 오류 응답은 web 프록시가 대신 답한 것이다.** api는 늘 problem+json으로 답한다. 평문 오류(500 'Internal Server Error')는 web 프록시가 api 대신 답한 것이다 — api가 꺼졌거나, 프록시 시간 제한(60초, [[VA-DOM-002]] 6장)을 넘었다. 프록시는 둘을 같은 500으로 답해 가를 수 없다. 화면은 fetch 자체가 실패한 것과 같이 '서버에 연결할 수 없음'으로 다룬다([[VA-UI-002#UI-1]] 규칙, 카드 B5). 60초를 넘는 요청이 없게 하는 것이 먼저다 — 남은 하나는 큰 로컬 파일 등록의 해시다(VA-MS-001 미결, 카드 C).
+
+**에러 17종마다 라우터 테스트가 있다.** HTTP 응답으로 `type` · `status` · `content-type: application/problem+json` · 확장 필드를 본다. 화면이 `type`으로 입력 오류 · 배너 · 시작 불가 판을 고르기 때문이다(카드 B5).
+
 **삭제 실패에는 종류가 없다.** [[VA-UI-002#UI-6]]의 실패 한 줄('분석 결과를 지우지 못했어요 — {이유}')은 `internal`의 `detail`을 쓴다. 지우기가 실패하는 경우는 디스크·DB 오류뿐이라 따로 가를 것이 없다.
 
 **파이프라인 안의 단계 실패는 HTTP 에러가 아니다.** 작업은 백그라운드에서 돌고 그 순간 요청이 없다. 실패는 [[#GET/api/videos/{id}/job]] 응답의 `error` 필드로 전한다(`kind` · `reason` · `chunk_seq` · `attempts`). 화면은 그것으로 실패 알림을 조립한다([[VA-UI-002]] 1.6 실패 알림).

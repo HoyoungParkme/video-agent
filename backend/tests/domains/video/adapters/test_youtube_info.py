@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.config import config
 from app.core.errors import SourceUnavailable
 from app.domains.video.adapters.youtube_info import YouTubeInfoAdapter
 from app.infra import ytdlp
@@ -25,7 +26,7 @@ def raw(monkeypatch) -> dict:
         "automatic_captions": {"en-orig": [], "en": [], "ko": []},
     }
 
-    async def info(url: str) -> dict:
+    async def info(url: str, timeout: float | None = None) -> dict:
         return data
 
     monkeypatch.setattr(ytdlp, "info", info)
@@ -67,25 +68,39 @@ async def test_no_duration(raw) -> None:
     raw["duration"] = None  # 라이브 · 예정
     with pytest.raises(SourceUnavailable) as e:
         await YouTubeInfoAdapter().info(URL)
-    assert e.value.extra["reason"] == "길이를 알 수 없는 영상이에요"
+    assert e.value.extra["reason"] == "길이를 알 수 없는 영상(라이브 · 예정)"
 
 
 @pytest.mark.parametrize(
     ("kind", "reason", "hint"),
     [
-        ("private", "비공개 영상이에요", None),
-        ("unavailable", "삭제되었거나 볼 수 없는 영상이에요", None),
-        ("geo", "이 지역에서는 볼 수 없는 영상이에요", None),
-        ("network", "YouTube에 연결하지 못했어요", None),
-        ("extractor", "yt-dlp가 이 영상을 읽지 못했어요", "yt-dlp 업데이트"),
-        ("other", "영상 정보를 읽지 못했어요", None),
+        # 분석 실패 알림과 같은 명사구 — 시작 불가 판 '영상 정보를 가져오지 못했어요 — {이유}'
+        ("private", "비공개 영상", None),
+        ("unavailable", "삭제되었거나 볼 수 없는 영상", None),
+        ("geo", "이 지역에서 볼 수 없는 영상", None),
+        ("network", "YouTube 연결 실패", None),
+        ("extractor", "yt-dlp가 영상을 읽지 못함(yt-dlp 업데이트 필요)", "yt-dlp 업데이트"),
+        ("other", "yt-dlp 오류", None),
     ],
 )
 async def test_ytdlp_errors(monkeypatch, kind, reason, hint) -> None:
-    async def info(url: str) -> dict:
+    async def info(url: str, timeout: float | None = None) -> dict:
         raise YtdlpError("ERROR: [youtube] abcdefghijk: Private video", kind)
 
     monkeypatch.setattr(ytdlp, "info", info)
     with pytest.raises(SourceUnavailable) as e:
         await YouTubeInfoAdapter().info(URL)
     assert e.value.extra == {"reason": reason, "hint": hint}  # 한국어 이유, 영어 원문은 싣지 않는다
+
+
+async def test_info_read_has_register_limit(monkeypatch) -> None:
+    # 등록 요청 안이라 INFO_TIMEOUT_SEC를 준다 — 파이프라인의 자막 고르기는 주지 않는다(MS-006 v13)
+    seen: list[float | None] = []
+
+    async def info(url: str, timeout: float | None = None) -> dict:
+        seen.append(timeout)
+        return {"id": "abcdefghijk", "title": "제목", "duration": 60}
+
+    monkeypatch.setattr(ytdlp, "info", info)
+    await YouTubeInfoAdapter().info(URL)
+    assert seen == [config.INFO_TIMEOUT_SEC]

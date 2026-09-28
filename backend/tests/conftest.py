@@ -377,7 +377,7 @@ def probe() -> FakeMediaProbe:
 
 @pytest.fixture
 def unavailable() -> SourceUnavailable:
-    return SourceUnavailable(reason="비공개 영상이에요", hint=None)
+    return SourceUnavailable(reason="비공개 영상", hint=None)
 
 
 @dataclass
