@@ -7,7 +7,7 @@
  * 행 휴지통(6.8)은 모든 상태의 행에 있고 UI-6을 연다. 지우면 목록을 다시 받고, 초점은 바로 아래 행 →
  * 바로 위 행 → 「분석한 영상」 제목(5.1) 순으로 간다. UI-4에서 지우고 왔으면 5.1에 둔다.
  * 등록 실패는 셋으로 가른다 — 3.4는 형식 오류 · 빈 칸만(빈 칸은 서버에 묻지 않는다), 키 오류는 배너만,
- * 그 밖은 UI-2 시작 불가 판(7, 문구는 blockedOf).
+ * 그 밖은 UI-2 시작 불가 판(7, 문구는 blockedOf). 고른 파일이 inbox에서 사라졌으면 목록을 다시 받는다.
  */
 "use client";
 
@@ -80,9 +80,13 @@ function useVideos(): [VideoSummary[] | null, (id: number) => void] {
   return [rows, drop];
 }
 
-/** inbox 파일 목록 — 처음 한 번. 서버가 아직 뜨는 중이면 3초마다 다시. 받기 전에는 null. */
-function useInbox(): InboxListing | null {
+/**
+ * inbox 파일 목록 — 처음 한 번, 그리고 reload를 부를 때. 서버가 아직 뜨는 중이면 3초마다 다시.
+ * 받기 전에는 null.
+ */
+function useInbox(): [InboxListing | null, () => void] {
   const [listing, setListing] = useState<InboxListing | null>(null);
+  const [round, setRound] = useState(0);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -99,8 +103,9 @@ function useInbox(): InboxListing | null {
       alive = false;
       clearTimeout(timer);
     };
-  }, []);
-  return listing;
+  }, [round]);
+  const reload = useCallback(() => setRound((n) => n + 1), []);
+  return [listing, reload];
 }
 
 /** 파일 크기(4.3) — '1.8 GB' · '640 MB' · '12 KB'. */
@@ -221,7 +226,7 @@ export default function Home() {
   const router = useRouter();
   const settings = useSettings();
   const [videos, dropVideo] = useVideos();
-  const inbox = useInbox();
+  const [inbox, reloadInbox] = useInbox();
   const analyzeButton = useRef<HTMLButtonElement>(null);
   const listTitle = useRef<HTMLHeadingElement>(null);
   // 휴지통으로 연 영상(UI-6)과, 지운 뒤 초점을 둘 곳(행 id 또는 5.1)
@@ -239,8 +244,10 @@ export default function Home() {
     othersRunning: boolean;
   } | null>(null);
   const [cannot, setCannot] = useState<BlockedInfo | null>(null);
-  // 처음 열면 맨 위 파일이 골라져 있다(UI-1 규칙)
-  const chosen = picked ?? inbox?.files[0]?.name ?? null;
+  // 처음 열면 맨 위 파일이 골라져 있다. 고른 파일이 다시 받은 목록에 없으면 다시 맨 위(UI-1 규칙)
+  const chosen = inbox?.files.some((f) => f.name === picked)
+    ? picked
+    : (inbox?.files[0]?.name ?? null);
   const inboxEmpty = inbox !== null && inbox.files.length === 0;
   // 키를 받기 전에는 막지 않는다 — 받은 뒤 막힘이 정해진다
   const blocked = settings ? keyBlocks(settings.key) : false;
@@ -328,14 +335,9 @@ export default function Home() {
     try {
       route(await api.registerLocal(chosen));
     } catch (e) {
-      if (!keyFailed(e)) {
-        // 시작할 수 없는 파일 — 이유와 (알면) 길이. 종류별 문구는 B5
-        const duration = e instanceof ApiError ? e.body.duration_sec : null;
-        setCannot({
-          reason: e instanceof ApiError ? e.reason : "서버에 닿지 못했어요",
-          durationSec: typeof duration === "number" ? duration : null,
-        });
-      }
+      if (keyFailed(e)) return; // 배너만
+      setCannot(blockedOf(e, "file"));
+      if (e instanceof ApiError && e.kind === "not-found") reloadInbox(); // inbox에서 사라진 파일
     } finally {
       setBusy(null);
     }
