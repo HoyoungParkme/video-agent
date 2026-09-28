@@ -4,7 +4,7 @@
  * 6.3 분석 시작) · 7 시작 불가 판(7.1 · 7.2 · 7.3).
  * 숫자는 서버가 준 값을 그대로 보인다. 판은 자막 유무로 — 자막 있음 판과 받아쓰기 필요 판(자막 없는
  * YouTube · 로컬 영상 · 로컬 음성, 2.1 · 2.3 · 2.5 · 3.2 · 4.2 · 5가 다르다).
- * 시작 불가 판(7)은 UI-1이 로컬 파일 등록 실패에 서버가 준 이유로 연다 — 종류별 문구는 B5.
+ * 시작 불가 판(7)은 UI-1이 등록 실패로 연다 — 7.1 문구는 오류 종류별(blockedOf, UI-2 7.1 규칙).
  */
 "use client";
 
@@ -66,6 +66,46 @@ function PlayIcon() {
       <path d="M8 5.5v13l10.5-6.5z" />
     </svg>
   );
+}
+
+/** 시작 불가 판(7)의 이유(7.1)와 길이(7.2) — 길이를 모르면 null. */
+export interface BlockedInfo {
+  reason: string;
+  durationSec: number | null;
+}
+
+const UNCHECKED = { url: "영상 정보를 확인하지 못했어요", file: "파일을 확인하지 못했어요" };
+
+/**
+ * 등록 실패 → 시작 불가 판(7) — 종류별 7.1 문구(UI-2 7.1 규칙). 형식 오류(3.4)와 키 오류(배너)는 부르는
+ * 쪽이 먼저 거른다. 서버에 닿지 못했거나 서버 오류면 '…을 확인하지 못했어요 — {이유}'.
+ *
+ * @param e 등록이 던진 것
+ * @param source 누른 버튼 — url은 3.3, file은 4.6
+ */
+export function blockedOf(e: unknown, source: "url" | "file"): BlockedInfo {
+  // 서버에 닿지 못했다 — fetch 자체가 실패했거나, api가 꺼져 web이 problem+json 아닌 평문으로 답했다
+  if (!(e instanceof ApiError) || e.kind === "unknown") {
+    return { reason: `${UNCHECKED[source]} — 서버에 연결할 수 없음`, durationSec: null };
+  }
+  const duration = typeof e.body.duration_sec === "number" ? e.body.duration_sec : null;
+  switch (e.kind) {
+    case "source-unavailable":
+      return { reason: `영상 정보를 가져오지 못했어요 — ${e.reason}`, durationSec: null };
+    case "video-too-long":
+      return { reason: "3시간이 넘는 영상은 분석할 수 없어요", durationSec: duration };
+    case "no-audio-track":
+      return { reason: "받아쓸 음성이 없는 파일이에요", durationSec: duration };
+    case "unsupported-file":
+      return { reason: "영상·음성 파일이 아닙니다", durationSec: null };
+    case "not-found":
+      return {
+        reason: "파일을 찾지 못했어요 — inbox에서 옮겨졌거나 지워졌어요",
+        durationSec: null,
+      };
+    default:
+      return { reason: `${UNCHECKED[source]} — ${e.reason}`, durationSec: null };
+  }
 }
 
 /**
