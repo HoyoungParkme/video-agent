@@ -27,6 +27,7 @@ from app.core.errors import (
 )
 from app.domains.job.models import ChunkState, JobStatus
 from app.domains.job.service import JobService
+from app.domains.video import service as service_module
 from app.domains.video.models import VideoRow
 from app.domains.video.schemas import LocalSource, YouTubeSource
 from app.domains.video.service import VideoService
@@ -177,6 +178,22 @@ async def test_info_of_youtube_asks_port(db, youtube, probe) -> None:
     info = await VideoService(db, youtube, probe).info_of(yt())
     assert youtube.calls == [WATCH]
     assert (info.source_id, info.has_captions, info.caption_kind) == ("dQw4w9WgXcQ", True, "manual")
+
+
+async def test_info_of_long_local_file_rejected_before_hashing(
+    db, youtube, probe, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "marathon.mp4").write_bytes(b"x")
+    probe.files = {"marathon.mp4": (15150, True)}  # 4:12:30
+    hashed: list[Path] = []
+    monkeypatch.setattr(service_module, "_sha256", lambda path: hashed.append(path) or "x")
+    with pytest.raises(VideoTooLong) as e:
+        await VideoService(db, youtube, probe).info_of(
+            LocalSource(source="local", path="marathon.mp4")
+        )
+    assert e.value.extra == {"duration_sec": 15150, "max_sec": 10800}
+    assert hashed == []  # 수 GB를 다 읽고 나서 거절하지 않는다
 
 
 async def test_info_of_youtube_unavailable(db, youtube, unavailable, probe) -> None:

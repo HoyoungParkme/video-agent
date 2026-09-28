@@ -209,7 +209,8 @@ class VideoService:
 
         출처에서 영상 정보를 읽는다. YouTube는 포트가 정보만 받는다(내려받지 않는다).
         로컬 파일은 길이 · 음성 트랙을 재고 내용 SHA-256을 출처 식별자로 쓴다 — 이름을 바꿔도
-        같은 영상이다. 해시는 스레드에서 1MB씩(수 GB면 몇 초 — 화면은 버튼 대기 표시).
+        같은 영상이다. 해시는 스레드에서 1MB씩(수 GB면 몇 초 — 화면은 버튼 대기 표시). 3시간이
+        넘으면 해시 전에 거절한다 — 4시간짜리 큰 파일을 다 읽고 나서 거절하지 않게.
 
         Args:
             req: YouTube 주소 또는 inbox 파일 이름
@@ -221,6 +222,7 @@ class VideoService:
             SourceUnavailable: YouTube 정보를 못 가져왔다
             UnsupportedFile: 파일을 열 수 없다(포트)
             NoAudioTrack: 음성 트랙이 없는 파일
+            VideoTooLong: 로컬 파일이 3시간을 넘는다(해시 전)
         """
         if isinstance(req, YouTubeSource):
             return await self.youtube_info.info(req.url)
@@ -228,6 +230,8 @@ class VideoService:
         duration, has_audio = await self.media_probe.probe(str(path))
         if not has_audio:
             raise NoAudioTrack(duration_sec=duration)
+        if duration > config.MAX_DURATION_SEC:
+            raise VideoTooLong(duration_sec=duration, max_sec=config.MAX_DURATION_SEC)
         return SourceInfo(
             source_kind=SourceKind.local,
             source_id=await asyncio.to_thread(_sha256, path),
