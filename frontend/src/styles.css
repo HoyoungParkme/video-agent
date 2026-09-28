@@ -327,6 +327,9 @@ h1, h2, p { margin: 0; }
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: var(--radius-10); background: transparent; color: var(--c-ink-2); cursor: pointer;
 }
+/* 테두리 아이콘 버튼 — UI-4 휴지통(1.3), VA-UI-001 4.2 */
+.icon-btn.is-outline { border: 1px solid var(--c-line-strong); background: var(--c-card); }
+.icon-btn.is-danger { color: var(--c-danger); }
 .icon-btn[aria-disabled="true"] { cursor: default; }
 .back-link {
   align-self: flex-start; height: var(--tap); display: flex; align-items: center; gap: var(--space-6);
@@ -496,6 +499,7 @@ h1, h2, p { margin: 0; }
 .result-main { min-width: 0; padding: var(--space-24) 64px 96px 96px; display: flex; flex-direction: column; gap: var(--space-48); }
 .result-top { display: flex; flex-direction: column; gap: var(--space-18); }
 .result-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-16); }
+.result-head-actions { display: flex; align-items: center; gap: var(--space-8); }
 .result-title-block { display: flex; flex-direction: column; gap: var(--space-12); }
 .result-title { margin: 0; font-family: var(--font-serif); font-size: var(--text-36); line-height: 1.3; font-weight: 600; letter-spacing: -0.02em; }
 .result-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-14); font-size: var(--text-15); color: var(--c-ink-3); }

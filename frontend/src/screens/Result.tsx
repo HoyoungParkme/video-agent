@@ -14,7 +14,8 @@
  * 기록과 답은 id로 합친다 — 기록을 받는 사이에 온 답도 한 번씩 보인다.
  * 답을 기다리는 동안이나 키가 막혔을 때는 보내지 않는다(알약은 탭만 바꾼다). 실패한 질문은 저장되지 않아
  * 마지막 턴에만 실패 줄과 다시 시도가 있고, 새 질문을 보내면 빠진다.
- * 채우지 않은 것: 내보내기(1.2) · 휴지통(1.3)은 B4.
+ * 머리의 내보내기(1.2)는 UI-7, 휴지통(1.3)은 UI-6을 연다. 내보내면 짧은 알림(11)으로 알리고, 지우면
+ * UI-1로 방문 기록을 바꿔치기해 가며 그 화면의 「분석한 영상」 제목에 초점을 둔다(UI-6 규칙).
  */
 "use client";
 
@@ -33,10 +34,13 @@ import {
   type KeyStatus,
   type Result as ResultData,
 } from "@/api/client";
+import { Button } from "@/components/buttons";
 import EmptyBox from "@/components/EmptyBox";
 import { OFFLINE } from "@/components/KeyBanner";
 import TimeChip, { durationLabel, isLong, timeLabel } from "@/components/TimeChip";
 import Toast, { takeFlash } from "@/components/Toast";
+import Delete, { markListFocus, TrashIcon } from "@/screens/Delete";
+import Export, { DownloadIcon } from "@/screens/Export";
 import { analyzedLabel, languageName } from "@/labels";
 
 // 결과를 받지 못했는데 서버에 잠깐 닿지 못한 것이면 다시 받는 간격(UI-4 규칙)
@@ -198,6 +202,8 @@ export default function Result({ id }: { id: number }) {
   // 펼친 파트 — 처음에는 첫 파트만(UI-4 규칙)
   const [open, setOpen] = useState<Set<number>>(() => new Set([1]));
   const [tab, setTab] = useState<Tab>("script");
+  // 머리에서 연 다이얼로그 — 내보내기(UI-7) · 삭제 확인(UI-6)
+  const [dialog, setDialog] = useState<"export" | "delete" | null>(null);
   // 질문 기록 — 질문하기 탭을 처음 열 때 받는다(받기 전에는 null)
   const [turns, setTurns] = useState<ChatTurn[] | null>(null);
   // 이 화면에서 받은 답 — 기록이 답보다 늦게 오거나 저장 전에 읽은 것이어도 받을 때 합친다
@@ -346,6 +352,21 @@ export default function Result({ id }: { id: number }) {
               </svg>
               분석한 영상
             </Link>
+            <div className="result-head-actions">
+              <Button kind="secondary" el="1.2" onClick={() => setDialog("export")}>
+                <DownloadIcon />
+                내보내기
+              </Button>
+              <button
+                type="button"
+                className="icon-btn is-outline is-danger"
+                aria-label="분석 결과 삭제"
+                data-el="1.3"
+                onClick={() => setDialog("delete")}
+              >
+                <TrashIcon />
+              </button>
+            </div>
           </div>
           <div className="result-title-block" data-el="2">
             <div className="chips" data-el="2.1">
@@ -730,6 +751,28 @@ export default function Result({ id }: { id: number }) {
       </aside>
 
       {notice && <Toast el="11" message={notice} onDone={() => setNotice(null)} />}
+      {dialog === "export" && (
+        <Export
+          video={video}
+          turns={video.chat_turn_count + asked}
+          onClose={() => setDialog(null)}
+          onDone={(message) => {
+            setDialog(null);
+            setNotice(message);
+          }}
+        />
+      )}
+      {dialog === "delete" && (
+        <Delete
+          video={video}
+          turns={video.chat_turn_count + asked}
+          onClose={() => setDialog(null)}
+          onDeleted={() => {
+            markListFocus();
+            router.replace("/"); // 뒤로 가기가 지운 영상으로 돌아오지 않게 바꿔치기
+          }}
+        />
+      )}
     </div>
   );
 }
