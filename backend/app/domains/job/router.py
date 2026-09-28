@@ -29,6 +29,6 @@ async def get_job(video_id: int, videos: Videos, jobs: Jobs) -> Job:
 
 @router.post("/retry")
 async def post_retry(video_id: int, videos: Videos, jobs: Jobs) -> Job:
-    """실패한 단계부터 다시 — 스텁(B2), JobService.retry가 501."""
+    """실패한 단계부터 같은 작업으로 다시 — 대기열 끝에 든다(JobService.retry)."""
     detail = await videos.get(video_id)
     return await jobs.retry(detail.video)
