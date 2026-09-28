@@ -47,7 +47,8 @@ async def test_info_failure_kinds(fake, stderr: str, kind: str) -> None:
 
 
 async def test_info_timeout_is_network(fake, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "PROC_TIMEOUT_SEC", 0.3)
+    # 등록 때 정보 읽기는 INFO_TIMEOUT_SEC — 다른 yt-dlp 호출(30분)보다 짧다
+    monkeypatch.setattr(config, "INFO_TIMEOUT_SEC", 0.3)
     fake.behave(sleep=5)
     with pytest.raises(YtdlpError) as e:
         await ytdlp.info("https://youtu.be/x")

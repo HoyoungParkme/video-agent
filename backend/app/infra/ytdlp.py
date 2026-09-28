@@ -17,6 +17,17 @@ from app.infra.errors import YtdlpError, YtdlpKind
 
 WATCH = "https://www.youtube.com/watch?v={}"
 
+# 실패 종류 → 사람에게 보일 이유 한 줄(명사구). 등록의 source-unavailable과 분석 실패 알림이 같이
+# 쓴다 — 표가 두 벌이면 같은 실패가 화면마다 다르게 적힌다(MS-007 0장)
+REASONS: dict[YtdlpKind, str] = {
+    "private": "비공개 영상",
+    "unavailable": "삭제되었거나 볼 수 없는 영상",
+    "geo": "이 지역에서 볼 수 없는 영상",
+    "network": "YouTube 연결 실패",
+    "extractor": "yt-dlp가 영상을 읽지 못함 — yt-dlp 업데이트",
+    "other": "yt-dlp 오류",
+}
+
 # 앞의 것이 이긴다 — YouTube는 비공개 · 지역 제한도 'Video unavailable. …'로 시작한다
 _KINDS: list[tuple[YtdlpKind, tuple[str, ...]]] = [
     ("private", ("private video", "video is private")),
@@ -48,8 +59,9 @@ async def _reap(proc: asyncio.subprocess.Process) -> None:
         await proc.wait()
 
 
-async def _run(*args: str) -> bytes:
-    """yt-dlp 한 번. 성공하면 표준 출력, 아니면 YtdlpError. 시간 제한을 넘으면 network."""
+async def _run(*args: str, timeout: float | None = None) -> bytes:
+    """yt-dlp 한 번. 성공하면 표준 출력, 아니면 YtdlpError. 시간 제한(기본 PROC_TIMEOUT_SEC)을
+    넘으면 network."""
     try:
         proc = await asyncio.create_subprocess_exec(
             config.YTDLP_BIN,
@@ -61,7 +73,8 @@ async def _run(*args: str) -> bytes:
     except OSError as e:
         raise YtdlpError(f"yt-dlp를 실행하지 못했습니다({type(e).__name__})", "other") from None
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), config.PROC_TIMEOUT_SEC)
+        limit = timeout or config.PROC_TIMEOUT_SEC
+        out, err = await asyncio.wait_for(proc.communicate(), limit)
     except TimeoutError:
         raise YtdlpError("시간 제한을 넘었습니다", "network") from None
     finally:
@@ -83,7 +96,9 @@ async def info(url: str) -> dict:
     Returns:
         yt-dlp의 JSON 그대로 — id · title · channel · duration · subtitles · automatic_captions 등
     """
-    out = await _run("--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", url)
+    # 등록 요청 안에서 돌아 사람이 기다린다 — 키 확인과 더해 web 프록시 60초 안에 들게
+    args = ("--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", url)
+    out = await _run(*args, timeout=config.INFO_TIMEOUT_SEC)
     try:
         return json.loads(out)
     except ValueError:
