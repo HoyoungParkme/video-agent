@@ -1084,7 +1084,7 @@ class VideoRow(Base):
 
 **마이그레이션**: Alembic, 리비전 하나 = ERD 변경 하나. 열거형 값 추가는 마이그레이션 없이 앱 상수만 바꾼다.
 
-**프런트**: Next.js App Router, `output: 'standalone'`. `api/client.ts`는 fetch를 감싸고 problem+json을 예외로 바꾼다. 화면 상태는 서버 값을 그대로 쓴다 — 계산하지 않는다([[VA-API-001]] 1장).
+**프런트**: Next.js App Router, `output: 'standalone'`. `api/client.ts`는 fetch를 감싸고 problem+json을 예외로 바꾼다. 화면 상태는 서버 값을 그대로 쓴다 — 계산하지 않는다([[VA-API-001]] 1장). `next.config.ts`가 `/api/*`를 api로 넘길 때 시간 제한은 60초다(`experimental.proxyTimeout`, 기본 30초). 가장 긴 요청은 질문이다 — 마지막 키 확인이 연결 실패였으면 다시 확인(최대 10초)과 답(최대 20초)이 이어져 기본값에 닿는다. 넘기면 화면은 실패인데 서버는 답을 저장해, 다시 시도하면 같은 질문이 두 번 남는다.
 
 ---
 
