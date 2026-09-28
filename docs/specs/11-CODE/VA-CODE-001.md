@@ -20,7 +20,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 
 **커밋 규격** — `code(슬라이스): 함수명 — 요약`. 함수 하나 = 커밋 하나, docstring 첫 줄 = MINISPEC 항목 ID. PR = 슬라이스 하나. **커밋 메시지와 PR 본문에 에이전트 표시(`Co-Authored-By` · 세션 링크 · 「Generated with」)를 넣지 않는다** — 제목과 본문만 쓴다(싱크독 규약 STD-001 1.10, 사용자 결정 2026-09-22).
 
-**진행 상황**: 카드 7장 중 **A · B1 · B2 · B3 · B4 완료**(A · B1 · B2 2026-09-23, B3 2026-09-27, B4 2026-09-28 — PR #1 · #2 · #3 · #4 · #7). 다음은 **B5**. 스텁은 하나도 남지 않았다.
+**진행 상황**: 카드 7장 중 **A · B1 · B2 · B3 · B4 완료**(A · B1 · B2 2026-09-23, B3 2026-09-27, B4 2026-09-28 — PR #1 · #2 · #3 · #4 · #7). **B5 진행 중**(2026-09-28 시작, `feat/card-b5`). 스텁은 하나도 남지 않았다.
 
 ---
 
@@ -100,10 +100,10 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 | 항목 | 내용 |
 |---|---|
 | 근거 | [[VA-SCN-001#S6]] 전부 · [[VA-UC-001#UC-H1]] 1a · 2a · [[VA-UC-001#UC-H2]] 1a · 2a · [[VA-UC-001#UC-H8]] 3a · [[VA-UC-001#UC-S1]] 1a · 2a · [[VA-UI-001]] 4.5 안내 · 오류 표시 · [[VA-UI-002]] 1.4 · 1.6 · 1.8 |
-| 구현 함수 | 새 함수 없음. B1~B4 함수의 **오류 갈래**를 화면까지 잇는다 — `url-invalid` · `source-unavailable` · `video-too-long` · `no-audio-track` · `unsupported-file` · `path-outside-inbox` · `key-missing` · `key-invalid`(분석 버튼에서. 이유가 `network`면 막지 않고 누를 때 다시 확인) · `job-exists` · `result-not-ready`(주소로 바로 들어옴 → UI-3 · UI-1로) · `llm-unavailable`(키 저장 · 질문) |
+| 구현 함수 | 새 함수 없음. B1~B4 함수의 **오류 갈래**를 화면까지 잇는다 — `url-invalid` · `source-unavailable` · `video-too-long` · `no-audio-track` · `unsupported-file` · `path-outside-inbox` · `key-missing` · `key-invalid`(분석 버튼에서. 이유가 `network`면 막지 않고 누를 때 다시 확인) · `job-exists` · `result-not-ready`(주소로 바로 들어옴 → UI-3 · UI-1로) · `llm-unavailable`(키 저장 · 질문) · 오류를 화면까지 잇는 데 필요한 것: infra `ytdlp.REASONS`(yt-dlp 실패 이유 표 — 등록과 분석 실패 알림이 같이 쓴다, [[VA-MS-007]] 0장) · [[VA-MS-007#ytdlp.info]] 시간 제한 `INFO_TIMEOUT_SEC`(등록이 프록시 60초 안에 들게) · [[VA-MS-001#VideoService.info_of]] 로컬 순서(길이를 해시보다 먼저 — 4시간 파일) |
 | API | 새 엔드포인트 없음. [[VA-API-001]] 2장 에러 표 17종이 전부 화면에 닿는지 |
 | 화면 | [[VA-UI-002#UI-1]] 입력 오류 한 줄 · 키 확인 실패 배너 문구 · 연결을 확인하지 못함 배너(버튼을 막지 않는다) · 막힌 버튼 → UI-5 · 대기 표시 · [[VA-UI-002#UI-2]] 시작 불가 판 넷(정보 조회 실패 · 3시간 초과 · 음성 없음 · 파일 아님) · [[VA-UI-002#UI-3]] · [[VA-UI-002#UI-4]] 키 없음 배너 · 주소로 바로 들어왔을 때 넘김(UI-3 ↔ UI-4 ↔ UI-1) · [[VA-UI-002#UI-5]] 확인 실패 · 키 없음 상태 |
-| 테스트 | 에러 17종마다 API 테스트 하나(problem+json 모양) · **E2E S6**: 키 없이 분석 → 배너 · 비공개 영상 → 시작 불가 판 · 4시간 영상 → 길이와 함께 시작 불가 · 받아쓰기 도중 실패 → 다시 시도(B2와 겹치면 생략) · 인터넷 끊김(가짜 네트워크 예외) → 연결 문구 배너, 분석 버튼은 켜져 있음 → 네트워크가 돌아온 뒤 누르면 다시 확인해 통과 |
+| 테스트 | 에러 17종마다 API 테스트 하나(problem+json 모양) · **E2E S6**: 키 없이 분석 → 배너 · 비공개 영상 → 시작 불가 판 · 4시간 영상 → 길이와 함께 시작 불가 · 받아쓰기 도중 실패 → 다시 시도(B2와 겹치면 생략) · 인터넷 끊김(가짜 네트워크 예외) → 연결 문구 배너, 분석 버튼은 켜져 있음 → 네트워크가 돌아온 뒤 누르면 다시 확인해 통과 · E2E 가짜: 가짜 yt-dlp에 비공개 · 4시간 영상, 가짜 ffmpeg inbox에 4시간 파일, 가짜 OpenAI가 키 확인 요청만 끊거나 거절한다(`/control`의 `models`) — 누를 때마다 키를 다시 확인하므로([[VA-MS-001#VideoService.register]] 1번) 서버 쪽 다시 확인까지 본다 |
 | 스텁 | 없음 |
 | 선행 | B4 |
 | 완료 | — |
