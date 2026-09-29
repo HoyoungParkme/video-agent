@@ -21,7 +21,7 @@ from app.domains.analysis.models import (
     TranscriptSource,
 )
 from app.domains.analysis.schemas import CaptionLine, ChapterDraft, Segment, SummaryDraft
-from app.domains.analysis.service import AnalysisService
+from app.domains.analysis.service import SCRIPT_SUFFIX, AnalysisService
 from app.domains.chat.schemas import ChatTurn
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
@@ -439,9 +439,10 @@ async def test_filename_for(db, make) -> None:
     # 연속 공백 · 밑줄은 하나, 끝 점은 뗀다
     assert await name('x\\y*z"<>|  w__v .') == "x_y_z_ w_v"
     assert await name("a\tb\x7fc") == "a_b_c"  # 제어 문자도 _
-    assert await name("가" * 200) == "가" * 80
+    assert await name("가" * 200) == "가" * 79  # 한글 80자는 240바이트 — 238바이트에 맞춰 79자
     emoji = await name("🔥" * 80)  # 4바이트 글자 — 80자면 320바이트
-    assert len(emoji.encode()) <= 250 and emoji == "🔥" * 62
+    assert len(emoji.encode()) <= 238 and emoji == "🔥" * 59
+    assert len(f"{emoji}{SCRIPT_SUFFIX}.md".encode()) <= 255  # 스크립트 파일 이름까지(MS-003 v8)
     local = {"source_kind": "local", "origin": "workshop_0912.mp4", "channel": None}
     assert await name("workshop_0912.mp4", **local) == "workshop_0912"  # 로컬 파일은 확장자를 뗀다
     empty = await _video(db, make, title=" . ")
