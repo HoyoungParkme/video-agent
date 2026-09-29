@@ -30,7 +30,10 @@ def pick(raw: dict) -> tuple[str, str, str] | None:
     """
     manual = [k for k in raw.get("subtitles") or {} if k != LIVE_CHAT]
     auto_keys = list(raw.get("automatic_captions") or {})
-    orig = next((k for k in auto_keys if k.endswith("-orig")), None)
+    origs = [k for k in auto_keys if k.endswith("-orig")]
+    # -orig가 여럿이면 영상 언어와 같은 것 — 한국어 영상에 en-US-orig가 함께 오기도 한다(이슈 #9)
+    video_lang = _lang(raw.get("language") or "")
+    orig = next((k for k in origs if _lang(k) == video_lang), origs[0] if origs else None)
     if orig is None and raw.get("language") in auto_keys:
         orig = raw["language"]
     for lang in config.CAPTION_LANGS:

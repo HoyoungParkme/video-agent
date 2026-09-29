@@ -52,3 +52,18 @@ def test_language_key_when_no_orig() -> None:
 def test_nothing() -> None:
     assert pick({"subtitles": {}, "automatic_captions": {}}) is None
     assert pick({}) is None
+
+
+def test_orig_matching_video_language_among_several() -> None:
+    # 실제 yt-dlp 목록(파이콘 한국 2024 Q&A, 이슈 #9) — 한국어 영상에 영어 받아쓰기가 먼저 온다
+    raw = {
+        "subtitles": {},
+        "automatic_captions": {"en-US-orig": [], "ko-orig": [], **TRANSLATED},
+        "language": "ko",
+    }
+    assert pick(raw) == ("ko-orig", "ko", "auto")
+
+
+def test_first_orig_when_none_matches_video_language() -> None:
+    raw = {"subtitles": {}, "automatic_captions": {"fr-orig": [], "de-orig": []}, "language": "ja"}
+    assert pick(raw) == ("fr-orig", "fr", "auto")
