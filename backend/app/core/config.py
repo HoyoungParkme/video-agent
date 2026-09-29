@@ -128,6 +128,8 @@ class Config(BaseSettings):
     OPENAI_TIMEOUT_SEC: float = 120
     OPENAI_BASE_URL: str | None = None  # E2E의 가짜 OpenAI 서버만 채운다
     OPENAI_MAX_RETRIES: int = 0
+    # 텍스트 모델의 추론 강도 — low면 답 2~3초 · 47분 요약 8초(기본은 3~4배, 카드 C 실측)
+    TEXT_REASONING_EFFORT: str = "low"
 
     @property
     def EXPORT_DIR(self) -> str:

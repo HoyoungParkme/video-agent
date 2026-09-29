@@ -173,7 +173,12 @@ async def chat(
         첫 선택지의 본문. 비었으면 빈 문자열
     """
     extra: dict[str, Any] = {"response_format": {"type": "json_object"}} if json_mode else {}
-    resp = await client.chat.completions.create(model=model, messages=messages, **extra)
+    resp = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        reasoning_effort=config.TEXT_REASONING_EFFORT,  # 속도 · 비용 — 카드 C 실측
+        **extra,
+    )
     if resp.usage is not None:
         log.info(
             "chat %s 토큰 입력 %d · 출력 %d",
