@@ -21,7 +21,7 @@ flowchart LR
 2. `docker compose up -d` — 처음에는 이미지를 만드느라 몇 분 걸린다(WSL2 · RAM 15GB PC에서 기반 이미지를 받은 뒤 빌드 2분 안팎, 뜨는 데 15초)
 3. 브라우저에서 <http://localhost:3000>
 
-로컬 영상은 `inbox/`에 넣는다 — mp4 · mkv · mov · webm · mp3 · m4a · wav, 3시간까지. 앱은 이 폴더를 읽기만 한다. 다른 폴더를 쓰려면 `.env`의 `INBOX_HOST_DIR`에 그 경로를 적는다.
+로컬 영상은 `inbox/`에 넣는다 — mp4 · mkv · mov · webm · mp3 · m4a · wav, 3시간까지. 앱은 이 폴더를 읽기만 한다. 다른 폴더를 쓰려면 `.env`의 `INBOX_HOST_DIR`에 그 경로를 적는다. WSL이면 리눅스 쪽 폴더(`/home/…`)를 쓴다 — 등록할 때 파일 전체를 읽어 같은 영상인지 보는데, Windows 드라이브(`/mnt/c/…`)는 읽기가 느려 수 GB 파일이면 화면이 기다리다 끊길 수 있다.
 
 키와 모델은 설정 화면에서 바꾼다. 앱이 도는 동안 `.env`를 편집기로 고쳤다면 `docker compose up -d --force-recreate api`로 다시 띄운다 — 파일 하나를 마운트한 것이라 새 파일로 바꿔 저장하는 편집기로 고치면 앱이 옛 파일을 계속 본다.
 
