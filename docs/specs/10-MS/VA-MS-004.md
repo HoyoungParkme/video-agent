@@ -25,7 +25,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 | 이름 | 첫 값 | 이유 |
 |---|---|---|
 | `config.CHAT_HISTORY_TURNS` | 10 | 맥락에 넣는 앞선 턴 수([[VA-DOM-002]] 4.4 규칙) |
-| `config.CHAT_TOKEN_LIMIT` | 30000 | 맥락 구간의 토큰 상한. 넘으면 챕터로 고른다. 답 10초 목표([[VA-PRD-001#N1]])에 맞춘 값 |
+| `config.CHAT_TOKEN_LIMIT` | 30000 | 맥락 구간의 토큰 상한. 넘으면 챕터로 고른다. 답 10초 목표([[VA-PRD-001#N1]])에 맞춘 값. 실측(카드 C): 스크립트 7만 5천 토큰(2시간 30분)을 통째로 보내면 답이 8.6~12초였다 |
 | `config.CHAT_CHAPTERS` | 3 | 관련 챕터로 고르는 수 |
 | `config.CHAT_TIMEOUT_SEC` | 20 | 모델 호출 시간 제한. 넘으면 `llm-unavailable` |
 
@@ -112,7 +112,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 근거: [[VA-SEQ-001#SEQ-9]] 17~22번 · [[VA-UC-001#UC-H4]] 2번, 3b · [[VA-DOM-002]] 4.4 규칙 · [[VA-INFRA-001]] 3절(벡터 DB 없음 — 챕터 필터)
 
 **처리**
-1. `segments = AnalysisService.segments_of(video.id)` · `tokens = 어림(글자 수 ÷ 2)`
+1. `segments = AnalysisService.segments_of(video.id)` · `tokens = `[[VA-MS-006#tokens.estimate]]`(줄 텍스트)` — 줄 앞 시각 표기까지 어림한다(카드 C)
 2. if `tokens ≤ config.CHAT_TOKEN_LIMIT` → `→ segments` (전부)
 3. `chapters = AnalysisService.chapters_of(video.id)` · 질문을 낱말로 나눈다 — 2자 이상(한글 어절 · 영문 · 숫자 모두, 영문은 소문자로), 조사 어미는 떼지 않는다(첫 버전). 한 글자 낱말은 거의 모든 챕터 글에 들어 있어(영문 'a' · 숫자 '2') 점수를 흐리므로 뺀다
 4. 챕터마다 점수 = `title + bullets`에 나오는 질문 낱말 수(부분 일치 포함 — 질문 낱말이 챕터 글에 들어 있거나, 챕터 글의 2자 이상 낱말이 질문 낱말에 들어 있다. '비용' ⊂ '비용은') · 점수 > 0인 챕터를 점수 내림차순, 같으면 시각순으로 앞 `config.CHAT_CHAPTERS`개
