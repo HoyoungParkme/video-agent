@@ -32,6 +32,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | `config.OPENAI_TIMEOUT_SEC` | 120 | 조각 하나 받아쓰기 · 긴 요약 호출의 상한 |
 | `config.OPENAI_BASE_URL` | None | OpenAI 주소. 비우면 공식 주소. E2E가 가짜 OpenAI 서버를 가리킬 때만 채운다 — 사용자가 채울 값이 아니다 |
 | `config.OPENAI_MAX_RETRIES` | 0 | SDK 자체 재시도를 끈다 — 재시도는 파이프라인이 세면서 한다([[VA-MS-002#pipeline.transcribe_stage]]) |
+| `config.TEXT_REASONING_EFFORT` | `low` | 텍스트 모델의 추론 강도 — 요약 · 챕터 · 추천 질문 · 답 넷 모두([[#openai.chat]]). 실측(카드 C, gpt-5-mini, 같은 입력): 기본(medium)은 답 5.7~11.8초 · 47분 영상 요약 21초 · 챕터 26초, `low`는 답 2.4~3.1초 · 요약 8초 · 챕터 16초이고 답 · 근거 · 인사이트 수가 비슷했다. 기본이면 자막 영상 1분 · 답 10초([[VA-PRD-001#N1]])를 넘는다. `minimal`은 챕터가 잘게 쪼개졌다(47분에 16개). 사용자 결정 2026-09-29 |
 
 ---
 
@@ -205,9 +206,9 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 근거: [[VA-MS-006#summarizer_openai.summary]] · [[VA-MS-006#answerer_openai.answer]] · [[VA-INFRA-001]] 3절(단순 API 호출)
 
-**처리** `EXT: client.chat.completions.create(model=model, messages=messages, response_format={"type": "json_object"} if json_mode else None)` · `→ choices[0].message.content` (문자열. 파싱은 어댑터가) · 빈 응답이면 `""`. SDK 예외는 그대로. 토큰 사용량(`usage`)은 로그에 한 줄 — 비용 확인용([[VA-PRD-001#R8]])
+**처리** `EXT: client.chat.completions.create(model=model, messages=messages, reasoning_effort=config.TEXT_REASONING_EFFORT, response_format={"type": "json_object"} if json_mode else None)` · `→ choices[0].message.content` (문자열. 파싱은 어댑터가) · 빈 응답이면 `""`. SDK 예외는 그대로. 토큰 사용량(`usage`)은 로그에 한 줄 — 비용 확인용([[VA-PRD-001#R8]])
 
-**테스트 관점** `json_mode=True`면 `response_format`이 들어간다 · 응답 문자열이 그대로 · 예외가 그대로 나간다 · 메시지 본문(스크립트)은 로그에 안 찍힌다 — 사용량만
+**테스트 관점** `json_mode=True`면 `response_format`이 들어간다 · 추론 강도(`TEXT_REASONING_EFFORT`)가 들어간다 · 응답 문자열이 그대로 · 예외가 그대로 나간다 · 메시지 본문(스크립트)은 로그에 안 찍힌다 — 사용량만
 
 ---
 
