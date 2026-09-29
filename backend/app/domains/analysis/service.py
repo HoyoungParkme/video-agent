@@ -1,0 +1,567 @@
+"""AnalysisService — 스크립트 · 요약 · 챕터 · 추천 질문과 결과 조회(VA-MS-003).
+
+파이프라인이 단계마다 짧은 세션으로 부르고, 결과 라우터가 요청 세션으로 부른다. 작업 묶음을
+모른다 — 부르는 순서는 파이프라인의 것이다. 세 generate_*는 서로를 부르지 않고 각자
+구간을 읽으며, 자기 결과를 갈아 끼운다(재시도가 같은 단계를 다시 돌려도 중복이 없다).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import errno
+import os
+import re
+import tempfile
+import unicodedata
+from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import config
+from app.core.errors import ExportFailed, ResultNotReady
+from app.core.settings import Models, settings
+from app.domains.analysis import crud, export
+from app.domains.analysis.models import TranscriptSource
+from app.domains.analysis.ports import SummarizerPort
+from app.domains.analysis.schemas import (
+    CaptionLine,
+    Chapter,
+    ExportPreview,
+    ExportResult,
+    Insight,
+    Part,
+    Result,
+    Segment,
+    SuggestedQuestion,
+    Summary,
+    SummaryDraft,
+    Transcript,
+)
+from app.shared import tokens
+
+if TYPE_CHECKING:
+    from app.domains.chat.schemas import ChatTurn  # 타입만 — chat을 import하지 않는다
+    from app.domains.video.schemas import Video
+
+# 인사이트 수 상한 — 1시간 이하 8, 넘으면 10(PRD R4). 5개보다 적으면 있는 만큼 둔다
+INSIGHTS_MAX, INSIGHTS_MAX_LONG = 8, 10
+# 챕터 요점 줄 수 상한
+BULLETS_MAX = 3
+# 파일 이름에 쓸 수 없는 글자(윈도 · 맥 · 리눅스 공통)와 제어 문자, 그리고 위키링크에서
+# 뜻이 있는 `[ ] # ^` — 노트가 `[[{이름} 스크립트]]`로 스크립트 파일을 가리키는데 Obsidian은
+# 링크 안의 `#`를 제목, `^`를 블록으로 읽는다(MS-003 v9)
+_UNSAFE = re.compile(r'[\\/:*?"<>|\[\]#^\x00-\x1f\x7f]')
+# 파일 이름 상한 — 글자 수, 그리고 UTF-8 바이트. 파일 이름 한도는 255바이트이고 스크립트 파일은
+# 이름 뒤에 ` 스크립트.md`(16바이트)가 붙는다 — 노트(`.md`)보다 긴 쪽에 맞춘다(MS-003 v8)
+NAME_MAX = 80
+NAME_BYTES_MAX = 238
+# 노트 곁에 따로 쓰는 스크립트 파일 — `{이름} 스크립트.md`. 노트가 `[[{이름} 스크립트]]`로 가리킨다
+SCRIPT_SUFFIX = " 스크립트"
+# 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
+# config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
+EXPORT_SHOWN = "data/export"
+# 파일을 쓰지 못한 까닭 — errno로 고른 한 줄(MS-003 v5).
+# 화면이 '파일을 저장하지 못했어요 — {이유}'로 보인다
+_NO_FOLDER = "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)"
+WRITE_REASONS = {
+    errno.EACCES: "쓰기 권한이 없음",
+    errno.EPERM: "쓰기 권한이 없음",
+    errno.ENOSPC: "디스크 공간이 부족함",
+    errno.EROFS: "읽기 전용 폴더",
+    errno.EEXIST: _NO_FOLDER,
+    errno.ENOTDIR: _NO_FOLDER,
+}
+
+
+def _tokens(segments: list[Segment]) -> int:
+    # 모델에 보낼 스크립트의 토큰 어림 — 대화와 같은 식(MS-006 tokens.estimate)
+    return tokens.estimate(s.text for s in segments)
+
+
+def _windows(segments: list[Segment]) -> list[list[Segment]]:
+    # 스크립트를 TEXT_WINDOW_SEC 구간으로 — 구간은 시작 시각으로 가른다
+    out: dict[int, list[Segment]] = {}
+    for s in segments:
+        out.setdefault(int(s.start_sec // config.TEXT_WINDOW_SEC), []).append(s)
+    return [out[k] for k in sorted(out)]
+
+
+def _span(window: list[Segment]) -> int:
+    # 구간 길이(초) — 포트가 인사이트 상한 · 목표 챕터 수를 이것으로 정한다
+    return max(int(window[-1].end_sec - window[0].start_sec), 1)
+
+
+def _part_of(parts: list[tuple[str, float]], start: float) -> int | None:
+    # 챕터의 파트 번호(1부터) — 시작이 챕터 시작 이하인 마지막 파트. 파트가 없으면 None
+    found = None
+    for i, (_, part_start) in enumerate(parts, 1):
+        if part_start <= start:
+            found = i
+    return found
+
+
+def _sample(segments: list[Segment], limit: int) -> list[Segment]:
+    # 앞 · 가운데 · 끝에서 limit / 3 토큰씩 — 질문은 전체를 다 볼 필요가 없다
+    budget = limit // 3
+
+    def take(ordered: list[Segment]) -> list[Segment]:
+        out, used = [], 0
+        for s in ordered:
+            cost = _tokens([s])
+            if used + cost > budget and out:
+                break
+            out.append(s)
+            used += cost
+        return out
+
+    mid = len(segments) // 2
+    around = sorted(segments, key=lambda s: abs(s.seq - segments[mid].seq))
+    picked = take(segments) + take(around) + take(segments[::-1])
+    return sorted({s.seq: s for s in picked}.values(), key=lambda s: s.seq)
+
+
+def _write(folder: Path, name: str, data: bytes) -> None:
+    # 같은 폴더의 임시 파일에 쓴 뒤 바꿔 끼운다 — 쓰다 멈춰도 반쯤 쓴 파일이 남지 않는다.
+    # mkstemp는 0600으로 만들어 보통 파일처럼(0644) 읽히게 바꾼다 — 노트 앱이 읽는 파일이다
+    folder.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".export-", suffix=".md")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, folder / name)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+class AnalysisService:
+    """결과 일곱 테이블을 만들고 읽는다.
+
+    - segments_of() · chapters_of() · clamp_secs(): 구간 · 챕터 목록과 시각 보정
+    - save_transcript(): 자막 · 받아쓰기 결과를 스크립트로
+    - generate_summary() · generate_chapters() · generate_questions(): 파이프라인 단계 셋
+    - result_of(): 결과 화면 응답 전부
+
+    요약 포트는 생성 단계 셋만 쓴다 — 구간 · 챕터만 읽는 곳(대화 맥락)은 포트 없이 만든다
+    (VA-DOM-002 6장).
+    """
+
+    def __init__(self, session: AsyncSession, summarizer: SummarizerPort | None = None) -> None:
+        self.session = session
+        self._port = summarizer
+
+    @property
+    def summarizer(self) -> SummarizerPort:
+        # 포트 없이 만든 서비스로 생성 단계를 부르면 코드 실수 — 앱 수준에서 internal(500)
+        if self._port is None:
+            raise RuntimeError("요약 포트 없이 만든 AnalysisService로 생성 단계를 불렀다")
+        return self._port
+
+    async def segments_of(self, video_id: int) -> list[Segment]:
+        """VA-MS-003#AnalysisService.segments_of
+
+        영상의 구간 목록, 시각순. 요약 단계들과 대화(B3)가 부른다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            구간들. 스크립트가 없으면 빈 목록(예외 아님)
+        """
+        rows = await crud.segments(self.session, video_id)
+        return [
+            Segment(seq=r.seq, start_sec=r.start_sec, end_sec=r.end_sec, text=r.text) for r in rows
+        ]
+
+    async def chapters_of(self, video_id: int) -> list[Chapter]:
+        """VA-MS-003#AnalysisService.chapters_of
+
+        영상의 챕터 목록, 번호순. 파트 번호를 같이 채운다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            챕터들. 파트가 없는 영상은 part_seq가 모두 None
+        """
+        rows = await crud.chapters_with_part_seq(self.session, video_id)
+        return [
+            Chapter(
+                seq=c.seq,
+                part_seq=part_seq,
+                start_sec=c.start_sec,
+                title=c.title,
+                bullets=c.bullets,
+            )
+            for c, part_seq in rows
+        ]
+
+    @staticmethod
+    def clamp_secs(secs: list[float], duration_sec: int, segments: list[Segment]) -> list[float]:
+        """VA-MS-003#AnalysisService.clamp_secs
+
+        모델이 준 시각을 스크립트 범위로 보정한다. 범위 밖이면 시작 시각이 가장 가까운 구간의
+        시작으로(길이를 넘으면 마지막 구간). 중복을 없애고 오름차순.
+
+        Args:
+            secs: 시각들(초)
+            duration_sec: 영상 길이
+            segments: 구간들 — 비어 있으면 범위 밖 시각을 뺀다
+
+        Returns:
+            보정한 시각들
+        """
+        out = set()
+        for sec in secs:
+            if 0 <= sec <= duration_sec:
+                out.add(sec)
+            elif segments:
+                out.add(min(segments, key=lambda s: abs(s.start_sec - sec)).start_sec)
+        return sorted(out)
+
+    @staticmethod
+    def filename_for(video: Video) -> str:
+        """VA-MS-003#AnalysisService.filename_for
+
+        영상 제목 → 내보내기 파일 이름(확장자 없이 — `.md`는 부르는 쪽이 붙인다). 같은 이름이면
+        덮어쓴다 — 번호를 붙이지 않는다(사용자 결정 2026-09-28).
+
+        Args:
+            video: 영상. 로컬 파일이면 제목(파일 이름)의 확장자를 뗀다
+
+        Returns:
+            쓸 수 없는 글자와 위키링크 글자(`[ ] # ^`)는 `_`, 연속 공백 · 밑줄은 하나,
+            앞뒤 공백 · 점 없이 80자까지. UTF-8로 238바이트를 넘으면 더 자른다 — 스크립트
+            파일 이름(` 스크립트.md`)까지 255바이트 안에 들게. 한글 80자(240바이트)는
+            79자가 되고, 이모지처럼 4바이트 글자가 많으면 더 짧다.
+            비면 `video-{id}`
+        """
+        name = video.title
+        if video.source_kind == "local":
+            name = PurePosixPath(name).stem
+        name = _UNSAFE.sub("_", unicodedata.normalize("NFC", name))
+        name = re.sub(r"_+", "_", re.sub(r"\s+", " ", name)).strip(" .")
+        name = name[:NAME_MAX]
+        while len(name.encode()) > NAME_BYTES_MAX:
+            name = name[:-1]
+        return name.strip(" .") or f"video-{video.id}"
+
+    async def save_transcript(
+        self,
+        video_id: int,
+        source: TranscriptSource,
+        language: str,
+        model: str | None,
+        lines: list[CaptionLine],
+    ) -> None:
+        """VA-MS-003#AnalysisService.save_transcript
+
+        스크립트와 구간을 갈아 끼운다 — 한 트랜잭션. 줄은 시각순으로 정렬하고 빈 줄은 뺀다.
+
+        Args:
+            video_id: 영상 id
+            source: 수동 자막 · 자동 자막 · 받아쓰기
+            language: 언어 코드
+            model: 받아쓰기 모델(자막이면 None)
+            lines: 줄들 — 시각순이 아닐 수 있다(조각 병렬)
+
+        Raises:
+            ValueError: 남는 줄이 없다 — 파이프라인이 unknown으로 접는다
+        """
+        clean = [
+            CaptionLine(line.start_sec, max(line.end_sec, line.start_sec), line.text.strip())
+            for line in sorted(lines, key=lambda x: x.start_sec)
+            if line.text.strip()
+        ]
+        if not clean:
+            raise ValueError("스크립트에 넣을 줄이 없어요")
+        await crud.replace_transcript(self.session, video_id, source, language, model, clean)
+        await self.session.commit()
+
+    async def generate_summary(self, video: Video) -> None:
+        """VA-MS-003#AnalysisService.generate_summary
+
+        한 줄 요약과 인사이트를 만들어 갈아 끼운다. 인사이트는 앞 n개(1시간 넘으면 10, 아니면 8),
+        출처 시각은 스크립트 범위로 보정하고, 출처가 남지 않은 인사이트는 뺀다. 스크립트가 토큰
+        상한을 넘으면 구간(TEXT_WINDOW_SEC)마다 중간 요약을 받고, 그 한 줄 요약(구간 시작 시각) ·
+        인사이트(첫 출처 시각)를 시각순 가짜 구간으로 모아 최종 요약을 받는다.
+
+        Args:
+            video: 영상(id · 길이)
+
+        Raises:
+            포트 예외는 그대로 — 파이프라인이 fail로 접는다
+        """
+        segments = await self.segments_of(video.id)
+        model = settings.current_models().text.id
+        n_max = (
+            INSIGHTS_MAX_LONG if video.duration_sec > config.PART_THRESHOLD_SEC else INSIGHTS_MAX
+        )
+        if _tokens(segments) > config.TEXT_TOKEN_LIMIT:
+            draft = await self._summary_by_windows(segments, video.duration_sec, model)
+        else:
+            draft = await self.summarizer.summary(segments, video.duration_sec, model)
+        insights = []
+        for text, secs in draft.insights[:n_max]:
+            clamped = self.clamp_secs(secs, video.duration_sec, segments)
+            if clamped:
+                insights.append((text, clamped))
+        await crud.replace_summary(self.session, video.id, draft.one_liner, model, insights)
+        await self.session.commit()
+
+    async def _summary_by_windows(
+        self, segments: list[Segment], duration_sec: int, model: str
+    ) -> SummaryDraft:
+        # 중간 요약들 → 시각 붙은 가짜 구간 → 최종 요약. 시각은 절대 시각으로 온다(어댑터 규칙)
+        notes: list[tuple[float, str]] = []
+        for window in _windows(segments):
+            part = await self.summarizer.summary(window, _span(window), model)
+            notes.append((window[0].start_sec, part.one_liner))
+            notes += [(secs[0], text) for text, secs in part.insights if secs]
+        notes.sort(key=lambda n: n[0])
+        fake = [
+            Segment(seq=i, start_sec=at, end_sec=at, text=text)
+            for i, (at, text) in enumerate(notes, 1)
+        ]
+        return await self.summarizer.summary(fake, duration_sec, model)
+
+    async def generate_chapters(self, video: Video) -> None:
+        """VA-MS-003#AnalysisService.generate_chapters
+
+        챕터를 만들어 갈아 끼운다 — 시작 시각 보정, 같은 시각은 하나로, 첫 챕터는 0초부터,
+        요점은 셋까지. 스크립트가 토큰 상한을 넘으면 구간마다 챕터를 받아 이어 붙인다. 60분 넘는
+        영상은 파트로 묶는다 — 모델이 파트를 둘 이상 주면 그것, 아니면 60분 묶음(제목은 묶음의
+        첫 챕터 제목). 파트도 시각순 · 보정 · 첫 파트 0초, 챕터의 파트는 시작 시각으로 정하고
+        챕터가 없는 파트는 뺀다.
+
+        Args:
+            video: 영상(id · 길이)
+        """
+        segments = await self.segments_of(video.id)
+        model = settings.current_models().text.id
+        if _tokens(segments) > config.TEXT_TOKEN_LIMIT:
+            drafted: list[tuple[int | None, float, str, list[str]]] = []
+            for window in _windows(segments):
+                drafted += (await self.summarizer.chapters(window, _span(window), model)).chapters
+            model_parts: list[tuple[str, float]] = []  # 파트는 아래에서 묶는다
+        else:
+            draft = await self.summarizer.chapters(segments, video.duration_sec, model)
+            drafted, model_parts = draft.chapters, draft.parts
+        chapters = self._place(drafted, video.duration_sec, segments)
+        parts: list[tuple[str, float]] = []
+        if video.duration_sec > config.PART_THRESHOLD_SEC and chapters:
+            parts = self._parts(model_parts, chapters, video.duration_sec, segments)
+        rows = [
+            (_part_of(parts, start), start, title, bullets) for start, title, bullets in chapters
+        ]
+        await crud.replace_chapters(self.session, video.id, parts, rows)
+        await self.session.commit()
+
+    def _place(
+        self,
+        drafted: list[tuple[int | None, float, str, list[str]]],
+        duration_sec: int,
+        segments: list[Segment],
+    ) -> list[tuple[float, str, list[str]]]:
+        # 시작 시각 보정 · 시각순(같은 시각이면 모델이 준 순서 — 안정 정렬) · 같은 시각은 하나 ·
+        # 첫 챕터 0초 · 요점 셋까지
+        placed = sorted(
+            (
+                (
+                    (self.clamp_secs([start], duration_sec, segments) or [0.0])[0],
+                    title,
+                    bullets[:BULLETS_MAX],
+                )
+                for _, start, title, bullets in drafted
+            ),
+            key=lambda c: c[0],
+        )
+        chapters: list[tuple[float, str, list[str]]] = []
+        for start, title, bullets in placed:
+            if chapters and chapters[-1][0] == start:
+                continue
+            chapters.append((start, title, bullets))
+        if chapters and chapters[0][0] != 0:  # 스크립트 처음이 어느 챕터에도 안 들어가지 않게
+            chapters[0] = (0.0, *chapters[0][1:])
+        return chapters
+
+    def _parts(
+        self,
+        model_parts: list[tuple[str, float]],
+        chapters: list[tuple[float, str, list[str]]],
+        duration_sec: int,
+        segments: list[Segment],
+    ) -> list[tuple[str, float]]:
+        # 파트 — 모델 것이 둘 이상이면 그것, 아니면 60분 묶음과 첫 챕터 제목(MS-003 미결)
+        if len(model_parts) >= 2:
+            raw = [
+                (title, (self.clamp_secs([start], duration_sec, segments) or [0.0])[0])
+                for title, start in model_parts
+            ]
+        else:
+            firsts: dict[int, tuple[str, float]] = {}
+            for start, title, _ in chapters:
+                firsts.setdefault(int(start // config.PART_THRESHOLD_SEC), (title, start))
+            raw = list(firsts.values())
+        raw.sort(key=lambda p: p[1])
+        parts: list[tuple[str, float]] = []
+        for title, start in raw:
+            if not parts or parts[-1][1] != start:
+                parts.append((title, start))
+        parts[0] = (parts[0][0], 0.0)  # 첫 챕터(0초)가 어느 파트에도 안 드는 것을 막는다
+        used = {_part_of(parts, start) for start, _, _ in chapters}
+        return [p for i, p in enumerate(parts, 1) if i in used]  # 챕터 없는 파트는 뺀다
+
+    async def generate_questions(self, video: Video) -> None:
+        """VA-MS-003#AnalysisService.generate_questions
+
+        추천 질문 셋을 만들어 갈아 끼운다. 스크립트가 길면 앞 · 가운데 · 끝만 보낸다.
+
+        Args:
+            video: 영상(id)
+        """
+        segments = await self.segments_of(video.id)
+        if _tokens(segments) > config.TEXT_TOKEN_LIMIT:
+            segments = _sample(segments, config.TEXT_TOKEN_LIMIT)
+        model = settings.current_models().text.id
+        texts: list[str] = []
+        for q in await self.summarizer.questions(segments, model):
+            q = q.strip()
+            if q and q not in texts:
+                texts.append(q)
+        await crud.replace_questions(self.session, video.id, texts[: config.QUESTION_COUNT])
+        await self.session.commit()
+
+    async def result_of(self, video: Video) -> Result:
+        """VA-MS-003#AnalysisService.result_of
+
+        결과 화면 응답 전부 — 구간을 나누지 않는다. 읽기만 한다. 쿼리 여섯.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상(상태 · 길이 · 대화 수)
+
+        Returns:
+            Result
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다(video_status)
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        t = await crud.transcript(self.session, video.id)
+        s, insights = await crud.summary_with_insights(self.session, video.id)
+        if t is None or s is None:  # analyzed인데 결과가 없는 것은 있을 수 없지만 막는다
+            raise ResultNotReady(video_status=video.status)
+        segs = await crud.segments_of_transcript(self.session, t.id)
+        part_rows = await crud.parts(self.session, video.id)
+        chapter_rows = await crud.chapters_with_part_seq(self.session, video.id)
+        questions = await crud.questions(self.session, video.id)
+        parts = [
+            Part(
+                seq=p.seq,
+                title=p.title,
+                start_sec=p.start_sec,
+                end_sec=part_rows[i + 1].start_sec
+                if i + 1 < len(part_rows)
+                else video.duration_sec,
+                chapter_count=sum(1 for _, seq in chapter_rows if seq == p.seq),
+            )
+            for i, p in enumerate(part_rows)
+        ]
+        return Result(
+            video=video,
+            transcript=Transcript(
+                source=t.source,
+                language=t.language,
+                model=t.model,
+                segments=[
+                    Segment(seq=g.seq, start_sec=g.start_sec, end_sec=g.end_sec, text=g.text)
+                    for g in segs
+                ],
+            ),
+            summary=Summary(
+                one_liner=s.one_liner,
+                model=s.model,
+                insights=[
+                    Insight(seq=i.seq, text=i.text, source_secs=i.source_secs) for i in insights
+                ],
+            ),
+            parts=parts,
+            chapters=[
+                Chapter(
+                    seq=c.seq,
+                    part_seq=seq,
+                    start_sec=c.start_sec,
+                    title=c.title,
+                    bullets=c.bullets,
+                )
+                for c, seq in chapter_rows
+            ],
+            suggested_questions=[SuggestedQuestion(seq=q.seq, text=q.text) for q in questions],
+            models=Models(stt=t.model, text=s.model),
+            analyzed_at=video.analyzed_at,
+        )
+
+    async def export_markdown(
+        self, video: Video, with_chat: bool, turns: list[ChatTurn]
+    ) -> ExportPreview:
+        """VA-MS-003#AnalysisService.export_markdown
+
+        내보낼 노트 전체와 파일 이름 — 미리 보기와 클립보드가 쓴다. 스크립트 줄도 스크립트 파일을
+        가리키는 절도 없다(복사한 노트에는 가리킬 파일이 없다). 결과는 읽기만 한다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상
+            with_chat: 질문 기록을 맨 끝에 붙일지
+            turns: 그 영상의 대화 턴(라우터가 ChatService.history로). with_chat이 거짓이면 안 쓴다
+
+        Returns:
+            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 노트 전체
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다(result_of)
+        """
+        result = await self.result_of(video)
+        name = self.filename_for(video)
+        md = export.build(result, turns if with_chat else None)
+        return ExportPreview(filename=name, path=f"{EXPORT_SHOWN}/{name}.md", markdown=md)
+
+    async def export_to_file(
+        self, video: Video, with_chat: bool, turns: list[ChatTurn]
+    ) -> ExportResult:
+        """VA-MS-003#AnalysisService.export_to_file
+
+        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않고 다시
+        만든다. 노트는 챕터 다음에 스크립트 파일을 가리키는 절(`[[{이름} 스크립트]]`)이 붙는다.
+        스크립트를 먼저 써 노트의 링크가 헛돌지 않게 한다. 같은 이름이 있으면 둘 다 덮어쓰고,
+        폴더가 없으면 만든다.
+
+        Args:
+            video: 라우터가 VideoService.get으로 받은 영상
+            with_chat: 질문 기록을 노트 맨 끝에 붙일지
+            turns: 그 영상의 대화 턴. with_chat이 거짓이면 안 쓴다
+
+        Returns:
+            파일 이름 · 노트의 보일 경로 · 쓴 두 파일의 바이트 합
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+            ExportFailed: 쓰지 못했다 — path는 쓰지 못한 파일의 보일 경로, reason은 errno로
+                고른 한 줄
+        """
+        result = await self.result_of(video)
+        name = self.filename_for(video)
+        script = f"{name}{SCRIPT_SUFFIX}"
+        note = export.build(result, turns if with_chat else None, script).encode("utf-8")
+        text = export.build_script(result).encode("utf-8")
+        for file, data in ((script, text), (name, note)):
+            try:
+                await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{file}.md", data)
+            except OSError as e:
+                reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
+                raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}.md", reason=reason) from e
+        return ExportResult(
+            filename=name, path=f"{EXPORT_SHOWN}/{name}.md", bytes=len(note) + len(text)
+        )

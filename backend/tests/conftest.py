@@ -1,0 +1,580 @@
+"""테스트 공용 — 전용 테스트 DB만 쓴다(DEV-14). 앱을 import하기 전에 접속 주소를 덮어쓴다.
+
+뒤쪽은 앱 테스트 공용 — 빈 테이블 세션 · 쿼리 세기 · 키 있음 · 행 만들기 · 가짜 포트 · API 클라이언트.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import itertools
+import os
+import re
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+
+import asyncpg
+import httpx
+import pytest
+from sqlalchemy import event, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession
+
+TEST_DB_URL = os.environ.get(
+    "VA_TEST_DATABASE_URL", "postgresql+asyncpg://va:va@127.0.0.1:5433/va_test"
+)
+if "test" not in (make_url(TEST_DB_URL).database or ""):
+    pytest.exit(f"테스트 DB 이름에 test가 없다 — 시작하지 않는다: {make_url(TEST_DB_URL).database}")
+# setdefault가 아니라 덮어쓴다 — 셸에 떠 있는 값이 이기면 개발 DB가 지워진다
+os.environ["DATABASE_URL"] = TEST_DB_URL
+
+
+async def _ensure_database() -> None:
+    url = make_url(TEST_DB_URL)
+    conn = await asyncpg.connect(
+        host=url.host, port=url.port, user=url.username, password=url.password, database="postgres"
+    )
+    try:
+        if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", url.database):
+            await conn.execute(f'CREATE DATABASE "{url.database}"')
+    finally:
+        await conn.close()
+
+
+# 여기부터는 접속 주소를 덮어쓴 뒤에 — 앱 모듈이 import 때 설정을 읽는다
+from alembic import command  # noqa: E402
+from alembic.config import Config as AlembicConfig  # noqa: E402
+
+from app.core.config import config  # noqa: E402
+from app.core.db import SessionLocal, engine  # noqa: E402
+from app.core.errors import SourceUnavailable, UnsupportedFile  # noqa: E402
+from app.core.settings import settings  # noqa: E402
+from app.domains.analysis.models import TranscriptSource  # noqa: E402
+from app.domains.analysis.schemas import (  # noqa: E402
+    CaptionLine,
+    ChapterDraft,
+    Segment,
+    SummaryDraft,
+)
+from app.domains.chat.models import ChatTurnRow  # noqa: E402
+from app.domains.chat.schemas import AnswerDraft, ChatTurn  # noqa: E402
+from app.domains.job.models import (  # noqa: E402
+    AnalysisJobRow,
+    AudioChunkRow,
+    ChunkState,
+    ErrorKind,
+    JobStatus,
+)
+from app.domains.job.schemas import ChunkPlan, SttSegment  # noqa: E402
+from app.domains.job.service import JobService  # noqa: E402
+from app.domains.video.models import CaptionKind, SourceKind, VideoRow  # noqa: E402
+from app.domains.video.schemas import SourceInfo  # noqa: E402
+from app.infra import openai  # noqa: E402
+from app.infra.openai import KeyCheck, KeyState, ReasonKind  # noqa: E402
+
+BACKEND = Path(__file__).resolve().parents[1]
+
+
+def alembic_config() -> AlembicConfig:
+    """backend/alembic.ini — 로그 설정은 건드리지 않게."""
+    cfg = AlembicConfig(str(BACKEND / "alembic.ini"))
+    cfg.attributes["configure_logger"] = False
+    return cfg
+
+
+async def _alembic(action: str, target: str) -> None:
+    # env.py가 asyncio.run을 부르므로 다른 스레드에서
+    await asyncio.to_thread(getattr(command, action), alembic_config(), target)
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_wait(monkeypatch) -> None:
+    """조각을 다시 보내기 전의 기다림(2초 · 4초)을 없앤다 — 기다림을 보는 테스트만 값을 준다."""
+    monkeypatch.setattr(config, "CHUNK_RETRY_WAIT_SEC", 0)
+
+
+@pytest.fixture(scope="session")
+def alembic() -> Callable[[str, str], Awaitable[None]]:
+    """`await alembic("upgrade", "head")` — 리비전을 올리고 내린다."""
+    return _alembic
+
+
+@pytest.fixture(scope="session")
+async def migrated() -> AsyncIterator[None]:
+    """테스트 DB를 만들고(없으면) 마지막 리비전으로. DB가 필요한 테스트만 부른다."""
+    await _ensure_database()
+    await _alembic("upgrade", "head")
+    yield
+
+
+@pytest.fixture
+def env_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """테스트마다 새 `.env` 자리. 파일은 만들지 않는다 — 테스트가 필요하면 쓴다."""
+    path = tmp_path / ".env"
+    monkeypatch.setattr(config, "ENV_PATH", str(path))
+    yield path
+
+
+REASONS = {
+    ReasonKind.format: "키 형식이 아닙니다",
+    ReasonKind.auth: "인증에 실패했습니다",
+    ReasonKind.quota: "잔액이 없습니다",
+    ReasonKind.network: "연결하지 못했습니다",
+}
+
+
+@dataclass
+class FakeVerify:
+    """openai.verify_key 자리. fail을 정하면 그 이유로 실패하고, error를 정하면 던진다."""
+
+    fail: ReasonKind | None = None
+    error: Exception | None = None
+    calls: list[str] = field(default_factory=list)
+
+    async def __call__(self, key: str) -> KeyCheck:
+        self.calls.append(key)
+        if self.error:
+            raise self.error
+        if self.fail:
+            return KeyCheck(KeyState.invalid, self.fail, REASONS[self.fail], datetime.now(UTC))
+        return KeyCheck(KeyState.ok, None, None, datetime.now(UTC))
+
+
+@pytest.fixture
+def verify(monkeypatch: pytest.MonkeyPatch) -> FakeVerify:
+    fake = FakeVerify()
+    monkeypatch.setattr(openai, "verify_key", fake)
+    return fake
+
+
+# --- 앱 테스트 공용
+
+TABLES = (
+    "videos, analysis_jobs, audio_chunks, transcripts, segments, summaries, insights, parts, "
+    "chapters, suggested_questions, chat_turns"
+)
+KEY = "sk-abcdefghijklmnop1234"
+CAPTION_STAGES = ["download", "summarize", "chapter", "suggest"]
+STT_STAGES = ["download", "transcribe", "summarize", "chapter", "suggest"]
+
+
+@pytest.fixture
+async def db(migrated: None) -> AsyncIterator[AsyncSession]:
+    """테스트마다 빈 테이블과 세션 하나. 워커 신호 · 태스크 핸들도 비운다."""
+    async with SessionLocal() as s:
+        await s.execute(text(f"TRUNCATE {TABLES} RESTART IDENTITY CASCADE"))
+        await s.commit()
+        JobService.work_event.clear()
+        JobService.tasks.clear()
+        yield s
+
+
+@pytest.fixture
+def queries() -> Iterator[list[str]]:
+    """앱이 DB에 보낸 SQL 문. 잴 호출 앞에서 `.clear()`한다."""
+    seen: list[str] = []
+
+    def on(conn: Any, cursor: Any, statement: str, *_: Any) -> None:
+        seen.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", on)
+    yield seen
+    event.remove(engine.sync_engine, "before_cursor_execute", on)
+
+
+@pytest.fixture
+def key(env_file, verify, monkeypatch) -> None:
+    """키가 `.env`에 있고 마지막 확인이 통과한 상태."""
+    env_file.write_text(f"OPENAI_API_KEY={KEY}\n")
+    monkeypatch.setattr(
+        settings, "last_check", KeyCheck(KeyState.ok, None, None, datetime.now(UTC))
+    )
+
+
+@dataclass
+class Make:
+    """행을 바로 넣는다 — 서비스를 거치지 않고 상태를 차린다."""
+
+    s: AsyncSession
+    _n: itertools.count = field(default_factory=lambda: itertools.count(1))
+
+    async def video(self, **kw: Any) -> VideoRow:
+        n = next(self._n)
+        values: dict[str, Any] = {
+            "source_kind": SourceKind.youtube,
+            "source_id": f"vid{n:08d}",
+            "title": f"영상 {n}",
+            "channel": "채널",
+            "duration_sec": 3000,
+            "origin": f"https://www.youtube.com/watch?v=vid{n:08d}",
+            "has_captions": True,
+            "caption_language": "ko",
+            "caption_kind": CaptionKind.manual,
+        } | kw
+        row = VideoRow(**values)
+        self.s.add(row)
+        await self.s.commit()
+        await self.s.refresh(row)
+        return row
+
+    async def job(
+        self, video_id: int, status: JobStatus = JobStatus.done, **kw: Any
+    ) -> AnalysisJobRow:
+        """작업 행. at으로 시작 · 대기열에 든 때를 정한다(기본 지금)."""
+        at: datetime = kw.pop("at", datetime.now(UTC))
+        values: dict[str, Any] = {
+            "video_id": video_id,
+            "status": status,
+            "stage": "suggest" if status == JobStatus.done else "pending",
+            "stages": CAPTION_STAGES,
+            "progress_pct": 100 if status == JobStatus.done else 0,
+            "est_seconds": 60,
+            "est_cost_usd": Decimal("0.02"),
+            "concurrency": 3,
+            "stt_model": None,
+            "text_model": "gpt-5-mini",
+            "stage_durations_sec": {},
+            "started_at": at,
+            "queued_at": at,
+            "stage_started_at": at,
+            "finished_at": at + timedelta(seconds=60) if status == JobStatus.done else None,
+        }
+        if status == JobStatus.failed:
+            values |= {"error_kind": ErrorKind.openai, "error_reason": "실패", "error_attempts": 1}
+        row = AnalysisJobRow(**(values | kw))
+        self.s.add(row)
+        await self.s.commit()
+        await self.s.refresh(row)
+        return row
+
+    async def chunks(self, job_id: int, states: list[ChunkState]) -> None:
+        for seq, state in enumerate(states, 1):
+            self.s.add(
+                AudioChunkRow(
+                    job_id=job_id,
+                    seq=seq,
+                    offset_sec=(seq - 1) * 600,
+                    duration_sec=600,
+                    path=None,
+                    state=state,
+                    attempts=1 if state != ChunkState.waiting else 0,
+                    result=[{"start_sec": 0, "end_sec": 1, "text": "x"}]
+                    if state == ChunkState.done
+                    else None,
+                )
+            )
+        await self.s.commit()
+
+    async def transcript(self, video_id: int, texts: list[str], step: float = 10) -> None:
+        """자막 스크립트 — 줄마다 step초."""
+        from app.domains.analysis import crud
+
+        lines = [CaptionLine(i * step, (i + 1) * step, t) for i, t in enumerate(texts)]
+        await crud.replace_transcript(
+            self.s, video_id, TranscriptSource.caption_manual, "ko", None, lines
+        )
+        await self.s.commit()
+
+    async def chapters(self, video_id: int, chapters: list[tuple[float, str, list[str]]]) -> None:
+        """챕터 — (시작, 제목, 요점), 파트 없이."""
+        from app.domains.analysis import crud
+
+        drafts = [(None, start, title, bullets) for start, title, bullets in chapters]
+        await crud.replace_chapters(self.s, video_id, [], drafts)
+        await self.s.commit()
+
+    async def turn(
+        self,
+        video_id: int,
+        question: str = "질문",
+        answer: str = "답",
+        cited: list[float] | None = None,
+        at: datetime | None = None,
+    ) -> ChatTurnRow:
+        """대화 턴 한 줄 — at을 주지 않으면 지금."""
+        row = ChatTurnRow(
+            video_id=video_id,
+            question=question,
+            answer=answer,
+            cited_secs=cited or [],
+            model="gpt-5-mini",
+            asked_at=at or datetime.now(UTC),
+        )
+        self.s.add(row)
+        await self.s.commit()
+        await self.s.refresh(row)
+        return row
+
+
+@pytest.fixture
+def make(db: AsyncSession) -> Make:
+    return Make(db)
+
+
+def youtube_id(url: str) -> str:
+    m = re.search(r"(?:v=|youtu\.be/|shorts/)([A-Za-z0-9_-]{11})", url)
+    assert m, url
+    return m.group(1)
+
+
+@dataclass
+class FakeYouTube:
+    """YouTubeInfoPort 자리. 주소에서 영상 ID를 뽑아 정한 값으로 SourceInfo를 준다."""
+
+    title: str = "자막 있는 강의"
+    duration: int = 3012
+    captions: tuple[str, CaptionKind] | None = ("ko", CaptionKind.manual)
+    error: Exception | None = None
+    calls: list[str] = field(default_factory=list)
+
+    async def info(self, url: str) -> SourceInfo:
+        self.calls.append(url)
+        if self.error:
+            raise self.error
+        vid = youtube_id(url)
+        return SourceInfo(
+            source_kind=SourceKind.youtube,
+            source_id=vid,
+            title=self.title,
+            channel="채널",
+            duration_sec=self.duration,
+            origin=f"https://www.youtube.com/watch?v={vid}",
+            has_captions=self.captions is not None,
+            caption_language=self.captions[0] if self.captions else None,
+            caption_kind=self.captions[1] if self.captions else None,
+        )
+
+
+@pytest.fixture
+def youtube() -> FakeYouTube:
+    return FakeYouTube()
+
+
+@dataclass
+class FakeMediaProbe:
+    """MediaProbePort 자리. 파일 이름으로 정한 (길이, 음성 유무)를 주고, 없는 이름은 default.
+    default가 None이거나 이름의 값이 None이면 열 수 없는 파일(unsupported-file)."""
+
+    files: dict[str, tuple[int, bool] | None] = field(default_factory=dict)
+    default: tuple[int, bool] | None = (1800, True)
+    calls: list[str] = field(default_factory=list)
+
+    async def probe(self, path: str) -> tuple[int, bool]:
+        self.calls.append(path)
+        got = self.files.get(Path(path).name, self.default)
+        if got is None:
+            raise UnsupportedFile(reason="영상·음성 파일이 아닙니다", accepted=[])
+        return got
+
+
+@pytest.fixture
+def probe() -> FakeMediaProbe:
+    return FakeMediaProbe()
+
+
+@pytest.fixture
+def unavailable() -> SourceUnavailable:
+    return SourceUnavailable(reason="비공개 영상", hint=None)
+
+
+@dataclass
+class FakeSummarizer:
+    """SummarizerPort 자리. 부른 것을 적고 정한 값을 준다. fail에 단계 이름을 넣으면 던진다."""
+
+    summary_draft: SummaryDraft = field(
+        default_factory=lambda: SummaryDraft(
+            one_liner="이 영상은 파이썬을 소개한다.",
+            insights=[(f"인사이트 {i}", [i * 60.0]) for i in range(1, 7)],
+        )
+    )
+    chapter_draft: ChapterDraft = field(
+        default_factory=lambda: ChapterDraft(
+            parts=[],
+            chapters=[
+                (None, i * 360.0, f"챕터 {i + 1}", ["요점 하나", "요점 둘"]) for i in range(8)
+            ],
+        )
+    )
+    question_list: list[str] = field(
+        default_factory=lambda: ["파이썬은 누가 만들었나요?", "왜 쉬운가요?", "어디에 쓰나요?"]
+    )
+    fail: dict[str, Exception] = field(default_factory=dict)
+    delay: float = 0
+    calls: list[tuple[str, list[Segment]]] = field(default_factory=list)
+
+    async def _call(self, name: str, segments: list[Segment]) -> None:
+        self.calls.append((name, segments))
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if name in self.fail:
+            raise self.fail[name]
+
+    async def summary(self, segments: list[Segment], duration_sec: int, model: str) -> SummaryDraft:
+        await self._call("summary", segments)
+        return self.summary_draft
+
+    async def chapters(
+        self, segments: list[Segment], duration_sec: int, model: str
+    ) -> ChapterDraft:
+        await self._call("chapters", segments)
+        return self.chapter_draft
+
+    async def questions(self, segments: list[Segment], model: str) -> list[str]:
+        await self._call("questions", segments)
+        return self.question_list
+
+
+@pytest.fixture
+def summarizer() -> FakeSummarizer:
+    return FakeSummarizer()
+
+
+@dataclass
+class FakeAnswerer:
+    """AnswererPort 자리 — 근거 있는 답(기본) · 근거 없는 답(draft를 바꾼다) · 실패(error).
+    받은 질문 · 맥락 · 앞선 턴 · 모델을 적는다."""
+
+    draft: AnswerDraft = field(
+        default_factory=lambda: AnswerDraft("PostgreSQL을 썼다고 합니다.", [60.0, 120.0])
+    )
+    error: Exception | None = None
+    delay: float = 0
+    calls: list[tuple[str, list[Segment], list[ChatTurn], str]] = field(default_factory=list)
+
+    async def answer(
+        self, question: str, context: list[Segment], history: list[ChatTurn], model: str
+    ) -> AnswerDraft:
+        self.calls.append((question, context, history, model))
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.error:
+            raise self.error
+        return self.draft
+
+
+@pytest.fixture
+def answerer() -> FakeAnswerer:
+    return FakeAnswerer()
+
+
+@dataclass
+class FakeAudioSource:
+    """AudioSourcePort 자리 — 자막 · 음성 내려받기 · 추출. 음성은 dest에 audio.mp3를 실제로 쓴다.
+    calls는 자막을 받으러 온 영상 ID, audio_calls는 (download|extract, 원본, dest)."""
+
+    result: tuple[list[CaptionLine], str, CaptionKind] | None = field(
+        default_factory=lambda: (
+            [CaptionLine(i * 10.0, i * 10.0 + 9, f"문장 {i}") for i in range(30)],
+            "ko",
+            CaptionKind.manual,
+        )
+    )
+    error: Exception | None = None
+    audio_error: Exception | None = None
+    calls: list[str] = field(default_factory=list)
+    audio_calls: list[tuple[str, str, str]] = field(default_factory=list)
+
+    async def captions(self, video_id: str) -> tuple[list[CaptionLine], str, CaptionKind] | None:
+        self.calls.append(video_id)
+        if self.error:
+            raise self.error
+        return self.result
+
+    async def _audio(self, how: str, src: str, dest: str) -> str:
+        self.audio_calls.append((how, src, dest))
+        if self.audio_error:
+            raise self.audio_error
+        out = Path(dest) / "audio.mp3"
+        out.write_bytes(b"mp3")
+        return str(out)
+
+    async def download_audio(self, video_id: str, dest: str) -> str:
+        return await self._audio("download", video_id, dest)
+
+    async def extract_audio(self, src: str, dest: str) -> str:
+        return await self._audio("extract", src, dest)
+
+
+@pytest.fixture
+def audio_source() -> FakeAudioSource:
+    return FakeAudioSource()
+
+
+@dataclass
+class FakeAudioSplit:
+    """AudioSplitPort 자리 — n개(각 600초)로 나눈 것처럼 dest_dir에 {seq}.mp3를 실제로 쓴다."""
+
+    n: int = 3
+    error: Exception | None = None
+    calls: list[tuple[str, str]] = field(default_factory=list)
+
+    async def split(self, path: str, dest_dir: str) -> list[ChunkPlan]:
+        self.calls.append((path, dest_dir))
+        if self.error:
+            raise self.error
+        plans = []
+        for seq in range(1, self.n + 1):
+            chunk = Path(dest_dir) / f"{seq}.mp3"
+            chunk.write_bytes(b"chunk")
+            plans.append(ChunkPlan(seq, (seq - 1) * 600.0, 600.0, str(chunk)))
+        return plans
+
+
+@pytest.fixture
+def audio_split() -> FakeAudioSplit:
+    return FakeAudioSplit()
+
+
+@dataclass
+class FakeStt:
+    """SttPort 자리 — 조각(파일 이름의 seq)마다 구간 둘. fail[seq]만큼 error로 실패시키고,
+    받은 조각 번호와 동시에 도는 수의 최댓값을 센다. 지연은 조각마다 줄 수 있다(delays)."""
+
+    fail: dict[int, int] = field(default_factory=dict)
+    error: Exception = field(default_factory=TimeoutError)
+    delay: float = 0
+    delays: dict[int, float] = field(default_factory=dict)
+    calls: list[int] = field(default_factory=list)
+    running: int = 0
+    peak: int = 0
+
+    async def transcribe(self, path: str, model: str) -> list[SttSegment]:
+        seq = int(Path(path).stem)
+        self.calls.append(seq)
+        self.running += 1
+        self.peak = max(self.peak, self.running)
+        try:
+            await asyncio.sleep(self.delays.get(seq, self.delay))
+            if self.fail.get(seq, 0) > 0:
+                self.fail[seq] -= 1
+                raise self.error
+            return [
+                SttSegment(0.0, 5.0, f"{seq}번 조각 첫 문장", "ko"),
+                SttSegment(5.0, 9.5, f"{seq}번 조각 둘째 문장", "ko"),
+            ]
+        finally:
+            self.running -= 1
+
+
+@pytest.fixture
+def stt() -> FakeStt:
+    return FakeStt()
+
+
+@pytest.fixture
+async def api(
+    db, youtube, probe, summarizer, answerer, monkeypatch
+) -> AsyncIterator[httpx.AsyncClient]:
+    """앱에 바로 붙는 클라이언트 — 시작 이벤트(워커) 없이, 어댑터는 가짜로."""
+    from app.main import app
+
+    monkeypatch.setattr(app.state, "youtube_info", youtube)
+    monkeypatch.setattr(app.state, "media_probe", probe)
+    monkeypatch.setattr(app.state, "summarizer", summarizer)
+    monkeypatch.setattr(app.state, "answerer", answerer)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
+        yield c

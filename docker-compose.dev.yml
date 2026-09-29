@@ -1,0 +1,7 @@
+# 개발용 덧씌우기 — db를 호스트 127.0.0.1:5433에 연다. 호스트에서 도는 api와 테스트가 붙는다 (INFRA 8절)
+# docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+# 5432는 다른 PostgreSQL이 흔히 쓰고 있어 비켜 둔다
+services:
+  db:
+    ports:
+      - "127.0.0.1:5433:5432"
