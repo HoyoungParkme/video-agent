@@ -1,7 +1,8 @@
 """내보내기 마크다운 — 순수 함수(VA-MS-003 export). 결과 서비스(`export_markdown`)가 부른다.
 
 시각 표기는 영상 길이로 정하고(`timecode`), YouTube면 그 시점 링크를 건다(`link`). `build`가
-제목 → 원본 → 한 줄 요약 → 핵심 인사이트 → 챕터 → 스크립트 → (질문 기록) 순서로 잇는다.
+노트를 제목 → 원본 → 한 줄 요약 → 핵심 인사이트 → 챕터 → (스크립트 파일 링크) → (질문 기록)
+순서로 잇는다. 스크립트는 노트에 없다 — 따로 쓰는 파일이다(PRD R10).
 """
 
 from __future__ import annotations
@@ -67,14 +68,17 @@ def link(sec: float, video: Video) -> str:
     return f"[{t}]"
 
 
-def build(result: Result, turns: list[ChatTurn] | None) -> str:
+def build(result: Result, turns: list[ChatTurn] | None, script_name: str | None = None) -> str:
     """VA-MS-003#export.build
 
-    결과 → 마크다운 하나. 옵시디언 · 노션에 그대로 붙는다. 시각은 문장 끝에 전부 남긴다.
+    결과 → 노트 마크다운. 옵시디언 · 노션에 그대로 붙는다. 시각은 문장 끝에 전부 남긴다. 스크립트
+    줄은 노트에 없다 — 길면 노트가 스크립트로 가득 찬다(2시간 30분에 5천 줄). 따로 쓰는 파일이다.
 
     Args:
         result: 결과 화면이 받는 것 전부
         turns: 질문 기록. None이면 절을 붙이지 않고, 빈 목록이면 절 제목과 '질문 기록이 없습니다'
+        script_name: 파일로 저장할 때의 스크립트 파일 이름(확장자 없이). 오면 챕터 다음에 그 파일을
+            가리키는 위키링크 절을 둔다. 미리 보기 · 복사는 None — 가리킬 파일이 없다
 
     Returns:
         마크다운(줄바꿈 `\n`, 끝에 줄바꿈 하나)
@@ -84,8 +88,7 @@ def build(result: Result, turns: list[ChatTurn] | None) -> str:
     def at(sec: float) -> str:
         return timecode(sec, v.duration_sec)
 
-    origin = f"[{v.origin}]({v.origin})" if v.source_kind == SourceKind.youtube else v.origin
-    lines = [f"# {v.title}", f"원본: {origin} · {at(v.duration_sec)}"]
+    lines = [f"# {v.title}", _origin(v)]
     lines += ["", f"> {result.summary.one_liner}", "", "## 핵심 인사이트"]
     for i in result.summary.insights:
         lines.append(" ".join([f"{i.seq}. {i.text}", *(link(s, v) for s in i.source_secs)]))
@@ -98,8 +101,8 @@ def build(result: Result, turns: list[ChatTurn] | None) -> str:
             lines += _chapters(inside, v, "####")
     else:
         lines += _chapters(result.chapters, v, "###")
-    lines += ["", "## 스크립트", _source(result.transcript), ""]
-    lines += [f"{link(s.start_sec, v)} {s.text}" for s in result.transcript.segments]
+    if script_name:
+        lines += ["", "## 스크립트", f"[[{script_name}]]"]
     if turns is not None:
         lines += ["", "## 질문 기록"]
         if not turns:
@@ -110,6 +113,14 @@ def build(result: Result, turns: list[ChatTurn] | None) -> str:
                 lines.append(" ".join(["근거:", *(link(s, v) for s in t.cited_secs)]))
             lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def _origin(video: Video) -> str:
+    # 원본 줄 — YouTube면 주소 링크, 로컬 파일이면 파일 이름만(UI-7 규칙). 길이 붙음
+    at = timecode(video.duration_sec, video.duration_sec)
+    if video.source_kind == SourceKind.youtube:
+        return f"원본: [{video.origin}]({video.origin}) · {at}"
+    return f"원본: {video.origin} · {at}"
 
 
 def _chapters(chapters: list[Chapter], video: Video, mark: str) -> list[str]:
