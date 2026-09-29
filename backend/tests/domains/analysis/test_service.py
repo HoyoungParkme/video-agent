@@ -439,6 +439,8 @@ async def test_filename_for(db, make) -> None:
     # 연속 공백 · 밑줄은 하나, 끝 점은 뗀다
     assert await name('x\\y*z"<>|  w__v .') == "x_y_z_ w_v"
     assert await name("a\tb\x7fc") == "a_b_c"  # 제어 문자도 _
+    # 위키링크에서 뜻이 있는 글자도 _ — 노트의 [[{이름} 스크립트]]가 깨지지 않게(MS-003 v9)
+    assert await name("[EP.1] RAG #shorts ^v2") == "_EP.1_ RAG _shorts _v2"
     assert await name("가" * 200) == "가" * 79  # 한글 80자는 240바이트 — 238바이트에 맞춰 79자
     emoji = await name("🔥" * 80)  # 4바이트 글자 — 80자면 320바이트
     assert len(emoji.encode()) <= 238 and emoji == "🔥" * 59
