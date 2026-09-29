@@ -195,6 +195,7 @@ async def test_chat_json_mode(caplog: pytest.LogCaptureFixture) -> None:
     messages = [{"role": "user", "content": "<transcript>비밀 스크립트</transcript>"}]
     assert await openai.chat(_chat_client(rec), "gpt-5-mini", messages) == '{"one_liner": "요약"}'
     assert rec.kwargs["response_format"] == {"type": "json_object"}
+    assert rec.kwargs["reasoning_effort"] == "low"  # 요약 · 챕터 · 질문 · 답 모두(MS-007 v9)
     assert "1200" in caplog.text and "300" in caplog.text
     assert "비밀 스크립트" not in caplog.text
 

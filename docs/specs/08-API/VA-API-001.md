@@ -493,10 +493,10 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 
 #### GET/api/videos/{id}/export 마크다운 본문
 
-내보낼 마크다운 전체와 파일 이름을 준다. UI-7이 열릴 때와 질문 기록 체크박스를 바꿀 때 부른다. [복사하기]는 받아 둔 `markdown` 전체를 쓰고 다시 부르지 않는다 — 누른 뒤 요청을 기다리는 사이 사용자 동작이 끝나면 브라우저가 클립보드 쓰기를 막을 수 있다.
+내보낼 노트(마크다운 전체)와 파일 이름을 준다. 스크립트는 노트에 없다 — 파일로 저장할 때 따로 쓴다([[#POST/api/videos/{id}/export]], [[VA-PRD-001#R10]]). UI-7이 열릴 때와 질문 기록 체크박스를 바꿀 때 부른다. [복사하기]는 받아 둔 `markdown` 전체를 쓰고 다시 부르지 않는다 — 누른 뒤 요청을 기다리는 사이 사용자 동작이 끝나면 브라우저가 클립보드 쓰기를 막을 수 있다.
 
 - 쿼리 `with_chat`(기본 false)이 true면 맨 아래 질문 기록이 붙는다([[VA-UC-001#UC-H7]] 2b). 체크박스를 바꾸면 화면이 다시 부른다.
-- 내용 순서([[VA-UC-001#UC-H7]] 2번, [[VA-PRD-001#R10]]): `# {제목}` → `원본: {링크} · {길이}`(로컬 파일은 `원본: {파일 이름} · {길이}`, 링크 없음) → `> {한 줄 요약}` → `## 핵심 인사이트` 번호 목록(문장 끝에 시각) → `## 챕터`(챕터마다 `### [{시각}]({링크}) {제목}`과 `- {요점}`) → `## 스크립트` 구간 줄 → (`with_chat`) `## 질문 기록`.
+- 내용 순서([[VA-UC-001#UC-H7]] 2번, [[VA-PRD-001#R10]]): `# {제목}` → `원본: {링크} · {길이}`(로컬 파일은 `원본: {파일 이름} · {길이}`, 링크 없음) → `> {한 줄 요약}` → `## 핵심 인사이트` 번호 목록(문장 끝에 시각) → `## 챕터`(챕터마다 `### [{시각}]({링크}) {제목}`과 `- {요점}`) → (`with_chat`) `## 질문 기록`.
 - 시각은 `[mm:ss]`(1시간 이상 영상은 `[h:mm:ss]`) 텍스트다. YouTube면 `https://youtu.be/{영상ID}?t={초}` 링크가 걸리고 로컬 파일이면 시각만 남는다([[VA-UI-002#UI-7]] 규칙).
 - 미리 보기는 화면이 앞부분만 잘라 보인다. 클립보드 복사는 브라우저가 `markdown` 전체로 한다 — 서버는 클립보드에 닿을 수 없다(5장 5).
 - 결과가 없으면 409 `urn:va:result-not-ready`. 파일 이름은 영상 제목에서 만들고(쓸 수 없는 글자는 `_`, 80자까지, 로컬 파일은 확장자를 뗀다), 같은 이름이 있으면 덮어쓴다(6장, 사용자 결정 2026-09-28). `path`는 사용자에게 보일 경로 `data/export/{filename}.md`다 — 컨테이너 안 경로가 아니다.
@@ -531,11 +531,11 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
 
 #### POST/api/videos/{id}/export 마크다운을 파일로 저장
 
-같은 마크다운을 서버가 `data/export/{filename}.md`에 쓴다. UI-7 [파일로 저장]이 부른다.
+서버가 파일 둘을 쓴다 — 노트 `data/export/{filename}.md`와 스크립트 `data/export/{filename} 스크립트.md`. 노트는 GET의 `markdown`에 스크립트 파일을 가리키는 `## 스크립트` 절(`[[{filename} 스크립트]]` 한 줄)이 챕터 다음에 더 붙은 것이다. 스크립트 파일은 `# {제목} — 스크립트` → 원본 줄 → 출처 줄 → 구간 줄이다([[VA-PRD-001#R10]]). UI-7 [파일로 저장]이 부른다.
 
 - 본문 `with_chat`은 GET의 쿼리와 같은 뜻이다.
-- 같은 이름의 파일이 있으면 덮어쓴다. 브라우저 다운로드는 없다([[VA-UI-001]] 7장 14).
-- 201에 `ExportResult`(`path`는 화면의 짧은 알림 '{path}에 저장했어요'에 들어간다).
+- 같은 이름의 파일이 있으면 둘 다 덮어쓴다. 브라우저 다운로드는 없다([[VA-UI-001]] 7장 14).
+- 201에 `ExportResult`(`path`는 노트 경로 — 화면의 짧은 알림 '{path}에 저장했어요 · 스크립트는 따로'에 들어간다. `bytes`는 두 파일의 합).
 - 쓰지 못하면 500 `urn:va:export-failed`(`path` · `reason`). 화면은 다이얼로그를 닫지 않고 실패 한 줄을 보인다([[VA-UI-002#UI-7]] 규칙).
 - 결과가 없으면 409 `urn:va:result-not-ready`.
 
@@ -1209,7 +1209,7 @@ components:
           description: data/export/{filename}.md
         markdown:
           type: string
-          description: 전체. 미리 보기는 화면이 앞부분만 보인다
+          description: 노트 전체(스크립트 없음). 미리 보기는 화면이 앞부분만 보인다. 클립보드 복사가 이것을 쓴다
     ExportResult:
       type: object
       required: [filename, path, bytes]
@@ -1218,8 +1218,10 @@ components:
           type: string
         path:
           type: string
+          description: 노트 경로 data/export/{filename}.md. 스크립트는 같은 폴더의 {filename} 스크립트.md
         bytes:
           type: integer
+          description: 쓴 두 파일(노트 · 스크립트)의 바이트 합
     KeyStatus:
       type: object
       required: [state, masked, stored_in, checked_at, reason_kind, reason]

@@ -71,7 +71,7 @@ async def test_history_empty_is_not_error(db, make) -> None:
 
 # --- context_for
 
-# 3시간 영상 — 줄마다 60초(180줄, 한 줄 30자). 챕터 여섯은 30분마다
+# 3시간 영상 — 줄마다 60초(180줄, 한 줄 80바이트 → 28토큰). 챕터 여섯은 30분마다(30줄 → 840토큰)
 TITLES = ["소개", "RAG 비용 이야기", "pgvector 선택", "재순위와 지연", "운영", "정리"]
 
 
@@ -94,8 +94,8 @@ async def test_context_all_segments_when_short(db, make) -> None:
 
 
 async def test_context_picks_matching_chapter(db, make, monkeypatch) -> None:
-    # 전부(2,700)는 상한을 넘고 세 챕터(1,350)는 든다
-    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 2000)
+    # 전부(5,040)는 상한을 넘고 세 챕터(2,520)는 든다
+    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 3000)
     row = await _long_video(make)
     video = VideoService.to_dto(row, None, 0)
     context = await ChatService(db).context_for(video, "RAG 비용 얼마였어?")
@@ -105,21 +105,21 @@ async def test_context_picks_matching_chapter(db, make, monkeypatch) -> None:
 
 
 async def test_context_first_chapters_when_nothing_matches(db, make, monkeypatch) -> None:
-    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 2000)
+    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 3000)
     row = await _long_video(make)
     context = await ChatService(db).context_for(VideoService.to_dto(row, None, 0), "날씨는 어때?")
     assert _range(context) == (0.0, 5340.0, 90)  # 앞 세 챕터
 
 
 async def test_context_drops_lowest_chapters_over_limit(db, make, monkeypatch) -> None:
-    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 1000)  # 세 챕터(1,350)는 넘는다
+    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 2000)  # 세 챕터(2,520)는 넘고 둘(1,680)은 든다
     row = await _long_video(make)
     context = await ChatService(db).context_for(VideoService.to_dto(row, None, 0), "날씨는 어때?")
     assert _range(context) == (0.0, 3540.0, 60)  # 뒤 챕터부터 뺀다
 
 
 async def test_context_ignores_one_letter_words(db, make, monkeypatch) -> None:
-    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 2000)
+    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 3000)
     row = await _long_video(make)
     video = VideoService.to_dto(row, None, 0)
     # 'a' · 'b'는 'RAG'에도 들어 있다 — 한 글자 낱말을 세면 비용 챕터가 뽑힌다
@@ -128,14 +128,14 @@ async def test_context_ignores_one_letter_words(db, make, monkeypatch) -> None:
 
 
 async def test_context_keeps_one_chapter_over_limit(db, make, monkeypatch) -> None:
-    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 100)  # 챕터 하나(450)도 넘는다
+    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 100)  # 챕터 하나(840)도 넘는다
     row = await _long_video(make)
     context = await ChatService(db).context_for(VideoService.to_dto(row, None, 0), "RAG 비용은?")
     assert _range(context) == (1800.0, 3540.0, 30)  # 그 챕터를 통째로 — 안을 자르지 않는다
 
 
 async def test_context_follow_up_uses_last_cited_chapter(db, make, monkeypatch) -> None:
-    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 2000)
+    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 3000)
     row = await _long_video(make)
     await make.turn(row.id, "어떤 DB를 썼어?", "pgvector를 썼다고 합니다.", cited=[4000.0], at=T0)
     context = await ChatService(db).context_for(VideoService.to_dto(row, None, 0), "그거 성능은?")

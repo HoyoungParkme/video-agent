@@ -8,6 +8,7 @@ infra openai.chat_json이 한다. 키는 부를 때마다 client_for로 받는�
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -22,6 +23,10 @@ from app.shared import timecode
 T = TypeVar("T")
 # 인사이트 하나에 붙이는 출처 시각 상한
 TIMES_MAX = 3
+# 질문 앞이나 끝에 모델이 스크립트 줄 모양을 따라 붙인 시각 — `[0:09:06]` · `[09:06]`, 여럿이어도
+# (이슈 #10). 끝에 남으면 물음표가 한 번 더 붙는다. 가운데 대괄호는 그대로(MS-006 v18)
+_TIME = r"\[\d{1,2}(?::\d{2}){1,2}\]"
+_EDGE_TIMES = re.compile(rf"^(?:{_TIME}\s*)+|(?:\s*{_TIME})+$")
 BULLETS_MAX = 3
 
 
@@ -181,7 +186,7 @@ class SummarizerOpenAI:
         def parse(data: Any) -> list[str]:
             out: list[str] = []
             for q in _list(_obj(data)["questions"]):
-                q = _text(q)
+                q = _EDGE_TIMES.sub("", _text(q))
                 if q and not q.endswith(("?", "？")):
                     q += "?"
                 if q and q not in out:

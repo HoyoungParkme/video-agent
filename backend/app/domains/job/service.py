@@ -291,11 +291,12 @@ class JobService:
             # 내려받기 · 추출 · 로컬 음성 변환 몫 — 길이(분)만큼의 초. 로컬 음성도 받아쓰기 단계가
             # 조각을 나누기 전에 mp3로 바꾼다
             seconds += math.ceil(video.duration_sec / 60)
-        # 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 6천 토큰으로 본다
+        # 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 3천 토큰으로 본다 — 추론
+        # 모델은 생각한 토큰도 출력으로 센다(추론 강도 low 실측 2.5천, 카드 C)
         in_tokens = video.duration_sec / 60 * config.TOKENS_PER_MIN
         text_cost = (
             in_tokens * 3 * (models.text.price.input_per_mtok_usd or 0.0)
-            + 6000 * (models.text.price.output_per_mtok_usd or 0.0)
+            + 3000 * (models.text.price.output_per_mtok_usd or 0.0)
         ) / 1_000_000
         return Estimate(
             needs_stt=needs_stt,

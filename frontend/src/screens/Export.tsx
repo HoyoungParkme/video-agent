@@ -4,7 +4,8 @@
  * 5 버튼 줄(5.1 실패 한 줄 · 5.2 취소 · 5.3 주 버튼).
  * 미리 보기는 열 때와 3을 바꿀 때 받는다. 복사는 받아 둔 전체로 한다 — 누른 뒤 다시 받으면 사용자
  * 동작이 끝나 브라우저가 클립보드 쓰기를 막을 수 있다. 받지 못하면 영상이 없을 때 UI-1로, 그 밖은
- * 2초 뒤 다시 받고, 그동안 [복사하기]는 막혀 있다. 파일은 서버가 같은 마크다운을 다시 만들어 쓴다.
+ * 2초 뒤 다시 받고, 그동안 [복사하기]는 막혀 있다. 미리 보기 · 복사는 노트만이다. 파일은 서버가 노트와
+ * 스크립트 파일 둘을 다시 만들어 쓴다 — 노트가 `[[{이름} 스크립트]]`로 가리킨다(UI-7 규칙).
  */
 "use client";
 
@@ -114,7 +115,7 @@ export default function Export({ video, turns, onClose, onDone }: Props) {
     try {
       if (method === "file") {
         const done = await api.exportFile(video.id, withChat);
-        onDone(`${done.path}에 저장했어요`);
+        onDone(`${done.path}에 저장했어요 · 스크립트는 따로`);
       } else {
         await navigator.clipboard.writeText(preview?.markdown ?? "");
         onDone("클립보드에 복사했어요");

@@ -75,8 +75,12 @@ async def test_post_export(api, db, make, summarizer, env_file, tmp_path, monkey
     assert r.status_code == 201
     assert r.json()["path"] == "data/export/제목.md"
     written = (tmp_path / "export" / "제목.md").read_text(encoding="utf-8")
-    assert written.endswith("## 질문 기록\n질문 기록이 없습니다\n")
-    assert r.json()["bytes"] == len(written.encode())
+    script = (tmp_path / "export" / "제목 스크립트.md").read_text(encoding="utf-8")
+    assert written.endswith(
+        "## 스크립트\n[[제목 스크립트]]\n\n## 질문 기록\n질문 기록이 없습니다\n"
+    )
+    assert script.startswith("# 제목 — 스크립트\n")  # 스크립트는 따로(API-001 v10)
+    assert r.json()["bytes"] == len(written.encode()) + len(script.encode())  # 두 파일 합
 
 
 async def test_export_errors(api, db, make, summarizer, env_file, tmp_path, monkeypatch) -> None:
@@ -93,6 +97,6 @@ async def test_export_errors(api, db, make, summarizer, env_file, tmp_path, monk
     assert (r.status_code, r.json()["type"], r.json()["path"], r.json()["reason"]) == (
         500,
         "urn:va:export-failed",
-        "data/export/제목.md",
+        "data/export/제목 스크립트.md",  # 먼저 쓰는 스크립트에서 멈춘다
         "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)",
     )

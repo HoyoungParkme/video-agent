@@ -38,6 +38,7 @@ from app.domains.analysis.schemas import (
     SummaryDraft,
     Transcript,
 )
+from app.shared import tokens
 
 if TYPE_CHECKING:
     from app.domains.chat.schemas import ChatTurn  # 타입만 — chat을 import하지 않는다
@@ -47,11 +48,16 @@ if TYPE_CHECKING:
 INSIGHTS_MAX, INSIGHTS_MAX_LONG = 8, 10
 # 챕터 요점 줄 수 상한
 BULLETS_MAX = 3
-# 파일 이름에 쓸 수 없는 글자(윈도 · 맥 · 리눅스 공통)와 제어 문자
-_UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
-# 파일 이름 상한 — 글자 수, 그리고 UTF-8 바이트(파일 이름 한도 255바이트에 `.md`를 붙인다)
+# 파일 이름에 쓸 수 없는 글자(윈도 · 맥 · 리눅스 공통)와 제어 문자, 그리고 위키링크에서
+# 뜻이 있는 `[ ] # ^` — 노트가 `[[{이름} 스크립트]]`로 스크립트 파일을 가리키는데 Obsidian은
+# 링크 안의 `#`를 제목, `^`를 블록으로 읽는다(MS-003 v9)
+_UNSAFE = re.compile(r'[\\/:*?"<>|\[\]#^\x00-\x1f\x7f]')
+# 파일 이름 상한 — 글자 수, 그리고 UTF-8 바이트. 파일 이름 한도는 255바이트이고 스크립트 파일은
+# 이름 뒤에 ` 스크립트.md`(16바이트)가 붙는다 — 노트(`.md`)보다 긴 쪽에 맞춘다(MS-003 v8)
 NAME_MAX = 80
-NAME_BYTES_MAX = 250
+NAME_BYTES_MAX = 238
+# 노트 곁에 따로 쓰는 스크립트 파일 — `{이름} 스크립트.md`. 노트가 `[[{이름} 스크립트]]`로 가리킨다
+SCRIPT_SUFFIX = " 스크립트"
 # 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
 # config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
 EXPORT_SHOWN = "data/export"
@@ -69,8 +75,8 @@ WRITE_REASONS = {
 
 
 def _tokens(segments: list[Segment]) -> int:
-    # 첫 버전은 어림 — 글자 수 ÷ 2(MS-003 3장 미결). 상한에 여유가 있어 오차가 문제되지 않는다
-    return sum(len(s.text) for s in segments) // 2
+    # 모델에 보낼 스크립트의 토큰 어림 — 대화와 같은 식(MS-006 tokens.estimate)
+    return tokens.estimate(s.text for s in segments)
 
 
 def _windows(segments: list[Segment]) -> list[list[Segment]]:
@@ -97,15 +103,16 @@ def _part_of(parts: list[tuple[str, float]], start: float) -> int | None:
 
 def _sample(segments: list[Segment], limit: int) -> list[Segment]:
     # 앞 · 가운데 · 끝에서 limit / 3 토큰씩 — 질문은 전체를 다 볼 필요가 없다
-    budget = limit // 3 * 2  # 토큰 → 글자(÷ 2의 반대)
+    budget = limit // 3
 
     def take(ordered: list[Segment]) -> list[Segment]:
         out, used = [], 0
         for s in ordered:
-            if used + len(s.text) > budget and out:
+            cost = _tokens([s])
+            if used + cost > budget and out:
                 break
             out.append(s)
-            used += len(s.text)
+            used += cost
         return out
 
     mid = len(segments) // 2
@@ -225,8 +232,10 @@ class AnalysisService:
             video: 영상. 로컬 파일이면 제목(파일 이름)의 확장자를 뗀다
 
         Returns:
-            쓸 수 없는 글자는 `_`, 연속 공백 · 밑줄은 하나, 앞뒤 공백 · 점 없이 80자까지.
-            UTF-8로 250바이트를 넘으면 더 자른다(이모지처럼 4바이트 글자가 많은 제목).
+            쓸 수 없는 글자와 위키링크 글자(`[ ] # ^`)는 `_`, 연속 공백 · 밑줄은 하나,
+            앞뒤 공백 · 점 없이 80자까지. UTF-8로 238바이트를 넘으면 더 자른다 — 스크립트
+            파일 이름(` 스크립트.md`)까지 255바이트 안에 들게. 한글 80자(240바이트)는
+            79자가 되고, 이모지처럼 4바이트 글자가 많으면 더 짧다.
             비면 `video-{id}`
         """
         name = video.title
@@ -500,7 +509,8 @@ class AnalysisService:
     ) -> ExportPreview:
         """VA-MS-003#AnalysisService.export_markdown
 
-        내보낼 마크다운 전체와 파일 이름. 결과는 읽기만 한다 — 저장된 것이 바뀌지 않는다.
+        내보낼 노트 전체와 파일 이름 — 미리 보기와 클립보드가 쓴다. 스크립트 줄도 스크립트 파일을
+        가리키는 절도 없다(복사한 노트에는 가리킬 파일이 없다). 결과는 읽기만 한다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
@@ -508,7 +518,7 @@ class AnalysisService:
             turns: 그 영상의 대화 턴(라우터가 ChatService.history로). with_chat이 거짓이면 안 쓴다
 
         Returns:
-            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 마크다운 전체
+            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 노트 전체
 
         Raises:
             ResultNotReady: 분석이 끝나지 않았다(result_of)
@@ -523,26 +533,35 @@ class AnalysisService:
     ) -> ExportResult:
         """VA-MS-003#AnalysisService.export_to_file
 
-        같은 마크다운을 다시 만들어 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않는다.
-        같은 이름이 있으면 덮어쓴다. 폴더가 없으면 만든다.
+        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않고 다시
+        만든다. 노트는 챕터 다음에 스크립트 파일을 가리키는 절(`[[{이름} 스크립트]]`)이 붙는다.
+        스크립트를 먼저 써 노트의 링크가 헛돌지 않게 한다. 같은 이름이 있으면 둘 다 덮어쓰고,
+        폴더가 없으면 만든다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
-            with_chat: 질문 기록을 맨 끝에 붙일지
+            with_chat: 질문 기록을 노트 맨 끝에 붙일지
             turns: 그 영상의 대화 턴. with_chat이 거짓이면 안 쓴다
 
         Returns:
-            파일 이름 · 보일 경로 · 쓴 바이트 수
+            파일 이름 · 노트의 보일 경로 · 쓴 두 파일의 바이트 합
 
         Raises:
             ResultNotReady: 분석이 끝나지 않았다
-            ExportFailed: 쓰지 못했다(path는 보일 경로, reason은 errno로 고른 한 줄)
+            ExportFailed: 쓰지 못했다 — path는 쓰지 못한 파일의 보일 경로, reason은 errno로
+                고른 한 줄
         """
-        pre = await self.export_markdown(video, with_chat, turns)
-        data = pre.markdown.encode("utf-8")
-        try:
-            await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{pre.filename}.md", data)
-        except OSError as e:
-            reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
-            raise ExportFailed(path=pre.path, reason=reason) from e
-        return ExportResult(filename=pre.filename, path=pre.path, bytes=len(data))
+        result = await self.result_of(video)
+        name = self.filename_for(video)
+        script = f"{name}{SCRIPT_SUFFIX}"
+        note = export.build(result, turns if with_chat else None, script).encode("utf-8")
+        text = export.build_script(result).encode("utf-8")
+        for file, data in ((script, text), (name, note)):
+            try:
+                await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{file}.md", data)
+            except OSError as e:
+                reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
+                raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}.md", reason=reason) from e
+        return ExportResult(
+            filename=name, path=f"{EXPORT_SHOWN}/{name}.md", bytes=len(note) + len(text)
+        )

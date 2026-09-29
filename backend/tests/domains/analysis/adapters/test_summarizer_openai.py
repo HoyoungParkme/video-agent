@@ -241,6 +241,48 @@ async def test_questions(chat, adapter) -> None:
     assert user["content"].startswith("<transcript>")
 
 
+async def test_questions_drop_leading_time(chat, adapter) -> None:
+    # 1시간 넘는 받아쓰기 영상에서 실제로 나온 모양(이슈 #10)
+    summarizer, _ = adapter
+    chat.replies = [
+        js(
+            {
+                "questions": [
+                    "[0:09:06] 핸드폰에 들어있는 자석은 주로 어디에 있나요?",
+                    "[47:33] 원자 수준에서 자석의 근원은 무엇인가요?",
+                    "안드레 가임은 [노벨상] 전에 무엇을 받았나요?",
+                ]
+            }
+        )
+    ]
+    assert await summarizer.questions(segs(3000), "m") == [
+        "핸드폰에 들어있는 자석은 주로 어디에 있나요?",
+        "원자 수준에서 자석의 근원은 무엇인가요?",
+        "안드레 가임은 [노벨상] 전에 무엇을 받았나요?",  # 문장 가운데의 대괄호는 그대로
+    ]
+
+
+async def test_questions_drop_trailing_time(chat, adapter) -> None:
+    # 끝에 붙은 시각도 뗀다 — 남으면 물음표가 한 번 더 붙는다(코드 리뷰, MS-006 v18)
+    summarizer, _ = adapter
+    chat.replies = [
+        js(
+            {
+                "questions": [
+                    "검색 품질은 어떻게 쟀나요? [0:09:06]",
+                    "[0:09:06] [0:10:00] 자석은 어디에 있나요? [1:11:00]",
+                    "[노벨상] 전에 무엇을 받았나요",
+                ]
+            }
+        )
+    ]
+    assert await summarizer.questions(segs(3000), "m") == [
+        "검색 품질은 어떻게 쟀나요?",
+        "자석은 어디에 있나요?",
+        "[노벨상] 전에 무엇을 받았나요?",  # 시각이 아닌 대괄호는 앞에 있어도 그대로
+    ]
+
+
 async def test_questions_empty_is_failure(chat, adapter) -> None:
     summarizer, _ = adapter
     chat.replies = [js({"questions": []}), js({"questions": [" "]})]

@@ -168,7 +168,7 @@ def turn(i: int, question: str, answer: str, cited: list[float]) -> ChatTurn:
 
 
 def test_build_youtube_50m_snapshot() -> None:
-    # 제목 → 원본 링크 → 한 줄 요약 → 인사이트(시각 둘 다) → 챕터 → 출처 줄 · 스크립트, 질문 기록 절 없음
+    # 제목 → 원본 링크 → 한 줄 요약 → 인사이트(시각 둘 다) → 챕터, 스크립트 · 질문 기록 절 없음
     expected = (SNAP / "export_youtube_50m.md").read_text(encoding="utf-8")
     assert export.build(youtube_50m(), None) == expected
 
@@ -197,8 +197,36 @@ def test_build_chat_section_at_the_end() -> None:
     assert "## 질문 기록" not in export.build(youtube_50m(), None)  # None이면 절이 없다
 
 
-def test_build_source_line_like_the_screen() -> None:
+def test_build_note_has_no_script_lines() -> None:
+    # 스크립트 줄은 노트에 없다 — 따로 쓰는 파일이다(MS-003 v8)
+    md = export.build(youtube_50m(), None)
+    assert "## 스크립트" not in md and "안녕하세요, 검색 품질 이야기를" not in md
+
+
+def test_build_links_script_file_between_chapters_and_chat() -> None:
+    # 파일로 저장할 때만 — 챕터 다음, 질문 기록 앞에 위키링크 한 줄
+    md = export.build(youtube_50m(), [], "RAG 서비스 1년 운영기 스크립트")
+    tail = (
+        "\n## 스크립트\n[[RAG 서비스 1년 운영기 스크립트]]\n\n## 질문 기록\n질문 기록이 없습니다\n"
+    )
+    assert md.endswith(tail)
+    assert md.index("## 챕터") < md.index("## 스크립트")
+
+
+def test_build_script_youtube_50m_snapshot() -> None:
+    # 제목 — 스크립트 → 원본 링크 → 출처 줄 → 구간마다 시점 링크와 문장
+    expected = (SNAP / "export_youtube_50m_script.md").read_text(encoding="utf-8")
+    assert export.build_script(youtube_50m()) == expected
+
+
+def test_build_script_local_150m_snapshot() -> None:
+    # 원본 줄에 링크 없음 · 시각은 h:mm:ss 글자 · 받아쓰기 출처
+    expected = (SNAP / "export_local_150m_script.md").read_text(encoding="utf-8")
+    assert export.build_script(local_150m()) == expected
+
+
+def test_build_script_source_line_like_the_screen() -> None:
     result = youtube_50m()
     result.transcript.source = TranscriptSource.caption_auto
     result.transcript.language = "xx"  # 표에 없는 코드는 그대로
-    assert "## 스크립트\n자막(자동) · xx\n\n" in export.build(result, None)
+    assert "\n\n자막(자동) · xx\n\n" in export.build_script(result)

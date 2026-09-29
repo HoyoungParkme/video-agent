@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from app.core.config import config
 from app.core.errors import ExportFailed, ResultNotReady
-from app.domains.analysis import crud
+from app.domains.analysis import crud, export
 from app.domains.analysis.models import (
     ChapterRow,
     InsightRow,
@@ -21,11 +21,12 @@ from app.domains.analysis.models import (
     TranscriptSource,
 )
 from app.domains.analysis.schemas import CaptionLine, ChapterDraft, Segment, SummaryDraft
-from app.domains.analysis.service import AnalysisService
+from app.domains.analysis.service import SCRIPT_SUFFIX, AnalysisService
 from app.domains.chat.schemas import ChatTurn
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
 from app.domains.video.service import VideoService
+from app.shared import tokens
 
 
 async def _count(db, model) -> int:
@@ -193,8 +194,8 @@ async def test_generate_summary_twice_one_set(db, make, summarizer, env_file) ->
 
 async def test_generate_summary_by_windows(db, make, summarizer, env_file) -> None:
     video = await _video(db, make, duration_sec=9000)
-    # 글자 90,000 → 토큰 45,000 > 40,000. 100초마다 한 줄 — 30분 구간 다섯
-    await make.transcript(video.id, ["가" * 1000] * 90, step=100)
+    # 한 줄 6,000바이트 → 1,508토큰 × 90줄 = 13만 5천 > 10만. 100초마다 한 줄 — 30분 구간 다섯
+    await make.transcript(video.id, ["가" * 2000] * 90, step=100)
     summarizer.summary_draft = SummaryDraft(
         one_liner="구간 요약", insights=[(f"인사이트 {i}", [i * 100.0]) for i in range(1, 4)]
     )
@@ -301,7 +302,7 @@ async def test_generate_chapters_one_model_part_groups_by_hour(
 
 async def test_generate_chapters_by_windows(db, make, summarizer, env_file) -> None:
     video = await _video(db, make, duration_sec=9000)
-    await make.transcript(video.id, ["가" * 1000] * 90, step=100)  # 토큰이 상한을 넘는다
+    await make.transcript(video.id, ["가" * 2000] * 90, step=100)  # 토큰이 상한을 넘는다
     windows: list[float] = []
 
     async def chapters(segments, duration_sec, model):
@@ -336,10 +337,11 @@ async def test_generate_questions(db, make, summarizer, env_file) -> None:
 
 async def test_generate_questions_samples_long_script(db, make, summarizer, env_file) -> None:
     video = await _video(db, make, duration_sec=9000)
-    await make.transcript(video.id, ["가" * 1000] * 90)
+    await make.transcript(video.id, ["가" * 2000] * 90)
     await AnalysisService(db, summarizer).generate_questions(video)
     _, sent = summarizer.calls[0]
-    assert sum(len(s.text) for s in sent) // 2 <= 40000 + 1000  # 앞 · 가운데 · 끝에서 상한의 셋째씩
+    # 앞 · 가운데 · 끝에서 상한의 셋째씩 — 줄 하나(1,508토큰)만큼 넘칠 수 있다
+    assert tokens.estimate(s.text for s in sent) <= config.TEXT_TOKEN_LIMIT + 1508 * 3
     seqs = [s.seq for s in sent]
     assert seqs[0] == 1 and seqs[-1] == 90 and 45 in seqs
 
@@ -437,9 +439,12 @@ async def test_filename_for(db, make) -> None:
     # 연속 공백 · 밑줄은 하나, 끝 점은 뗀다
     assert await name('x\\y*z"<>|  w__v .') == "x_y_z_ w_v"
     assert await name("a\tb\x7fc") == "a_b_c"  # 제어 문자도 _
-    assert await name("가" * 200) == "가" * 80
+    # 위키링크에서 뜻이 있는 글자도 _ — 노트의 [[{이름} 스크립트]]가 깨지지 않게(MS-003 v9)
+    assert await name("[EP.1] RAG #shorts ^v2") == "_EP.1_ RAG _shorts _v2"
+    assert await name("가" * 200) == "가" * 79  # 한글 80자는 240바이트 — 238바이트에 맞춰 79자
     emoji = await name("🔥" * 80)  # 4바이트 글자 — 80자면 320바이트
-    assert len(emoji.encode()) <= 250 and emoji == "🔥" * 62
+    assert len(emoji.encode()) <= 238 and emoji == "🔥" * 59
+    assert len(f"{emoji}{SCRIPT_SUFFIX}.md".encode()) <= 255  # 스크립트 파일 이름까지(MS-003 v8)
     local = {"source_kind": "local", "origin": "workshop_0912.mp4", "channel": None}
     assert await name("workshop_0912.mp4", **local) == "workshop_0912"  # 로컬 파일은 확장자를 뗀다
     empty = await _video(db, make, title=" . ")
@@ -486,18 +491,27 @@ async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path,
     video = await _analyzed(db, make, summarizer, youtube, title="RAG 서비스 1년 운영기")
     svc = AnalysisService(db)
     done = await svc.export_to_file(video, False, [])
-    pre = await svc.export_markdown(video, False, [])
-    written = tmp_path / "data" / "export" / "RAG 서비스 1년 운영기.md"
-    assert written.read_text(encoding="utf-8") == pre.markdown  # 같은 마크다운을 다시 만든다
-    assert (done.filename, done.path, done.bytes) == (
-        pre.filename,
-        "data/export/RAG 서비스 1년 운영기.md",
-        len(pre.markdown.encode()),
+    result = await svc.result_of(video)
+    folder = tmp_path / "data" / "export"
+    note = folder / "RAG 서비스 1년 운영기.md"
+    script = folder / "RAG 서비스 1년 운영기 스크립트.md"
+    # 노트는 스크립트 파일을 가리키는 절이 붙고, 스크립트는 따로(MS-003 v8)
+    assert note.read_text(encoding="utf-8") == export.build(
+        result, None, "RAG 서비스 1년 운영기 스크립트"
     )
-    assert oct(written.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
-    await svc.export_to_file(video, True, [])  # 두 번 저장하면 덮어쓴다
-    assert written.read_text(encoding="utf-8").endswith("질문 기록이 없습니다\n")
-    assert [p.name for p in written.parent.iterdir()] == [written.name]  # 임시 파일이 남지 않는다
+    assert script.read_text(encoding="utf-8") == export.build_script(result)
+    assert (done.filename, done.path, done.bytes) == (
+        "RAG 서비스 1년 운영기",
+        "data/export/RAG 서비스 1년 운영기.md",
+        note.stat().st_size + script.stat().st_size,  # 두 파일 합
+    )
+    for f in (note, script):
+        assert oct(f.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
+    await svc.export_to_file(video, True, [])  # 두 번 저장하면 둘 다 덮어쓴다
+    assert note.read_text(encoding="utf-8").endswith("질문 기록이 없습니다\n")
+    assert sorted(p.name for p in folder.iterdir()) == sorted(
+        [note.name, script.name]
+    )  # 임시 파일 없음
 
 
 async def test_export_to_file_where_folder_is_a_file(
@@ -509,7 +523,7 @@ async def test_export_to_file_where_folder_is_a_file(
     with pytest.raises(ExportFailed) as e:
         await AnalysisService(db).export_to_file(video, False, [])
     assert e.value.extra == {
-        "path": "data/export/제목.md",  # 보일 경로
+        "path": "data/export/제목 스크립트.md",  # 보일 경로 — 먼저 쓰는 스크립트에서 멈춘다
         "reason": "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)",
     }
 

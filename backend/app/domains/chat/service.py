@@ -21,6 +21,7 @@ from app.domains.chat import crud
 from app.domains.chat.models import ChatTurnRow
 from app.domains.chat.ports import AnswererPort
 from app.domains.chat.schemas import ChatTurn
+from app.shared import tokens
 
 if TYPE_CHECKING:
     from app.domains.video.schemas import Video
@@ -42,9 +43,9 @@ def _turn(row: ChatTurnRow) -> ChatTurn:
     )
 
 
-def _tokens(segments: list[Segment]) -> float:
-    # 토큰 어림 — 글자 수 ÷ 2(MS-004)
-    return sum(len(s.text) for s in segments) / 2
+def _tokens(segments: list[Segment]) -> int:
+    # 모델에 보낼 스크립트의 토큰 어림 — 요약과 같은 식(MS-006 tokens.estimate)
+    return tokens.estimate(s.text for s in segments)
 
 
 def _words(text: str) -> list[str]:

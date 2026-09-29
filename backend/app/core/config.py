@@ -78,12 +78,14 @@ class Config(BaseSettings):
     CHUNK_RETRY_WAIT_SEC: float = 2  # 다시 보내기 전 첫 기다림, 다음은 두 배
     CHUNK_EST_SEC: int = 45
     TEXT_EST_SEC: int = 60
-    TOKENS_PER_MIN: int = 200
+    # 스크립트를 한 번 보낼 때 영상 1분당 입력 토큰 — 실측 323~497(줄 앞 시각 표기까지, 카드 C)
+    TOKENS_PER_MIN: int = 450
     WORKER_IDLE_SEC: float = 5
 
     # 결과 — MS-003
     TEXT_WINDOW_SEC: int = 1800
-    TEXT_TOKEN_LIMIT: int = 40000
+    # 3시간 안은 대부분 한 번에 — 받아쓰기 스크립트는 영상 1분에 약 500토큰(카드 C 실측)
+    TEXT_TOKEN_LIMIT: int = 100000
     CHAPTER_MINUTES: int = 6
     PART_THRESHOLD_SEC: int = 3600
 
@@ -126,6 +128,8 @@ class Config(BaseSettings):
     OPENAI_TIMEOUT_SEC: float = 120
     OPENAI_BASE_URL: str | None = None  # E2E의 가짜 OpenAI 서버만 채운다
     OPENAI_MAX_RETRIES: int = 0
+    # 텍스트 모델의 추론 강도 — low면 답 2~3초 · 47분 요약 8초(기본은 3~4배, 카드 C 실측)
+    TEXT_REASONING_EFFORT: str = "low"
 
     @property
     def EXPORT_DIR(self) -> str:
