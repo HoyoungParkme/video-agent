@@ -285,7 +285,8 @@ async def test_estimate_captions(db, make, env_file) -> None:
         None,
     )
     assert (est.stt_cost_usd, est.seconds) == (0, 60)
-    assert est.text_cost_usd > 0
+    # 50.2분 × 450토큰 × 3번 × $0.25 + 출력 9천 × $2.00 — 실제 영상 셋으로 맞춘 값(MS-002 v17)
+    assert est.text_cost_usd == 0.0349
     assert est.total_cost_usd == round(est.text_cost_usd, 2)
     assert (est.stt_model, est.text_model) == ("whisper-1", "gpt-5-mini")
 

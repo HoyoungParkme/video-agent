@@ -78,7 +78,8 @@ class Config(BaseSettings):
     CHUNK_RETRY_WAIT_SEC: float = 2  # 다시 보내기 전 첫 기다림, 다음은 두 배
     CHUNK_EST_SEC: int = 45
     TEXT_EST_SEC: int = 60
-    TOKENS_PER_MIN: int = 200
+    # 스크립트를 한 번 보낼 때 영상 1분당 입력 토큰 — 실측 323~497(줄 앞 시각 표기까지, 카드 C)
+    TOKENS_PER_MIN: int = 450
     WORKER_IDLE_SEC: float = 5
 
     # 결과 — MS-003
