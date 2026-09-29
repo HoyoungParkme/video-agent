@@ -127,7 +127,8 @@ app/
 │
 ├── shared/                 두 묶음 이상이 쓰는 순수 유틸(규약 1.9)
 │   ├── captions.py         yt-dlp 정보 → 자막 트랙(키 · 언어 · 종류). YouTube 정보(video)와 자막 가져오기(job) 두 어댑터가 같은 규칙을 쓴다(MINISPEC 어댑터 `captions.pick`)
-│   └── timecode.py         초 ↔ `mm:ss` · `h:mm:ss`. 내보내기(analysis)와 OpenAI 어댑터 둘(analysis · chat)이 쓴다(MINISPEC 어댑터 `timecode.label` · MINISPEC 어댑터 `timecode.parse`)
+│   ├── timecode.py         초 ↔ `mm:ss` · `h:mm:ss`. 내보내기(analysis)와 OpenAI 어댑터 둘(analysis · chat)이 쓴다(MINISPEC 어댑터 `timecode.label` · MINISPEC 어댑터 `timecode.parse`)
+│   └── tokens.py           스크립트 → 토큰 어림. 요약 상한(analysis)과 대화 상한(chat)이 같은 식을 쓴다(MINISPEC 어댑터 `tokens.estimate`)
 │
 └── infra/                  외부 시스템 공용 클라이언트. 도메인별 해석은 각 묶음의 adapters/에
     ├── errors.py           밖이 실패했을 때의 예외 셋 — YtdlpError · FfmpegError · OpenAIOutputError(모델 출력이 형식에 맞지 않음, 어댑터가 던진다).
@@ -137,7 +138,7 @@ app/
     └── openai.py           클라이언트 생성 · 키 확인(모델 목록 조회) · 받아쓰기 호출 · 채팅 호출
 ```
 
-`shared/`에는 둘이 있다. 시각 표기는 내보내기(analysis)와 OpenAI 어댑터 둘(analysis의 요약 · chat의 답변)이 쓰고, 자막 고르기는 영상 등록(video의 `youtube_info`)과 파이프라인의 자막 가져오기(job의 `audio_source`)가 쓴다 — 두 곳이 같은 규칙이어야 등록 때 알린 자막과 분석 때 받는 자막이 같다. 묶음끼리는 서로의 모듈을 부르지 않으므로 묶음 밖에 둔다. 다른 순수 유틸은 두 묶음이 실제로 같이 쓸 때 옮긴다.
+`shared/`에는 셋이 있다. 시각 표기는 내보내기(analysis)와 OpenAI 어댑터 둘(analysis의 요약 · chat의 답변)이 쓰고, 자막 고르기는 영상 등록(video의 `youtube_info`)과 파이프라인의 자막 가져오기(job의 `audio_source`)가 쓴다 — 두 곳이 같은 규칙이어야 등록 때 알린 자막과 분석 때 받는 자막이 같다. 토큰 어림은 요약(analysis)과 대화(chat)가 스크립트가 상한을 넘는지 볼 때 쓴다 — 두 곳이 같은 식이어야 한다(카드 C). 묶음끼리는 서로의 모듈을 부르지 않으므로 묶음 밖에 둔다. 다른 순수 유틸은 두 묶음이 실제로 같이 쓸 때 옮긴다.
 
 **이 문서에서 파일 경로를 적을 때**는 패키지 안 상대 경로로 쓴다 — `domains/job/pipeline.py`는 `backend/app/domains/job/pipeline.py`를 가리킨다.
 
@@ -1103,4 +1104,4 @@ class VideoRow(Base):
 - [x] (반영: ERD v4) **되먹임** `analysis_jobs.queued_at timestamptz`와 대기열용 인덱스 — [[VA-DOM-003#analysis_jobs]]
 - [x] 프롬프트 파일의 자리 표시 이름과 출력 형식 — 반영: MINISPEC 어댑터 0장 「프롬프트 파일」
 - [ ] 관련 챕터 고르기(`ChatService.context_for`) — 첫 버전은 제목 · 요점 낱말 일치(MINISPEC 대화 서비스 `ChatService.context_for`). 품질이 모자라면 간단 임베딩으로 — 사용자가 결과를 보고 정한다([[VA-INFRA-001]] 9절)
-- [x] `shared/` — 결정: 시각 표기가 두 묶음에서 쓰여 `shared/timecode.py`를 만들었다(1장, MINISPEC 어댑터 되먹임). 프런트는 `components/TimeChip`이 따로 가진다. 카드 B1에서 자막 고르기(`shared/captions.py`)를 더했다 — 실제 yt-dlp 목록에 기계 번역 자막이 섞여 규칙이 길어졌고, video와 job이 같은 규칙을 써야 한다
+- [x] `shared/` — 결정: 시각 표기가 두 묶음에서 쓰여 `shared/timecode.py`를 만들었다(1장, MINISPEC 어댑터 되먹임). 프런트는 `components/TimeChip`이 따로 가진다. 카드 B1에서 자막 고르기(`shared/captions.py`)를 더했다 — 실제 yt-dlp 목록에 기계 번역 자막이 섞여 규칙이 길어졌고, video와 job이 같은 규칙을 써야 한다. 카드 C에서 토큰 어림(`shared/tokens.py`)을 더했다 — analysis와 chat이 따로 가졌던 「글자 ÷ 2」가 실제의 절반 이하였다
