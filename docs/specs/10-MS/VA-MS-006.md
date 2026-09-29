@@ -264,11 +264,11 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 근거: [[VA-SEQ-001#SEQ-3]] 29~30번 · [[VA-UC-001#UC-S4]] 4번 · [[VA-PRD-001#R9]] · [[VA-MS-003#AnalysisService.generate_questions]]
 
-**처리** `system = prompts.render("questions", question_count=config.QUESTION_COUNT)` · `user`는 `summary` 1~2번과 같다 · `EXT: openai.chat_json(client_for(), model, [system, user], parse)` · 다듬기: 앞뒤 공백과 앞에 붙은 시각 표기(`[0:09:06] ` · `[09:06] ` — 모델이 스크립트 줄 모양을 따라 붙인다, 이슈 #10)를 떼고, 빈 문장과 중복을 뺀다, 물음표로 끝나지 않으면 붙인다, 앞 `QUESTION_COUNT`개 · 남은 것이 없으면 형식 실패(처리는 같다) · `→ 문자열 목록`
+**처리** `system = prompts.render("questions", question_count=config.QUESTION_COUNT)` · `user`는 `summary` 1~2번과 같다 · `EXT: openai.chat_json(client_for(), model, [system, user], parse)` · 다듬기: 앞뒤 공백과 앞이나 끝에 붙은 시각 표기(`[0:09:06]` · `[09:06]`, 여럿이어도 — 모델이 스크립트 줄 모양을 따라 붙인다, 이슈 #10. 끝에 남으면 물음표가 한 번 더 붙는다, 카드 C 코드 리뷰)를 떼고, 빈 문장과 중복을 뺀다, 물음표로 끝나지 않으면 붙인다, 앞 `QUESTION_COUNT`개 · 남은 것이 없으면 형식 실패(처리는 같다) · `→ 문자열 목록`
 
 **호출하는 것** `openai.chat_json` · [[#prompts.render]] · [[#timecode.label]]
 
-**테스트 관점** 3개 · 물음표로 끝 · 4개 오면 3개로 · 물음표 없는 문장 → 붙는다 · 같은 질문 둘 → 하나 · `[0:09:06] 자석은 어디에 있나요?` → 시각을 뗀다 · `[09:06]`도 · 문장 가운데의 대괄호는 그대로
+**테스트 관점** 3개 · 물음표로 끝 · 4개 오면 3개로 · 물음표 없는 문장 → 붙는다 · 같은 질문 둘 → 하나 · `[0:09:06] 자석은 어디에 있나요?` → 시각을 뗀다 · `[09:06]`도 · `검색 품질은 어떻게 쟀나요? [0:09:06]` → `검색 품질은 어떻게 쟀나요?`(물음표를 더 붙이지 않는다) · `[0:09:06] [0:10:00] 자석? [0:11:00]` → `자석?` · 문장 가운데의 대괄호는 그대로
 
 ---
 
