@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from app.core.config import config
 from app.core.errors import ExportFailed, ResultNotReady
-from app.domains.analysis import crud
+from app.domains.analysis import crud, export
 from app.domains.analysis.models import (
     ChapterRow,
     InsightRow,
@@ -489,18 +489,27 @@ async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path,
     video = await _analyzed(db, make, summarizer, youtube, title="RAG 서비스 1년 운영기")
     svc = AnalysisService(db)
     done = await svc.export_to_file(video, False, [])
-    pre = await svc.export_markdown(video, False, [])
-    written = tmp_path / "data" / "export" / "RAG 서비스 1년 운영기.md"
-    assert written.read_text(encoding="utf-8") == pre.markdown  # 같은 마크다운을 다시 만든다
-    assert (done.filename, done.path, done.bytes) == (
-        pre.filename,
-        "data/export/RAG 서비스 1년 운영기.md",
-        len(pre.markdown.encode()),
+    result = await svc.result_of(video)
+    folder = tmp_path / "data" / "export"
+    note = folder / "RAG 서비스 1년 운영기.md"
+    script = folder / "RAG 서비스 1년 운영기 스크립트.md"
+    # 노트는 스크립트 파일을 가리키는 절이 붙고, 스크립트는 따로(MS-003 v8)
+    assert note.read_text(encoding="utf-8") == export.build(
+        result, None, "RAG 서비스 1년 운영기 스크립트"
     )
-    assert oct(written.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
-    await svc.export_to_file(video, True, [])  # 두 번 저장하면 덮어쓴다
-    assert written.read_text(encoding="utf-8").endswith("질문 기록이 없습니다\n")
-    assert [p.name for p in written.parent.iterdir()] == [written.name]  # 임시 파일이 남지 않는다
+    assert script.read_text(encoding="utf-8") == export.build_script(result)
+    assert (done.filename, done.path, done.bytes) == (
+        "RAG 서비스 1년 운영기",
+        "data/export/RAG 서비스 1년 운영기.md",
+        note.stat().st_size + script.stat().st_size,  # 두 파일 합
+    )
+    for f in (note, script):
+        assert oct(f.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
+    await svc.export_to_file(video, True, [])  # 두 번 저장하면 둘 다 덮어쓴다
+    assert note.read_text(encoding="utf-8").endswith("질문 기록이 없습니다\n")
+    assert sorted(p.name for p in folder.iterdir()) == sorted(
+        [note.name, script.name]
+    )  # 임시 파일 없음
 
 
 async def test_export_to_file_where_folder_is_a_file(
@@ -512,7 +521,7 @@ async def test_export_to_file_where_folder_is_a_file(
     with pytest.raises(ExportFailed) as e:
         await AnalysisService(db).export_to_file(video, False, [])
     assert e.value.extra == {
-        "path": "data/export/제목.md",  # 보일 경로
+        "path": "data/export/제목 스크립트.md",  # 보일 경로 — 먼저 쓰는 스크립트에서 멈춘다
         "reason": "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)",
     }
 

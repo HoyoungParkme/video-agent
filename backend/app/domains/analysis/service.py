@@ -506,7 +506,8 @@ class AnalysisService:
     ) -> ExportPreview:
         """VA-MS-003#AnalysisService.export_markdown
 
-        내보낼 마크다운 전체와 파일 이름. 결과는 읽기만 한다 — 저장된 것이 바뀌지 않는다.
+        내보낼 노트 전체와 파일 이름 — 미리 보기와 클립보드가 쓴다. 스크립트 줄도 스크립트 파일을
+        가리키는 절도 없다(복사한 노트에는 가리킬 파일이 없다). 결과는 읽기만 한다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
@@ -514,7 +515,7 @@ class AnalysisService:
             turns: 그 영상의 대화 턴(라우터가 ChatService.history로). with_chat이 거짓이면 안 쓴다
 
         Returns:
-            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 마크다운 전체
+            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 노트 전체
 
         Raises:
             ResultNotReady: 분석이 끝나지 않았다(result_of)
@@ -529,26 +530,35 @@ class AnalysisService:
     ) -> ExportResult:
         """VA-MS-003#AnalysisService.export_to_file
 
-        같은 마크다운을 다시 만들어 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않는다.
-        같은 이름이 있으면 덮어쓴다. 폴더가 없으면 만든다.
+        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않고 다시
+        만든다. 노트는 챕터 다음에 스크립트 파일을 가리키는 절(`[[{이름} 스크립트]]`)이 붙는다.
+        스크립트를 먼저 써 노트의 링크가 헛돌지 않게 한다. 같은 이름이 있으면 둘 다 덮어쓰고,
+        폴더가 없으면 만든다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
-            with_chat: 질문 기록을 맨 끝에 붙일지
+            with_chat: 질문 기록을 노트 맨 끝에 붙일지
             turns: 그 영상의 대화 턴. with_chat이 거짓이면 안 쓴다
 
         Returns:
-            파일 이름 · 보일 경로 · 쓴 바이트 수
+            파일 이름 · 노트의 보일 경로 · 쓴 두 파일의 바이트 합
 
         Raises:
             ResultNotReady: 분석이 끝나지 않았다
-            ExportFailed: 쓰지 못했다(path는 보일 경로, reason은 errno로 고른 한 줄)
+            ExportFailed: 쓰지 못했다 — path는 쓰지 못한 파일의 보일 경로, reason은 errno로
+                고른 한 줄
         """
-        pre = await self.export_markdown(video, with_chat, turns)
-        data = pre.markdown.encode("utf-8")
-        try:
-            await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{pre.filename}.md", data)
-        except OSError as e:
-            reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
-            raise ExportFailed(path=pre.path, reason=reason) from e
-        return ExportResult(filename=pre.filename, path=pre.path, bytes=len(data))
+        result = await self.result_of(video)
+        name = self.filename_for(video)
+        script = f"{name}{SCRIPT_SUFFIX}"
+        note = export.build(result, turns if with_chat else None, script).encode("utf-8")
+        text = export.build_script(result).encode("utf-8")
+        for file, data in ((script, text), (name, note)):
+            try:
+                await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{file}.md", data)
+            except OSError as e:
+                reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
+                raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}.md", reason=reason) from e
+        return ExportResult(
+            filename=name, path=f"{EXPORT_SHOWN}/{name}.md", bytes=len(note) + len(text)
+        )
