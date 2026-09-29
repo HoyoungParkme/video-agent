@@ -43,11 +43,12 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 | [[#AnalysisService.result_of]] | 결과 화면 응답 전부 |
 | [[#AnalysisService.segments_of]] | 구간 목록 (대화용) |
 | [[#AnalysisService.chapters_of]] | 챕터 목록 (대화용) |
-| [[#AnalysisService.export_markdown]] | 마크다운 본문 + 파일 이름 |
-| [[#AnalysisService.export_to_file]] | `data/export/`에 쓰기 |
+| [[#AnalysisService.export_markdown]] | 노트 본문(스크립트 없음) + 파일 이름 |
+| [[#AnalysisService.export_to_file]] | `data/export/`에 노트 · 스크립트 두 파일 쓰기 |
 | [[#AnalysisService.clamp_secs]] | 시각을 스크립트 범위로 보정 |
 | [[#AnalysisService.filename_for]] | 제목 → 파일 이름 |
-| [[#export.build]] | 결과 → 마크다운 문자열 |
+| [[#export.build]] | 결과 → 노트 마크다운 |
+| [[#export.build_script]] | 결과 → 스크립트 마크다운(따로 쓰는 파일) |
 | [[#export.timecode]] | 초 → `mm:ss` 또는 `h:mm:ss` |
 | [[#export.link]] | 시각 → YouTube 링크 또는 텍스트 |
 
@@ -204,16 +205,16 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **처리**
 1. `result = result_of(video)` — `result-not-ready`는 여기서 난다
-2. `md = export.build(result, turns if with_chat else None)`
+2. `md = export.build(result, turns if with_chat else None)` — 노트다. 스크립트 줄도, 스크립트 파일을 가리키는 절도 없다(복사한 노트에는 가리킬 파일이 없다)
 3. `name = filename_for(video)` · `→ ExportPreview(filename=name, path=f"data/export/{name}.md", markdown=md)` — `path`는 보일 경로다(UI-7 2.1 · 짧은 알림). 쓰는 곳은 `export_to_file`이 `config.EXPORT_DIR`로 정한다
 
-**출력** `ExportPreview`. `markdown`은 전체 — 화면이 앞부분만 보이고 클립보드는 전체를 쓴다
+**출력** `ExportPreview`. `markdown`은 노트 전체 — 화면이 앞부분만 보이고 클립보드는 전체를 쓴다
 
 **예외** `result-not-ready`
 
 **호출하는 것** [[#AnalysisService.result_of]] · [[#export.build]] · [[#AnalysisService.filename_for]]
 
-**테스트 관점** `with_chat=false`면 `## 질문 기록` 절이 없다 · `true`이고 턴 0개면 절 제목만 있고 「질문 기록이 없습니다」 한 줄 · `path`가 `data/export/…md`
+**테스트 관점** `with_chat=false`면 `## 질문 기록` 절이 없다 · `true`이고 턴 0개면 절 제목만 있고 「질문 기록이 없습니다」 한 줄 · `path`가 `data/export/…md` · 스크립트 줄과 `## 스크립트` 절이 없다
 
 ---
 
@@ -224,8 +225,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 근거: [[VA-SEQ-001#SEQ-10]] 13~24번 · [[VA-API-001#POST/api/videos/{id}/export]] · [[VA-UC-001#UC-H7]] 3번 · [[VA-UI-001]] 7장 14
 
 **처리**
-1. `pre = export_markdown(video, with_chat, turns)` — 같은 마크다운을 다시 만든다. 화면이 보낸 본문을 쓰지 않는다
-2. `FS: mkdir(config.EXPORT_DIR)` · `FS: {config.EXPORT_DIR}/{pre.filename}.md에 UTF-8로 쓰기(덮어쓰기, 같은 폴더의 임시 파일에 쓴 뒤 rename)` · if `OSError` → `! export-failed {path: pre.path, reason}` — `path`는 보일 경로, `reason`은 errno로 고른 한 줄이다(화면이 '파일을 저장하지 못했어요 — {이유}'로 보인다, [[VA-UI-002#UI-7]] 5.1)
+1. `result = result_of(video)` · `name = filename_for(video)` · `script = f"{name} 스크립트"` — 노트와 스크립트를 다시 만든다. 화면이 보낸 본문을 쓰지 않는다
+2. `note = export.build(result, turns if with_chat else None, script)` — 챕터 다음에 `## 스크립트` 절(`[[{script}]]` 한 줄) · `text = `[[#export.build_script]]`(result)`
+3. `FS: mkdir(config.EXPORT_DIR)` · 스크립트 `{script}.md` → 노트 `{name}.md` 순서로 UTF-8로 쓰기(덮어쓰기, 파일마다 같은 폴더의 임시 파일에 쓴 뒤 rename) · if `OSError` → `! export-failed {path: 쓰지 못한 파일의 보일 경로, reason}` — `path`는 보일 경로(`data/export/…`), `reason`은 errno로 고른 한 줄이다(화면이 '파일을 저장하지 못했어요 — {이유}'로 보인다, [[VA-UI-002#UI-7]] 5.1)
 
 | errno | reason |
 |---|---|
@@ -235,15 +237,15 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 | `EEXIST` · `ENOTDIR` | 저장 폴더를 만들 수 없음(그 자리에 파일이 있다) |
 | 그 밖 | 파일을 쓸 수 없음 |
 
-3. `→ ExportResult(filename=pre.filename, path=pre.path, bytes=쓴 바이트 수)`
+4. `→ ExportResult(filename=name, path=f"data/export/{name}.md", bytes=두 파일의 바이트 합)` — `path`는 노트다(화면의 짧은 알림 '{path}에 저장했어요 · 스크립트는 따로')
 
 **출력** `ExportResult`(201)
 
 **예외** `result-not-ready` · `export-failed`
 
-**호출하는 것** [[#AnalysisService.export_markdown]]
+**호출하는 것** [[#AnalysisService.result_of]] · [[#AnalysisService.filename_for]] · [[#export.build]] · [[#export.build_script]]
 
-**테스트 관점** 파일이 `config.EXPORT_DIR`에 생기고 내용이 `export_markdown`과 같다 · 두 번 저장하면 덮어쓴다 · 폴더가 없으면 만든다 · 폴더 자리에 파일이 있으면 `export-failed`(`path`는 보일 경로, `reason` '저장 폴더를 만들 수 없음(그 자리에 파일이 있다)') · 임시 파일이 남지 않는다
+**테스트 관점** 두 파일이 `config.EXPORT_DIR`에 생긴다(0644) · 노트는 `export_markdown`의 본문에 `## 스크립트` 절이 더 붙은 것 · 스크립트 파일은 `# {제목} — 스크립트`로 시작 · `bytes`는 두 파일 합 · 두 번 저장하면 둘 다 덮어쓴다 · 폴더가 없으면 만든다 · 폴더 자리에 파일이 있으면 `export-failed`(`path`는 보일 경로, `reason` '저장 폴더를 만들 수 없음(그 자리에 파일이 있다)') · 임시 파일이 남지 않는다
 
 ---
 
@@ -265,19 +267,19 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 근거: [[VA-UI-002#UI-7]] 2.1(저장 경로 표시) · [[VA-API-001]] 6장 미결(파일 이름 규칙 — 여기서 정한다)
 
-**처리** `name = video.title` · 로컬 파일이면 확장자를 뗀다 · 유니코드 NFC 정규화 · `\ / : * ? " < > |`와 제어 문자를 `_`로 · 연속 공백 · 밑줄을 하나로 · 앞뒤 공백 · 점 제거 · 80자로 자른다(문자 단위) · UTF-8로 250바이트를 넘으면 더 자른다 — 파일 이름 한도가 255바이트이고 `.md`를 붙인다(이모지처럼 4바이트 글자가 많은 제목) · 자른 끝의 공백 · 점도 뗀다 · 비면 `video-{id}` · `→ name`. 확장자 `.md`는 부르는 쪽이 붙인다
+**처리** `name = video.title` · 로컬 파일이면 확장자를 뗀다 · 유니코드 NFC 정규화 · `\ / : * ? " < > |`와 제어 문자를 `_`로 · 연속 공백 · 밑줄을 하나로 · 앞뒤 공백 · 점 제거 · 80자로 자른다(문자 단위) · UTF-8로 238바이트를 넘으면 더 자른다 — 파일 이름 한도가 255바이트이고, 스크립트 파일은 이름 뒤에 ` 스크립트.md`(16바이트)를 붙인다(이모지처럼 4바이트 글자가 많은 제목, 카드 C) · 자른 끝의 공백 · 점도 뗀다 · 비면 `video-{id}` · `→ name`. 확장자 `.md`는 부르는 쪽이 붙인다
 
-**테스트 관점** `RAG 서비스 1년 운영기` → 그대로 · `a/b:c?` → `a_b_c_` · 200자 제목 → 80자 · 이모지 80자 제목 → 250바이트 이하 · `workshop_0912.mp4` → `workshop_0912` · 빈 제목 → `video-12`
+**테스트 관점** `RAG 서비스 1년 운영기` → 그대로 · `a/b:c?` → `a_b_c_` · 200자 제목 → 80자 · 이모지 80자 제목 → 238바이트 이하(`{이름} 스크립트.md`까지 255바이트 안) · `workshop_0912.mp4` → `workshop_0912` · 빈 제목 → `video-12`
 
 ---
 
 #### export.build 결과 → 마크다운
 
-**시그니처** `def build(result: Result, turns: list[ChatTurn] | None) -> str`
+**시그니처** `def build(result: Result, turns: list[ChatTurn] | None, script_name: str | None = None) -> str`
 
 근거: [[VA-API-001#GET/api/videos/{id}/export]] 내용 순서 · [[VA-UC-001#UC-H7]] 2번, 2a · 2b · [[VA-PRD-001#R10]] · [[VA-UI-002#UI-7]] 규칙(로컬 파일 원본 줄)
 
-**입력** `turns`가 `None`이면 질문 기록 절을 붙이지 않는다. `[]`이면 절 제목과 「질문 기록이 없습니다」
+**입력** `turns`가 `None`이면 질문 기록 절을 붙이지 않는다. `[]`이면 절 제목과 「질문 기록이 없습니다」. `script_name`이 오면(파일로 저장할 때) 스크립트 파일을 가리키는 절을 둔다 — `None`이면(미리 보기 · 복사) 두지 않는다
 
 **처리** — 순수 함수. 순서대로 문자열을 잇는다. `T = timecode(sec, result.video.duration_sec)`, `L = link(sec, result.video)`
 1. `# {video.title}`
@@ -285,15 +287,36 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 3. 빈 줄 · `> {summary.one_liner}`
 4. `## 핵심 인사이트` · 인사이트마다 `{seq}. {text} {L(source_secs[0])} {L(…)}` — 시각은 문장 끝에 전부
 5. `## 챕터` · if 파트 있음 → 파트마다 `### {part.title} ({T(start)} – {T(end)})` 아래에 챕터 · 챕터는 `#### {L(start_sec)} {title}`와 `- {bullet}` ×N · 파트 없으면 챕터를 `### {L(start_sec)} {title}`로
-6. `## 스크립트` · 출처 한 줄을 절 제목 아래에 · 구간마다 `{L(start_sec)} {text}` 한 줄. 출처 줄은 화면 8.1과 같은 문구다 — `자막(수동) · {언어}` · `자막(자동) · {언어}` · `받아쓰기 {transcript.model} · {언어}`. {언어}는 언어 코드의 이름(ko 한국어 · en 영어 · ja 일본어 · zh 중국어 · es 스페인어 · fr 프랑스어 · de 독일어 · pt 포르투갈어 · ru 러시아어 · vi 베트남어, 표에 없으면 코드 그대로)이고 표는 화면(`frontend/src/labels.ts`)과 같은 사본이다 — 서버와 화면이 따로 그려 한 벌로 둘 수 없다
+6. if `script_name` → `## 스크립트` · `[[{script_name}]]` 한 줄(옵시디언 위키링크 — 같은 폴더의 스크립트 파일). 스크립트 줄은 노트에 없다 — [[#export.build_script]]가 따로 만든다([[VA-PRD-001#R10]], 사용자 결정 2026-09-29 — 한 파일이면 2시간 30분 영상의 노트가 5천 줄이 넘었다)
 7. if `turns is not None` → `## 질문 기록` · 턴마다 `**Q.** {question}` · `**A.** {answer}` · 근거가 있으면 `근거: {L(sec)} …` · 빈 줄 · 턴이 없으면 `질문 기록이 없습니다`
 8. `→ 문자열` (줄바꿈 `\n`, 끝에 빈 줄 하나)
 
-**출력** 마크다운 문자열. 옵시디언 · 노션에 그대로 붙는다
+**출력** 노트 마크다운 문자열. 옵시디언 · 노션에 그대로 붙는다
 
 **호출하는 것** [[#export.timecode]] · [[#export.link]]
 
-**테스트 관점** 스냅샷 테스트: 자막 있는 50분 YouTube 결과 → 예상 문자열과 일치 · 로컬 150분 결과(파트 있음) → 원본 줄에 링크 없음, 파트 제목 줄 있음, 시각이 `h:mm:ss` · `turns=None`과 `[]`의 차이 · 인사이트의 시각 두 개가 모두 나온다 · 출처 줄이 화면 8.1과 같다(`자막(수동) · 한국어` · `받아쓰기 whisper-1 · 한국어`)
+**테스트 관점** 스냅샷 테스트: 자막 있는 50분 YouTube 결과 → 예상 문자열과 일치 · 로컬 150분 결과(파트 있음) → 원본 줄에 링크 없음, 파트 제목 줄 있음, 시각이 `h:mm:ss` · `turns=None`과 `[]`의 차이 · 인사이트의 시각 두 개가 모두 나온다 · 스크립트 줄이 없다 · `script_name`이 오면 `## 스크립트`와 `[[{이름}]]` 한 줄이 챕터 다음, 질문 기록 앞 · `None`이면 그 절이 없다
+
+---
+
+#### export.build_script 결과 → 스크립트 마크다운
+
+**시그니처** `def build_script(result: Result) -> str`
+
+근거: [[VA-PRD-001#R10]] · [[VA-API-001#POST/api/videos/{id}/export]] · [[VA-UC-001#UC-H7]] 2번
+
+**처리** — 순수 함수. `T` · `L`은 [[#export.build]]와 같다
+1. `# {video.title} — 스크립트`
+2. 원본 줄 — [[#export.build]] 2번과 같다
+3. 빈 줄 · 출처 한 줄 · 빈 줄. 출처 줄은 화면 8.1과 같은 문구다 — `자막(수동) · {언어}` · `자막(자동) · {언어}` · `받아쓰기 {transcript.model} · {언어}`. {언어}는 언어 코드의 이름(ko 한국어 · en 영어 · ja 일본어 · zh 중국어 · es 스페인어 · fr 프랑스어 · de 독일어 · pt 포르투갈어 · ru 러시아어 · vi 베트남어, 표에 없으면 코드 그대로)이고 표는 화면(`frontend/src/labels.ts`)과 같은 사본이다 — 서버와 화면이 따로 그려 한 벌로 둘 수 없다
+4. 구간마다 `{L(start_sec)} {text}` 한 줄 — 줄바꿈 하나로 잇는다(옵시디언 기본 설정 · 노션에서 줄마다 나뉜다. 사용자가 실제 노트를 보고 그대로 두기로 했다, 2026-09-29)
+5. `→ 문자열` (줄바꿈 `\n`, 끝에 줄바꿈 하나)
+
+**출력** 마크다운 문자열. 노트 곁에 `{파일 이름} 스크립트.md`로 쓰인다([[#AnalysisService.export_to_file]])
+
+**호출하는 것** [[#export.timecode]] · [[#export.link]]
+
+**테스트 관점** 스냅샷 테스트: 자막 있는 50분 YouTube 결과 · 로컬 150분 결과 → 예상 문자열과 일치 · 로컬은 원본 줄에 링크 없음, 시각이 `h:mm:ss` · 출처 줄이 화면 8.1과 같다(`자막(수동) · 한국어` · `받아쓰기 whisper-1 · 한국어`)
 
 ---
 
@@ -330,5 +353,5 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 - [x] 스크립트 토큰 수 세기 — 결정(카드 C): 어림을 실측으로 고쳐 `shared/tokens.py`에 둔다([[VA-MS-006#tokens.estimate]] — 줄마다 UTF-8 바이트 ÷ 4 + 8). 실측(카드 C, gpt-5-mini): 한국어 스크립트 세 영상에서 글자 ÷ 2는 실제의 절반 이하였다(0.37~0.5배) — 줄 앞에 붙는 시각 표기(`[mm:ss] ` 5토큰 안팎 · `[h:mm:ss] ` 8토큰 안팎)를 세지 않았고, 받아쓰기 스크립트는 줄이 많다(2시간 30분에 4,875줄). `tiktoken`은 쓰지 않는다
 - [ ] 파트 제목 — 포트가 파트를 안 주면 첫 챕터 제목을 쓴다(`generate_chapters` 5번). 파트 제목만 따로 모델에 묻는 호출을 더할지
 - [ ] 중간 요약을 재료로 한 최종 요약의 품질 — 챕터를 재료로 쓰는 [[VA-UC-001#UC-S4]] 1a2와 결과가 다를 수 있다. 품질을 보고 실행 순서(챕터 먼저)로 되돌릴지([[VA-DOM-002]] 5장 10)
-- [ ] 스크립트 · 질문 기록의 줄은 줄바꿈 하나로 잇는다(`export.build` 6 · 7번). 옵시디언(기본 설정)과 노션은 줄마다 나뉘지만, 엄격한 CommonMark(GitHub 미리 보기, 옵시디언 「엄격한 줄바꿈」)에서는 한 문단으로 합쳐진다. 목록(`- `)이나 빈 줄로 바꿀지는 사용자가 실제 노트에서 보고 정한다(카드 B4 코드 리뷰)
-- [ ] 내보내기 스크립트 절의 크기 — 3시간이면 3,000줄이다. 스크립트를 별도 파일로 뺄지 사용자 확인. 첫 버전은 한 파일([[VA-PRD-001#R10]] 「하나의 마크다운 파일」)
+- [x] 스크립트 · 질문 기록의 줄은 줄바꿈 하나로 잇는다 — 결정(사용자 2026-09-29, 카드 C 실제 노트): 그대로 둔다. 옵시디언(기본 설정) · 노션에서 줄마다 나뉜다. 엄격한 CommonMark(GitHub 미리 보기)에서만 한 문단으로 합쳐진다
+- [x] 내보내기 스크립트 절의 크기 — 결정(사용자 2026-09-29, 카드 C 실측 — 2시간 30분 받아쓰기 영상의 노트가 5,022줄 · 206 KB): 스크립트는 별도 파일 `{파일 이름} 스크립트.md`로 쓰고, 노트는 `[[{파일 이름} 스크립트]]`로 가리킨다. 복사는 노트만([[VA-PRD-001#R10]] v6 · [[#export.build_script]])
