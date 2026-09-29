@@ -30,7 +30,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 | `config.CHUNK_RETRY_WAIT_SEC` | 2 | 조각을 다시 보내기 전에 기다리는 첫 시간. 다음은 두 배(2초 · 4초). SDK 재시도를 꺼서([[VA-MS-007]] `OPENAI_MAX_RETRIES`) 요청 한도 · 일시 오류에 바로 다시 보내면 세 번이 1초 안에 끝난다 |
 | `config.CHUNK_EST_SEC` | 45 | 조각 하나(10분)의 받아쓰기 예상 시간. 예상치 계산용. 측정 뒤 조정 |
 | `config.TEXT_EST_SEC` | 60 | 요약 · 챕터 · 추천 질문 세 단계 합. 자막 있음의 '약 1분' |
-| `config.TOKENS_PER_MIN` | 200 | 한국어 말하기 분당 토큰 추정. 텍스트 비용 계산용 |
+| `config.TOKENS_PER_MIN` | 450 | 스크립트를 한 번 보낼 때 영상 1분당 입력 토큰. 텍스트 비용 계산용. 실측(카드 C, gpt-5-mini): 자막 404 · 받아쓰기 323 · 497(줄 앞 시각 표기까지) — 첫 값 200은 비용을 절반쯤으로 예상했다 |
 | `config.WORKER_IDLE_SEC` | 5 | 워커가 신호 없이도 대기열을 다시 보는 간격. 깨우는 신호를 놓쳤을 때의 안전망이라 짧을 필요가 없다 |
 
 **진행률 가중치** — `stages`에 `transcribe`가 있으면 받아쓰기 70, 나머지 단계가 30을 똑같이 나눈다. 없으면 단계들이 100을 똑같이 나눈다. 받아쓰기 안에서는 완료 조각 비율로 채운다. 단계가 끝나면 그 가중치만큼 더한다.
@@ -86,7 +86,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 3. `needs_stt = not video.has_captions`
 4. if `not needs_stt` → `chunks = None` · `concurrency = None` · `stt_minutes = None` · `stt_price_per_min = None` · `stt_cost = 0` · `seconds = config.TEXT_EST_SEC`
    else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기, 로컬 음성이면 mp3 변환 몫으로 `duration_sec / 60`초를 더한다 — 로컬 음성도 받아쓰기 단계가 조각을 나누기 전에 바꾼다, [[#pipeline.run]])
-5. `in_tokens = duration_sec / 60 × config.TOKENS_PER_MIN` · `text_cost = (in_tokens × 3 × models.text.price.input_per_mtok_usd + 6000 × models.text.price.output_per_mtok_usd) / 1_000_000` — 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 6천 토큰으로 본다
+5. `in_tokens = duration_sec / 60 × config.TOKENS_PER_MIN` · `text_cost = (in_tokens × 3 × models.text.price.input_per_mtok_usd + 9000 × models.text.price.output_per_mtok_usd) / 1_000_000` — 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 9천 토큰으로 본다(실측 6.8천~10.6천 — 추론 모델은 생각한 토큰도 출력으로 센다, 카드 C)
 6. `→ Estimate(needs_stt, seconds, chunks, concurrency, stt_minutes, stt_price_per_min, stt_cost_usd=round(stt_cost, 4), text_cost_usd=round(text_cost, 4), total_cost_usd=round(stt_cost + text_cost, 2), stt_model=models.stt.id, text_model=models.text.id)`
 
 **출력** `Estimate` 또는 `None`. 화면은 숫자를 그대로 보이고 합계에 '약'을 붙인다
@@ -535,7 +535,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 - [x] (반영: 클래스 명세 v9 · ERD v3) **되먹임** — `AnalysisJob`에 `stage_started_at` 속성(`analysis_jobs.stage_started_at timestamptz`)이 필요하다. 걸린 시간과 남은 시간 계산의 기준이고, 재시도 뒤에는 `started_at`으로 계산할 수 없다. [[VA-DOM-002#AnalysisJob]] · [[VA-DOM-003#analysis_jobs]]에 더한다
 - [x] 조각이 없는 단계의 남은 시간을 0까지 내려 주는 것 — 결정: 0을 주고 화면이 비운다([[VA-API-001]] v2 4장 `remaining_sec`)
 - [ ] 진행률 반올림 — 30을 네 단계로 나누면 7.5. 단계마다 내림하고 마지막 단계에서 100을 맞춘다로 갈지
-- [ ] 첫 값 여섯(`CHUNK_SEC` · `STT_CONCURRENCY` · `CHUNK_MAX_ATTEMPTS` · `CHUNK_EST_SEC` · `TEXT_EST_SEC` · `TOKENS_PER_MIN`)은 측정 뒤 조정. [[VA-INFRA-001]] 9절의 조각 길이 · 병렬 수 미결을 이 값으로 닫는다
+- [x] 첫 값 여섯(`CHUNK_SEC` · `STT_CONCURRENCY` · `CHUNK_MAX_ATTEMPTS` · `CHUNK_EST_SEC` · `TEXT_EST_SEC` · `TOKENS_PER_MIN`)은 측정 뒤 조정 — 결정(카드 C, 실제 영상 셋): `TOKENS_PER_MIN`만 200 → 450, 나머지는 그대로다. 받아쓰기는 영상 1시간당 2.7 · 3.0분으로 [[VA-PRD-001#N1]] 목표 안이고(조각 600초 · 동시 3), 조각 한 차례 15~57초(예상 45초), 텍스트 세 단계 43~72초(예상 60초), 조각 재시도 0번이었다. 추출 · 내려받기 몫(`duration_sec / 60`초)은 넉넉하다(2시간 30분 추출 42초 · 31분 내려받기 19초) — 예상 시간은 실제보다 조금 길게 나온다. [[VA-INFRA-001]] 9절의 조각 길이 · 병렬 수 미결을 이 값으로 닫는다
 - [x] 동시 분석 대기열 — 결정: 대기열(사용자 결정 2026-09-21). `start` · `retry`는 `queued`로 넣고, `claim_next` · `wake` · `wait_for_work` · `queue_position` · `pipeline.worker`를 더했다. 부분 unique 인덱스는 그대로다
 - [x] 워커가 `Video`를 얻는 길(시퀀스 되먹임 #7) — 결정: `main.py`가 `worker(load_video)`로 넘긴다. 작업 행에 영상 값을 복사하는 안은 같은 값이 두 테이블에 생기고, 영상 정보가 덮어써질 때([[VA-API-001#POST/api/videos]] 다시 넣기) 어긋날 수 있어 버렸다. `run(job_id)`로 시그니처를 줄이는 안은 `AnalysisService.generate_*`가 `Video`를 받고 있어 고칠 곳이 더 많다
 - [x] (반영: 클래스 명세 v12) **되먹임** — [[VA-DOM-002#JobService]]에 `wake() None`을 더하고, `claim_next` · `wait_for_work`와 함께 「`finish` · `fail` · `cancel`이 깨운다」는 규칙을 「`start` · `retry` · 삭제 라우터(삭제 뒤)가 깨운다」로 고친다. 파이프라인 블록의 `worker()`는 `worker(load_video)`로. 워커가 태스크를 기다리므로 `finish` · `fail`은 깨울 필요가 없다. `queue_position`은 DB를 읽으므로 `async`이고 반환은 `int | None`, `to_job`은 셋째 인자 `queue_position`을 받는다
