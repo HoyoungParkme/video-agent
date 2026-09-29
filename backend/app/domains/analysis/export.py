@@ -115,6 +115,24 @@ def build(result: Result, turns: list[ChatTurn] | None, script_name: str | None 
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
+def build_script(result: Result) -> str:
+    """VA-MS-003#export.build_script
+
+    결과 → 스크립트 마크다운. 노트 곁에 `{파일 이름} 스크립트.md`로 쓰이고, 노트가 위키링크로
+    가리킨다. 구간마다 시각(YouTube면 그 시점 링크)과 문장 한 줄 — 줄바꿈 하나로 잇는다.
+
+    Args:
+        result: 결과 화면이 받는 것 전부
+
+    Returns:
+        마크다운(줄바꿈 `\n`, 끝에 줄바꿈 하나)
+    """
+    v = result.video
+    lines = [f"# {v.title} — 스크립트", _origin(v), "", _source(result.transcript), ""]
+    lines += [f"{link(s.start_sec, v)} {s.text}" for s in result.transcript.segments]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
 def _origin(video: Video) -> str:
     # 원본 줄 — YouTube면 주소 링크, 로컬 파일이면 파일 이름만(UI-7 규칙). 길이 붙음
     at = timecode(video.duration_sec, video.duration_sec)

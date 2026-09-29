@@ -211,3 +211,22 @@ def test_build_links_script_file_between_chapters_and_chat() -> None:
     )
     assert md.endswith(tail)
     assert md.index("## 챕터") < md.index("## 스크립트")
+
+
+def test_build_script_youtube_50m_snapshot() -> None:
+    # 제목 — 스크립트 → 원본 링크 → 출처 줄 → 구간마다 시점 링크와 문장
+    expected = (SNAP / "export_youtube_50m_script.md").read_text(encoding="utf-8")
+    assert export.build_script(youtube_50m()) == expected
+
+
+def test_build_script_local_150m_snapshot() -> None:
+    # 원본 줄에 링크 없음 · 시각은 h:mm:ss 글자 · 받아쓰기 출처
+    expected = (SNAP / "export_local_150m_script.md").read_text(encoding="utf-8")
+    assert export.build_script(local_150m()) == expected
+
+
+def test_build_script_source_line_like_the_screen() -> None:
+    result = youtube_50m()
+    result.transcript.source = TranscriptSource.caption_auto
+    result.transcript.language = "xx"  # 표에 없는 코드는 그대로
+    assert "\n\n자막(자동) · xx\n\n" in export.build_script(result)
