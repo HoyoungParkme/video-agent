@@ -83,7 +83,8 @@ class Config(BaseSettings):
 
     # 결과 — MS-003
     TEXT_WINDOW_SEC: int = 1800
-    TEXT_TOKEN_LIMIT: int = 40000
+    # 3시간 안은 대부분 한 번에 — 받아쓰기 스크립트는 영상 1분에 약 500토큰(카드 C 실측)
+    TEXT_TOKEN_LIMIT: int = 100000
     CHAPTER_MINUTES: int = 6
     PART_THRESHOLD_SEC: int = 3600
 

@@ -38,6 +38,7 @@ from app.domains.analysis.schemas import (
     SummaryDraft,
     Transcript,
 )
+from app.shared import tokens
 
 if TYPE_CHECKING:
     from app.domains.chat.schemas import ChatTurn  # 타입만 — chat을 import하지 않는다
@@ -69,8 +70,8 @@ WRITE_REASONS = {
 
 
 def _tokens(segments: list[Segment]) -> int:
-    # 첫 버전은 어림 — 글자 수 ÷ 2(MS-003 3장 미결). 상한에 여유가 있어 오차가 문제되지 않는다
-    return sum(len(s.text) for s in segments) // 2
+    # 모델에 보낼 스크립트의 토큰 어림 — 대화와 같은 식(MS-006 tokens.estimate)
+    return tokens.estimate(s.text for s in segments)
 
 
 def _windows(segments: list[Segment]) -> list[list[Segment]]:
@@ -97,15 +98,16 @@ def _part_of(parts: list[tuple[str, float]], start: float) -> int | None:
 
 def _sample(segments: list[Segment], limit: int) -> list[Segment]:
     # 앞 · 가운데 · 끝에서 limit / 3 토큰씩 — 질문은 전체를 다 볼 필요가 없다
-    budget = limit // 3 * 2  # 토큰 → 글자(÷ 2의 반대)
+    budget = limit // 3
 
     def take(ordered: list[Segment]) -> list[Segment]:
         out, used = [], 0
         for s in ordered:
-            if used + len(s.text) > budget and out:
+            cost = _tokens([s])
+            if used + cost > budget and out:
                 break
             out.append(s)
-            used += len(s.text)
+            used += cost
         return out
 
     mid = len(segments) // 2
