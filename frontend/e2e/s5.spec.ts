@@ -74,10 +74,16 @@ test("S5 — 며칠 뒤 목록에서 열어 묻고, 파일로 저장 · 복사�
   await expect(inDialog(page, "3")).toHaveText("질문 기록 1개도 넣기");
   await inDialog(page, "5.3").click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(el(page, "11")).toHaveText(`${plain.path}에 저장했어요`);
+  await expect(el(page, "11")).toHaveText(`${plain.path}에 저장했어요 · 스크립트는 따로`);
   await expect(el(page, "1.2")).toBeFocused();
+  // 노트는 미리 보기와 같고 끝에 스크립트 파일을 가리키는 절이 붙는다 — 스크립트는 따로(UI-7 규칙)
   const file = path.join(DATA, "export", `${plain.filename}.md`);
-  expect(readFileSync(file, "utf-8")).toBe(plain.markdown);
+  expect(readFileSync(file, "utf-8")).toBe(
+    `${plain.markdown}\n## 스크립트\n[[${plain.filename} 스크립트]]\n`,
+  );
+  const script = path.join(DATA, "export", `${plain.filename} 스크립트.md`);
+  expect(readFileSync(script, "utf-8")).toMatch(/^# 벡터 DB 운영 노트 — 스크립트\n원본: \[https:/);
+  expect(plain.markdown).not.toContain("## 스크립트"); // 미리 보기 · 복사는 노트만
 
   // 클립보드에 복사 — 질문 기록을 넣으면 맨 끝에 붙은 마크다운 전체
   await el(page, "1.2").click();
@@ -172,8 +178,11 @@ test("저장 실패 — 실패 한 줄을 보이고 열린 채, 치우고 다시
   }
   await inDialog(page, "5.3").click(); // 다시 누르면 다시 시도 — 5.1이 사라진다
   const plain = await exported(request, id);
-  await expect(el(page, "11")).toHaveText(`${plain.path}에 저장했어요`);
-  expect(readFileSync(path.join(folder, `${plain.filename}.md`), "utf-8")).toBe(plain.markdown);
+  await expect(el(page, "11")).toHaveText(`${plain.path}에 저장했어요 · 스크립트는 따로`);
+  expect(readFileSync(path.join(folder, `${plain.filename}.md`), "utf-8")).toBe(
+    `${plain.markdown}\n## 스크립트\n[[${plain.filename} 스크립트]]\n`,
+  );
+  expect(existsSync(path.join(folder, `${plain.filename} 스크립트.md`))).toBe(true);
 });
 
 test("지우지 않고 닫는다 — 덮개는 닫지 않고, Esc · 취소는 아무것도 지우지 않는다", async ({
