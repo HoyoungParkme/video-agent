@@ -24,8 +24,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 | `prompts/__init__.py` · `summary.md` · `chapters.md` · `questions.md` · `answer.md` | — (어댑터가 부른다) | [[#prompts.render]] |
 | `shared/timecode.py` | — (어댑터와 내보내기가 부른다) | [[#timecode.label]] · [[#timecode.parse]] |
 | `shared/captions.py` | — (두 묶음의 YouTube 어댑터가 부른다) | [[#captions.pick]] |
+| `shared/tokens.py` | — (요약(analysis)과 대화(chat)가 부른다) | [[#tokens.estimate]] |
 
-마지막 세 줄은 어댑터가 아니다. 두 묶음의 어댑터가 같이 쓰는데 묶음끼리는 서로의 모듈을 부르지 않으므로([[VA-DOM-002]] 1장 「묶음 안 규칙」) 묶음 밖에 둔다 — 시각 표기는 analysis와 chat이, 자막 고르기는 video(등록 때 자막 유무)와 job(분석 때 자막 받기)이 쓴다. 자막 고르기가 한 곳에 있어야 등록 때 알린 자막과 분석 때 받는 자막이 같다. 순수 함수는 규약 1.9의 `shared/`에, 프롬프트 읽기는 프롬프트 파일 곁에 둔다.
+마지막 네 줄은 어댑터가 아니다. 두 묶음이 같이 쓰는데 묶음끼리는 서로의 모듈을 부르지 않으므로([[VA-DOM-002]] 1장 「묶음 안 규칙」) 묶음 밖에 둔다 — 시각 표기는 analysis와 chat이, 자막 고르기는 video(등록 때 자막 유무)와 job(분석 때 자막 받기)이, 토큰 어림은 analysis(요약 상한)와 chat(대화 상한)이 쓴다. 자막 고르기가 한 곳에 있어야 등록 때 알린 자막과 분석 때 받는 자막이 같다. 순수 함수는 규약 1.9의 `shared/`에, 프롬프트 읽기는 프롬프트 파일 곁에 둔다.
 
 항목 ID는 `파일.함수`다. 코드에서는 파일마다 Protocol을 구현하는 클래스 하나이고(`YouTubeInfoAdapter` 등) 메서드 docstring이 이 항목 ID를 가리킨다. 테스트는 가짜 어댑터로 바꿔 끼우고, 어댑터 자체 테스트는 `infra/`를 가짜로 둔다.
 
@@ -85,6 +86,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 | [[#timecode.label]] | 초 → `mm:ss` 또는 `h:mm:ss` |
 | [[#timecode.parse]] | 모델이 쓴 시각 → 초 |
 | [[#captions.pick]] | yt-dlp 정보 → 자막 트랙(키 · 언어 · 종류) |
+| [[#tokens.estimate]] | 스크립트 줄 → 토큰 어림 |
 
 ---
 
@@ -360,6 +362,24 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 **호출하는 것** 없음
 
 **테스트 관점** 수동 `ko` + 자동 `en-orig` → (`ko`, `ko`, manual) · 수동 없음, 자동 `en-orig`과 번역 `ko` → (`en-orig`, `en`, auto) — 번역 `ko`를 고르지 않는다 · 수동 `ko-FmoQciUtYSc` → 키는 그대로, 언어 `ko` · 수동 `ja`만 + 자동 `en-orig` → 자동 `en-orig` · 수동 `ja`만 + 자동 `fr-orig` → 수동 `ja` · 자동 `fr-orig`만 → `fr-orig` · 수동 `live_chat`만 → `None` · `-orig`가 없으면 `raw.language` 키 · 둘 다 비었으면 `None`
+
+---
+
+#### tokens.estimate 스크립트 → 토큰 어림
+
+**시그니처** `def estimate(texts: Iterable[str]) -> int`
+
+근거: [[VA-DOM-002]] 1장 `shared/` · [[VA-MS-003]] 0장 `TEXT_TOKEN_LIMIT` · [[VA-MS-004]] 0장 `CHAT_TOKEN_LIMIT`
+
+**처리**
+1. 줄마다 `UTF-8 바이트 수 ÷ 4 + 8` — 앞은 글자 몫, 뒤는 모델에 보낼 때 줄 앞에 붙는 시각 표기(`[mm:ss] ` · `[h:mm:ss] `) 몫
+2. `→ int(합)`
+
+**출력** 토큰 어림(정수). 조금 넉넉하다 — 실측(카드 C, gpt-5-mini) 한국어 스크립트 세 영상에서 실제의 0.99~1.18배. 영어도 바이트 ÷ 4가 맞는 편이다(한 토큰에 4글자 안팎). 정확히 세는 `tiktoken`은 쓰지 않는다 — 의존성과 인코딩 파일 내려받기가 늘고, 상한을 넘는지 가리는 데는 어림으로 충분하다
+
+**호출하는 것** 없음
+
+**테스트 관점** 빈 목록 → 0 · 'abcd' 한 줄 → 9 · '가나다라'(12바이트) 한 줄 → 11 · 줄 수만큼 8씩 더한다 · 생성기도 받는다
 
 ---
 
