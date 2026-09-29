@@ -86,7 +86,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 3. `needs_stt = not video.has_captions`
 4. if `not needs_stt` → `chunks = None` · `concurrency = None` · `stt_minutes = None` · `stt_price_per_min = None` · `stt_cost = 0` · `seconds = config.TEXT_EST_SEC`
    else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기, 로컬 음성이면 mp3 변환 몫으로 `duration_sec / 60`초를 더한다 — 로컬 음성도 받아쓰기 단계가 조각을 나누기 전에 바꾼다, [[#pipeline.run]])
-5. `in_tokens = duration_sec / 60 × config.TOKENS_PER_MIN` · `text_cost = (in_tokens × 3 × models.text.price.input_per_mtok_usd + 9000 × models.text.price.output_per_mtok_usd) / 1_000_000` — 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 9천 토큰으로 본다(실측 6.8천~10.6천 — 추론 모델은 생각한 토큰도 출력으로 센다, 카드 C)
+5. `in_tokens = duration_sec / 60 × config.TOKENS_PER_MIN` · `text_cost = (in_tokens × 3 × models.text.price.input_per_mtok_usd + 3000 × models.text.price.output_per_mtok_usd) / 1_000_000` — 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 3천 토큰으로 본다. 추론 모델은 생각한 토큰도 출력으로 센다 — 실측(카드 C, gpt-5-mini): 추론 강도 기본(medium)은 6.8천~10.6천, `low`([[VA-MS-007]] `TEXT_REASONING_EFFORT`)는 42분 영상에서 2.5천
 6. `→ Estimate(needs_stt, seconds, chunks, concurrency, stt_minutes, stt_price_per_min, stt_cost_usd=round(stt_cost, 4), text_cost_usd=round(text_cost, 4), total_cost_usd=round(stt_cost + text_cost, 2), stt_model=models.stt.id, text_model=models.text.id)`
 
 **출력** `Estimate` 또는 `None`. 화면은 숫자를 그대로 보이고 합계에 '약'을 붙인다
