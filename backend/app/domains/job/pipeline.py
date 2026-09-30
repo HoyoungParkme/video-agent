@@ -384,7 +384,10 @@ def _error_of(e: Exception) -> JobError:
     return JobError(kind=error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1)
 
 
-async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
+async def worker(
+    load_video: Callable[[int], Awaitable[Video | None]],
+    release_upload: Callable[[Video], Awaitable[None]],
+) -> None:
     """VA-MS-002#pipeline.worker
 
     대기열 워커 — 한 번에 하나씩 차례로 돌린다. main.py lifespan이 태스크 하나로 띄우고
@@ -394,7 +397,10 @@ async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
 
     Args:
         load_video: 영상 id → Video(없으면 None). main.py가 VideoService.get을 감싸 넘긴다
+        release_upload: 끝난 작업의 올린 사본을 놓는 함수(VideoService.release_upload). 모듈
+            속성에 두고 run · resume이 끝에서 부른다 — 작업 묶음은 영상 묶음을 import하지 않는다
     """
+    globals()["release_upload"] = release_upload  # 모듈 속성 pipeline.release_upload(이름이 같다)
     while True:
         JobService.work_event.clear()  # 확인하기 전에 — 확인과 잠들기 사이에 온 신호를 잃지 않게
         try:

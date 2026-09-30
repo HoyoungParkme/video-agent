@@ -85,7 +85,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         log.info("서버가 죽어 멈춘 작업 %d개를 실패로 되돌렸다", orphans)
     if drawings:
         log.info("서버가 죽어 멈춘 인포그래픽 %d개를 실패로 되돌렸다", drawings)
-    worker = asyncio.create_task(pipeline.worker(load_video))
+    worker = asyncio.create_task(pipeline.worker(load_video, VideoService.release_upload))
     try:
         yield
     finally:

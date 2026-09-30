@@ -603,8 +603,8 @@ async def load_video(video_id: int):
         return (await VideoService(s, None, None).get(video_id)).video
 
 
-def _worker(load=load_video) -> asyncio.Task:
-    return asyncio.create_task(pipeline.worker(load))
+def _worker(load=load_video, release=None) -> asyncio.Task:
+    return asyncio.create_task(pipeline.worker(load, release or Released()))
 
 
 async def _stop(task: asyncio.Task) -> None:
@@ -644,9 +644,11 @@ async def test_worker_runs_queue_one_by_one(db, make, ports, monkeypatch) -> Non
     monkeypatch.setattr(pipeline, "run", fake_run)
     first = await make.job((await make.video()).id, JobStatus.queued, at=T0)
     second = await make.job((await make.video()).id, JobStatus.queued, at=T0 + timedelta(seconds=1))
-    worker = _worker()
+    release = Released()
+    worker = _worker(release=release)
     try:
         await _wait_status(second.id, JobStatus.done)  # 첫 작업이 예외로 끝나도 둘째가 돈다
+        assert pipeline.release_upload is release  # run · resume이 끝에서 부르게 둔다
     finally:
         await _stop(worker)
     assert running_seen == [1, 1]  # 동시에 running 둘이 없다
