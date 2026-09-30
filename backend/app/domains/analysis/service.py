@@ -26,6 +26,7 @@ from app.core.db import SessionLocal
 from app.core.errors import (
     ExportFailed,
     FramesUnavailable,
+    InfographicBusy,
     LlmUnavailable,
     NotFound,
     ResultNotReady,
@@ -623,6 +624,40 @@ class AnalysisService:
         if video.status != "analyzed":
             raise ResultNotReady(video_status=video.status)
         return _infographic(video.id, await crud.infographic(self.session, video.id))
+
+    async def start_infographic(self, video: Video) -> Infographic:
+        """VA-MS-003#AnalysisService.start_infographic
+
+        인포그래픽 그리기를 맡긴다 — 뒤에서 그리고 바로 돌려준다(202). 키는 누를 때 확인한다(분석
+        버튼 · 올리기와 같다). 행은 한 문장으로 making이 된다 — 겹친 요청은 하나만 맡는다. 그림
+        컬럼은 그대로라 다시 그리는 동안 이전 그림이 보인다.
+
+        Args:
+            video: 결과를 연 영상
+
+        Returns:
+            making과 이전 그림(있으면)
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+            InfographicBusy: 이미 그리는 중이다(겹친 요청이 먼저 맡은 것도)
+            KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다 — 행을 만들지 않는다
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        row = await crud.infographic(self.session, video.id)
+        if row is not None and row.state == InfographicState.making:
+            raise InfographicBusy()
+        await settings.check_stored_key()  # 누를 때 확인한다(UI-5 규칙)
+        await settings.require_key()
+        if not await crud.claim_infographic(self.session, video.id):
+            raise InfographicBusy()  # 겹친 요청이 먼저 making으로 바꿨다
+        await self.session.commit()  # 태스크는 자기 세션으로 이 행을 고친다
+        choice = settings.current_models()  # 맡긴 때의 모델 · 품질로 끝까지 그린다
+        AnalysisService._image_tasks[video.id] = asyncio.create_task(
+            self.draw_infographic(video.id, choice)
+        )
+        return await self.infographic_of(video)
 
     async def draw_infographic(self, video_id: int, choice: ChosenModels) -> None:
         """VA-MS-003#AnalysisService.draw_infographic

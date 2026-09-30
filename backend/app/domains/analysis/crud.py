@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import delete, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import ImageQuality
@@ -247,8 +248,29 @@ async def frame_by_seq(session: AsyncSession, video_id: int, seq: int) -> Chapte
 
 
 async def infographic(session: AsyncSession, video_id: int) -> InfographicRow | None:
-    """그 영상의 인포그래픽 행. 없으면 None(만든 적 없음)."""
-    return await session.scalar(select(InfographicRow).where(InfographicRow.video_id == video_id))
+    """그 영상의 인포그래픽 행. 없으면 None(만든 적 없음). 행은 SQL 한 문장(claim · finish)으로도
+    바뀌어 세션에 든 옛 값을 쓰지 않게 늘 새로 읽는다."""
+    return await session.scalar(
+        select(InfographicRow)
+        .where(InfographicRow.video_id == video_id)
+        .execution_options(populate_existing=True)
+    )
+
+
+async def claim_infographic(session: AsyncSession, video_id: int) -> bool:
+    """그리는 중(making)으로 — 행이 없으면 만들고, making이 아니면 바꾼다. 한 문장이라 겹친 요청은
+    하나만 바꾼다. 그림 컬럼은 건드리지 않는다(이전 그림이 보인다). 이미 making이면 False."""
+    stmt = (
+        pg_insert(InfographicRow)
+        .values(video_id=video_id, state=InfographicState.making)
+        .on_conflict_do_update(
+            index_elements=[InfographicRow.video_id],
+            set_={"state": InfographicState.making, "error_reason": None},
+            where=InfographicRow.state != InfographicState.making,
+        )
+        .returning(InfographicRow.id)
+    )
+    return await session.scalar(stmt) is not None
 
 
 async def video_title(session: AsyncSession, video_id: int) -> str | None:

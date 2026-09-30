@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from app.core.config import ImageQuality, config
-from app.core.errors import LlmUnavailable, ResultNotReady
+from app.core.db import SessionLocal
+from app.core.errors import InfographicBusy, KeyMissing, LlmUnavailable, ResultNotReady
 from app.core.settings import settings
 from app.domains.analysis import crud
 from app.domains.analysis.models import InfographicRow, InfographicState, SummaryRow
@@ -193,3 +195,63 @@ async def test_draw_again_replaces_picture(db, make, image_maker, env_file, data
     await db.refresh(row := await crud.infographic(db, video.id))
     assert row.state == "done" and row.created_at > T1  # 새 그림 — 주소의 ?v=가 바뀐다
     assert (data_dir / "infographics" / f"{video.id}.png").read_bytes() == b"png-new"
+
+
+# --- start_infographic
+
+
+async def test_start_returns_at_once_and_is_busy_while_drawing(
+    db, make, image_maker, key, data_dir
+) -> None:
+    video = await _analyzed(db, make)
+    image_maker.gate = asyncio.Event()  # 오래 걸리는 그리기
+    svc = AnalysisService(db, image_maker=image_maker)
+    got = await svc.start_infographic(video)
+    assert (got.state, got.image) == ("making", None)  # 다 그릴 때까지 기다리지 않는다
+    task = AnalysisService._image_tasks[video.id]
+    assert not task.done()
+    with pytest.raises(InfographicBusy):  # 그리는 중에 또
+        await svc.start_infographic(video)
+    image_maker.gate.set()
+    await task
+    assert (await svc.infographic_of(video)).state == "done"
+    assert video.id not in AnalysisService._image_tasks
+
+
+async def test_start_again_shows_previous_picture(db, make, image_maker, key, data_dir) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.failed, "이전 실패", **_picture(data_dir, video.id))
+    image_maker.gate = asyncio.Event()
+    got = await AnalysisService(db, image_maker=image_maker).start_infographic(video)
+    assert (got.state, got.error_reason, got.image is not None) == ("making", None, True)
+    image_maker.gate.set()
+    await AnalysisService._image_tasks[video.id]
+
+
+async def test_start_without_key_makes_no_row(db, make, image_maker, env_file, verify) -> None:
+    video = await _analyzed(db, make)
+    with pytest.raises(KeyMissing):
+        await AnalysisService(db, image_maker=image_maker).start_infographic(video)
+    assert await crud.infographic(db, video.id) is None
+    assert image_maker.calls == [] and video.id not in AnalysisService._image_tasks
+
+
+async def test_start_twice_at_once_only_one(db, make, image_maker, key, data_dir) -> None:
+    video = await _analyzed(db, make)
+    image_maker.gate = asyncio.Event()
+
+    async def start():
+        async with SessionLocal() as session:
+            return await AnalysisService(session, image_maker=image_maker).start_infographic(video)
+
+    got = await asyncio.gather(start(), start(), return_exceptions=True)
+    assert sorted(type(g).__name__ for g in got) == ["Infographic", "InfographicBusy"]
+    image_maker.gate.set()
+    await AnalysisService._image_tasks[video.id]
+    assert len(image_maker.calls) == 1
+
+
+async def test_start_before_result_is_not_ready(db, make, image_maker, key) -> None:
+    video = await _video(db, make, status=JobStatus.running)
+    with pytest.raises(ResultNotReady):
+        await AnalysisService(db, image_maker=image_maker).start_infographic(video)
