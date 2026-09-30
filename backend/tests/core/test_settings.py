@@ -112,6 +112,15 @@ def test_write_env_appends_missing_line(svc, env_file) -> None:
     assert env_file.read_text() == "POSTGRES_USER=va\nSTT_MODEL=whisper-1\n"
 
 
+def test_write_env_image_lines(svc, env_file) -> None:
+    before = _write(env_file)
+    svc.write_env({"IMAGE_MODEL": "gpt-image-2", "IMAGE_QUALITY": "medium"})
+    assert env_file.read_text() == before + "IMAGE_MODEL=gpt-image-2\nIMAGE_QUALITY=medium\n"
+    svc.write_env({"IMAGE_QUALITY": "low"})  # 그 줄만 바뀐다
+    assert svc.read_env()["IMAGE_QUALITY"] == "low"
+    assert env_file.read_text().count("IMAGE_QUALITY=") == 1
+
+
 def test_write_env_creates_file(svc, env_file) -> None:
     svc.write_env({"OPENAI_API_KEY": KEY})
     assert env_file.read_text() == f"OPENAI_API_KEY={KEY}\n"

@@ -143,7 +143,8 @@ class SettingsService:
         바인드 마운트한 파일은 rename으로 바꿀 수 없다(EBUSY).
 
         Args:
-            values: OPENAI_API_KEY · STT_MODEL · TEXT_MODEL 중에서만. 다른 이름이면 ValueError
+            values: OPENAI_API_KEY · STT_MODEL · TEXT_MODEL · IMAGE_MODEL · IMAGE_QUALITY 중에서만.
+                다른 이름이면 ValueError
 
         Raises:
             OSError: 파일을 쓰지 못했다(읽기 전용 마운트 등). 부르는 쪽이 internal로 접는다
