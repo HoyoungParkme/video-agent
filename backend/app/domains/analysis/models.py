@@ -23,6 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.config import ImageQuality
 from app.core.db import Base, str_enum
 
 # 시각은 numeric(9,3) — 밀리초까지. 파이썬에서는 float로 읽는다(DOM-003 4장 1)
@@ -40,6 +41,15 @@ class FrameSource(StrEnum):
 
     storyboard = "storyboard"
     local_frame = "local_frame"
+
+
+class InfographicState(StrEnum):
+    """인포그래픽 상태 — none은 행이 없을 때의 응답값이라 저장하지 않는다(DOM-002 2장 열거형)."""
+
+    none = "none"
+    making = "making"
+    done = "done"
+    failed = "failed"
 
 
 class TranscriptRow(Base):
@@ -189,3 +199,46 @@ class ChapterFrameRow(Base):
     width: Mapped[int | None] = mapped_column(SmallInteger)
     height: Mapped[int | None] = mapped_column(SmallInteger)
     path: Mapped[str | None] = mapped_column(String(500))
+
+
+PICTURE = ("model", "quality", "width", "height", "cost_usd", "path", "created_at")
+
+
+class InfographicRow(Base):
+    """영상의 인포그래픽(DOM-002 2.3 Infographic). 영상마다 0..1이고 다시 만들면 같은 행을 고친다.
+
+    그림 컬럼은 지금 쓰는 그림의 것이다 — 다시 그리는 동안 · 다시 그리기가 실패한 뒤에도 이전 그림이
+    그대로다. CHECK가 반쪽 그림 · 그림 없는 done · 이유 없는 실패를 막는다(DOM-003 3장). 그림
+    파일은 DB 밖(data/infographics)이다.
+    """
+
+    __tablename__ = "infographics"
+    __table_args__ = (
+        UniqueConstraint("video_id"),
+        CheckConstraint(
+            "("
+            + " AND ".join(f"{c} IS NULL" for c in PICTURE)
+            + ") OR ("
+            + " AND ".join(f"{c} IS NOT NULL" for c in PICTURE)
+            + ")",
+            name="picture_all_or_none",
+        ),
+        CheckConstraint("state <> 'done' OR path IS NOT NULL", name="done_has_picture"),
+        CheckConstraint(
+            "(state = 'failed') = (error_reason IS NOT NULL)", name="reason_when_failed"
+        ),
+        CheckConstraint("width > 0 AND height > 0", name="size_positive"),
+        CheckConstraint("cost_usd >= 0", name="cost_nonnegative"),
+    )
+
+    id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"))
+    state: Mapped[InfographicState] = mapped_column(str_enum(InfographicState, 10))
+    model: Mapped[str | None] = mapped_column(String(50))
+    quality: Mapped[ImageQuality | None] = mapped_column(str_enum(ImageQuality, 10))
+    width: Mapped[int | None] = mapped_column(SmallInteger)
+    height: Mapped[int | None] = mapped_column(SmallInteger)
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(8, 4, asdecimal=False))
+    path: Mapped[str | None] = mapped_column(String(500))
+    error_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
