@@ -32,6 +32,8 @@ LANGUAGES = {
     "vi": "베트남어",
 }
 NO_CHAT = "질문 기록이 없습니다"
+# Mermaid gantt가 구분자로 읽는 글자 → 비슷해 보이는 다른 글자(MS-003 export.gantt)
+GANTT_CHARS = str.maketrans({":": "∶", ";": "；", "#": "＃", "`": "'", "\n": " "})
 
 
 def timecode(sec: float, duration_sec: int) -> str:
@@ -66,6 +68,42 @@ def link(sec: float, video: Video) -> str:
     if video.source_kind == SourceKind.youtube:
         return f"[{t}](https://youtu.be/{video.source_id}?t={int(sec)})"
     return f"[{t}]"
+
+
+def gantt(result: Result) -> str:
+    """VA-MS-003#export.gantt
+
+    한눈에 보기 — 타임라인. Mermaid `gantt` 블록(울타리 포함)이고 옵시디언이 그대로 그린다.
+    챕터는 시작부터 다음 챕터의 시작까지(마지막은 영상 길이)의 막대, 파트가 있으면 파트마다
+    구역, 인사이트는 첫 출처 시각의 이정표다. `timeline`은 시각 `00:00`의 쌍점을 구분자로 읽어
+    깨져 `gantt`를 쓴다(INFRA 3절).
+
+    Args:
+        result: 결과 화면이 받는 것 전부
+
+    Returns:
+        ```` ```mermaid ````로 시작해 ```` ``` ````로 끝나는 블록(끝에 줄바꿈 없음)
+    """
+    v = result.video
+    axis = "%-H:%M:%S" if v.duration_sec >= 3600 else "%M:%S"  # 앱의 h:mm:ss와 같은 모양
+    lines = ["```mermaid", "gantt", "  dateFormat HH:mm:ss", f"  axisFormat {axis}"]
+    ends = [c.start_sec for c in result.chapters[1:]] + [v.duration_sec]
+    bars = {c.seq: _bar(c, end) for c, end in zip(result.chapters, ends, strict=True)}
+    if result.parts:
+        for p in result.parts:
+            lines.append(f"  section {_gantt_name(p.title, f'파트 {p.seq}')}")
+            lines += [bars[c.seq] for c in result.chapters if c.part_seq == p.seq]
+    else:
+        lines.append("  section 챕터")
+        lines += bars.values()
+    lines.append("  section 인사이트")
+    lines += [
+        f"  {i.seq:02d} : milestone, {_hms(i.source_secs[0])}, 0s"
+        for i in result.summary.insights
+        if i.source_secs
+    ]
+    lines.append("```")
+    return "\n".join(lines)
 
 
 def build(result: Result, turns: list[ChatTurn] | None, script_name: str | None = None) -> str:
@@ -148,6 +186,25 @@ def _chapters(chapters: list[Chapter], video: Video, mark: str) -> list[str]:
         lines += [""] * (n > 0) + [f"{mark} {link(c.start_sec, video)} {c.title}"]
         lines += [f"- {b}" for b in c.bullets]
     return lines
+
+
+def _bar(chapter: Chapter, end: float) -> str:
+    # gantt 막대 한 줄 — 초 단위로 길이가 0이면 1초로(그리지 않는 막대가 생기지 않게)
+    start = int(chapter.start_sec)
+    stop = int(end) if int(end) > start else start + 1
+    return f"  {_gantt_name(chapter.title, f'챕터 {chapter.seq}')} : {_hms(start)}, {_hms(stop)}"
+
+
+def _hms(sec: float) -> str:
+    # gantt의 dateFormat HH:mm:ss — 늘 두 자리씩
+    s = int(sec)
+    return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
+def _gantt_name(text: str, fallback: str) -> str:
+    # gantt가 구분자로 읽는 글자를 바꾼다(쌍점은 이름과 시각을 가른다) · 비면 번호로
+    name = text.translate(GANTT_CHARS).strip()
+    return name or fallback
 
 
 def _source(t: Transcript) -> str:

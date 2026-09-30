@@ -163,6 +163,93 @@ def local_150m() -> Result:
     )
 
 
+def glance_42m(chapter_count: int = 8) -> Result:
+    """42:24 YouTube — 와이어프레임 UI-7 4.1(그림이 든 노트)의 한눈에 보기 블록과 같은 값."""
+    starts = [0, 96, 195, 591, 738, 1454, 1872, 2429]
+    titles = [
+        "강사 소개와 목표",
+        "제품 성장 단계 비유",
+        "초기 단계의 핵심 이슈",
+        "코어 이벤트와 지표 정의",
+        "성장기: 문제 세분화와 운영",
+        "성숙기: 확장과 본부 관점",
+        "의사결정 어려움과 해법",
+        "정리 및 권장 실천",
+    ]
+    bullets = [
+        [
+            "발표자 소개(카일 스쿨, 데이터 교육·코칭)와 발표에서 다룰 주제 안내.",
+            "청중이 얻어가길 바라는 것(지표 활용, 지표 발굴 과정, 의사결정 감각)을 설명.",
+        ],
+        [
+            "식당을 예로 들어 제품의 초기·성장·성숙 단계를 정의하고 각 단계의 목표 설명.",
+            "초기: 고객의 문제를 찾아 제품을 맞추기, 성장: PMF 이후 문제 해결·확장, "
+            "성숙: 기존 강점 유지와 관련 분야 확장.",
+        ],
+        [
+            "초기 식당에서 발생 가능한 상황(무관심, 유입 후 이탈, 주문·만족·후기 등) 정리.",
+            "초기 핵심 지표 제안: 방문자 수, 재방문(리텐션), 매출·이익 등 소수 지표에 집중할 것 권장.",
+        ],
+    ] + [["요점"]] * 5
+    firsts = [122, 319, 591, 942, 1230, 1970, 2223, 1771]
+    return Result(
+        video=video(duration=2544, title="제품 성장 단계에 따른 지표 찾기 여정 | 인프콘2024"),
+        transcript=Transcript(
+            source=TranscriptSource.caption_auto, language="ko", model=None, segments=segs()
+        ),
+        summary=Summary(
+            one_liner="제품의 성장 단계(초기·성장기·성숙기)에 따라 어떤 지표를 골라 집중해야 하는지와 "
+            "의사결정을 돕는 실무적 방법(코어 이벤트, 퍼널/기능 지표, 페르미 추정, 지표의 위계 및 "
+            "지표 기반 회의)을 정리한 강연입니다.",
+            model="gpt-5-mini",
+            insights=[
+                Insight(seq=n + 1, text=f"인사이트 {n + 1}", source_secs=[sec, sec + 30])
+                for n, sec in enumerate(firsts)
+            ],
+        ),
+        parts=[],
+        chapters=[
+            Chapter(seq=n + 1, part_seq=None, start_sec=s, title=t, bullets=b)
+            for n, (s, t, b) in enumerate(zip(starts, titles, bullets, strict=True))
+        ][:chapter_count],
+        suggested_questions=[],
+        models=Models(stt=None, text="gpt-5-mini"),
+        analyzed_at=T0,
+    )
+
+
+def test_gantt_matches_the_wireframe_block() -> None:
+    # 챕터 구간(끝은 다음 챕터의 시작, 마지막은 영상 길이) · 인사이트 이정표(첫 출처 시각)
+    expected = (SNAP / "glance_42m_gantt.md").read_text(encoding="utf-8")
+    assert export.gantt(glance_42m()) + "\n" == expected
+
+
+def test_gantt_long_video_has_part_sections_and_hour_axis() -> None:
+    md = export.gantt(local_150m())
+    assert "  axisFormat %-H:%M:%S" in md  # 1시간 이상은 앱의 h:mm:ss 모양
+    assert (
+        "  section 1부 — 기초\n  소개 : 00:00:00, 00:06:20\n  카탈로그란 : 00:06:20, 01:00:00" in md
+    )
+    assert "  section 2부 — 운영\n" in md and "  소유자 정하기 : 01:30:00, 02:30:00\n" in md
+    assert "  section 챕터" not in md
+    assert md.endswith("  section 인사이트\n  01 : milestone, 01:30:00, 0s\n```")
+
+
+def test_gantt_escapes_what_gantt_reads_as_separators() -> None:
+    result = youtube_50m()
+    result.chapters[0].title = "A: B; C #1 `x`\n줄"
+    result.chapters[1].title = "   "
+    md = export.gantt(result)
+    assert "  A∶ B； C ＃1 'x' 줄 : 00:00:00, 00:10:00\n" in md
+    assert "  챕터 2 : 00:10:00, 00:20:00\n" in md  # 비면 번호로
+
+
+def test_gantt_zero_length_chapter_gets_one_second() -> None:
+    result = youtube_50m()
+    result.chapters[2].start_sec = 3000  # 영상 끝과 같은 시각
+    assert "  pgvector 선택 : 00:50:00, 00:50:01\n" in export.gantt(result)
+
+
 def turn(i: int, question: str, answer: str, cited: list[float]) -> ChatTurn:
     return ChatTurn(id=i, question=question, answer=answer, cited_secs=cited, asked_at=T0)
 
