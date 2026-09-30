@@ -573,11 +573,12 @@ h1, h2, p { margin: 0; }
 .part-body { padding: 0 var(--space-10) var(--space-10); display: flex; flex-direction: column; gap: var(--space-4); }
 /* UI-4 한눈에 보기(12 ~ 14) — 점 26px · 점 줄 30px · 노드 크기 · 줄 높이 · 연결선은 그림 좌표라 간격 목록 밖이다(VA-UI-001 3.3) */
 .timeline { padding: var(--space-20) var(--space-20) var(--space-16); display: flex; flex-direction: column; gap: var(--space-10); border-radius: var(--radius-14); border: 1px solid var(--c-line); background: var(--c-card); }
-.timeline-band, .timeline-bars { display: flex; gap: var(--space-2); }
+/* 칸은 점 · 눈금처럼 시작 시각 자리에 놓는다(left · width는 Glance.tsx) — 틈 2px는 폭에서 뺀다 */
+.timeline-band, .timeline-bars { position: relative; }
 .timeline-band { height: 30px; }
 .timeline-bars { height: var(--tap); }
 .band-cell, .bar-cell {
-  flex: 0 1 0px; min-width: 0; padding: 0; display: flex; align-items: center; overflow: hidden;
+  position: absolute; top: 0; bottom: 0; min-width: 0; padding: 0; display: flex; align-items: center; overflow: hidden;
   border: 0; border-radius: var(--radius-6); font-size: var(--text-12); font-weight: 600; cursor: pointer;
 }
 .cell-label { flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

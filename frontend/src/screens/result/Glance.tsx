@@ -5,12 +5,13 @@
  * 이미 받은 결과로만 그리고 서버에 묻지 않는다. 고른 시각과 펼친 파트는 Result.tsx가 갖고 여기는 그리기만 한다
  * (VA-DOM-002 1장). 막대 · 점 · 파트 띠 · 챕터 노드는 시각 누르기(공통 1.3)다 — 고른 시각이 든 챕터의 칸 · 노드와
  * 그 시각이 든 파트 띠가 강조되고, 그 시각이 근거인 점이 채워진다(VA-UI-001 4.4). 파트 노드는 펴고 접기이고
- * 챕터 목록의 파트 머리(6.5)와 같은 상태를 쓴다. 가로 위치는 영상 길이 비례이고, 막대 칸 글자와 점 줄은
- * 카드 안 폭(px)으로 정한다 — 창 폭이 바뀌면 다시 잰다.
+ * 챕터 목록의 파트 머리(6.5)와 같은 상태를 쓴다. 가로 위치는 모두 영상 길이 비례다 — 칸도 점 · 눈금과
+ * 같이 시작 시각 자리에 놓고 틈은 폭에서 뺀다. 막대 칸 글자와 점 줄은 카드 안 폭(px)으로 정한다 — 창 폭이
+ * 바뀌면 다시 잰다.
  */
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Chapter, Result } from "@/api/client";
 import { timeLabel } from "@/components/TimeChip";
@@ -18,6 +19,8 @@ import { timeLabel } from "@/components/TimeChip";
 // 막대 칸 글자 — 칸이 이 폭을 넘으면 '{번호} {제목}', 번호 폭을 넘으면 번호만, 더 좁으면 없다(UI-4 규칙)
 const TITLE_PX = 110;
 const NUMBER_PX = 22;
+// 칸 사이 틈 — 칸 폭에서 뺀다(마지막 칸은 빼지 않는다)
+const GAP_PX = 2;
 // 인사이트 점 — 이미 놓인 점과 이 거리 안이면 한 줄 아래로, 셋째 줄까지. 줄 간격은 점 26px + 4px
 const DOT_PX = 26;
 const DOT_NEAR_PX = 30;
@@ -107,9 +110,18 @@ function useWidth<T extends HTMLElement>() {
   return [ref, width] as const;
 }
 
+/** 칸의 자리 — 왼쪽 끝은 시작 시각 자리, 폭은 길이 비례에서 틈을 뺀다(마지막 칸은 그대로). */
+function cell(start: number, secs: number, total: number, last: boolean): CSSProperties {
+  const share = (Math.max(secs, 0) / total) * 100;
+  return {
+    left: `${(Math.min(Math.max(start, 0), total) / total) * 100}%`,
+    width: last ? `${share}%` : `max(calc(${share}% - ${GAP_PX}px), 0px)`,
+  };
+}
+
 /**
- * 13 타임라인 카드 — (파트 띠) · 인사이트 점 · 챕터 막대 · 시각 눈금 · 범례. 칸의 안쪽 여백은 글자에 둔다 —
- * 칸에 두면 여백이 flex 몫에 더해져 폭이 길이에 비례하지 않는다.
+ * 13 타임라인 카드 — (파트 띠) · 인사이트 점 · 챕터 막대 · 시각 눈금 · 범례. 칸은 점 · 눈금과 같은 비례로
+ * 놓는다 — flex 몫으로 늘리면 틈이 쌓여 긴 영상에서 칸 경계가 점 · 눈금과 14px까지 어긋났다(UI-4 규칙).
  */
 function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "onToggle">) {
   const [track, width] = useWidth<HTMLDivElement>();
@@ -134,7 +146,7 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
               key={p.seq}
               type="button"
               className={`band-cell${i % 2 === 1 ? " is-alt" : ""}`}
-              style={{ flexGrow: Math.max(p.end_sec - p.start_sec, 0) }}
+              style={cell(p.start_sec, p.end_sec - p.start_sec, total, i === parts.length - 1)}
               aria-label={`파트 ${p.seq} · ${timeLabel(p.start_sec, long)} ${p.title}`}
               aria-pressed={part?.seq === p.seq}
               data-el={i === 0 ? "13.1" : undefined}
@@ -172,14 +184,15 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
       </div>
       <div className="timeline-bars">
         {chapters.map((c, i) => {
-          const px = (width * secs[i]) / total;
+          const last = i === chapters.length - 1;
+          const px = (width * secs[i]) / total - (last ? 0 : GAP_PX); // 그린 칸 폭
           const wide = px > TITLE_PX;
           return (
             <button
               key={c.seq}
               type="button"
               className={`bar-cell${i % 2 === 1 ? " is-alt" : ""}${wide ? " is-wide" : ""}`}
-              style={{ flexGrow: secs[i] }}
+              style={cell(c.start_sec, secs[i], total, last)}
               aria-label={`챕터 ${c.seq} · ${timeLabel(c.start_sec, long)} ${c.title}`}
               aria-pressed={chapter?.seq === c.seq}
               data-el={i === 0 ? "13.3" : undefined}
