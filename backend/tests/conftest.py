@@ -58,6 +58,8 @@ from app.domains.analysis.schemas import (  # noqa: E402
     ChapterDraft,
     FrameShot,
     FrameSource,
+    ImageShot,
+    InfographicBrief,
     Segment,
     SummaryDraft,
 )
@@ -465,6 +467,35 @@ class FakeFrames:
             path = Path(dest_dir) / f"shot-{i}.jpg"
             path.write_bytes(b"jpeg")
             yield FrameShot(sec + 1, self.source, 320, 180, str(path))
+
+
+@dataclass
+class FakeImageMaker:
+    """ImageMakerPort 자리 — dest에 작은 그림을 쓰고 ImageShot을 낸다. 받은 재료를 적는다.
+
+    fail: 이 예외로 실패 · gate: 그리기 앞에서 기다린다(그리는 중을 붙잡아 둔다).
+    """
+
+    fail: Exception | None = None
+    gate: asyncio.Event | None = None
+    picture: bytes = b"png-new"
+    calls: list[tuple[InfographicBrief, str, str]] = field(default_factory=list)
+
+    async def infographic(
+        self, brief: InfographicBrief, model: str, quality: str, dest: str
+    ) -> ImageShot:
+        self.calls.append((brief, model, str(quality)))
+        if self.gate is not None:
+            await self.gate.wait()
+        if self.fail is not None:
+            raise self.fail
+        Path(dest).write_bytes(self.picture)
+        return ImageShot(1024, 1536, dest)
+
+
+@pytest.fixture
+def image_maker() -> FakeImageMaker:
+    return FakeImageMaker()
 
 
 @pytest.fixture

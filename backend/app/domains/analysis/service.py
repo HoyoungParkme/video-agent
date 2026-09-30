@@ -8,12 +8,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import errno
 import logging
 import os
 import re
 import tempfile
 import unicodedata
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar
 
@@ -21,8 +23,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
 from app.core.db import SessionLocal
-from app.core.errors import ExportFailed, FramesUnavailable, NotFound, ResultNotReady
-from app.core.settings import Models, settings
+from app.core.errors import (
+    ExportFailed,
+    FramesUnavailable,
+    LlmUnavailable,
+    NotFound,
+    ResultNotReady,
+)
+from app.core.settings import ChosenModels, Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.export import SCRIPT_SUFFIX
 from app.domains.analysis.models import (
@@ -32,7 +40,7 @@ from app.domains.analysis.models import (
     InfographicState,
     TranscriptSource,
 )
-from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
+from app.domains.analysis.ports import FrameSourcePort, ImageMakerPort, SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
@@ -44,6 +52,7 @@ from app.domains.analysis.schemas import (
     FrameSet,
     FramesState,
     Infographic,
+    InfographicBrief,
     InfographicImage,
     Insight,
     Part,
@@ -180,6 +189,32 @@ def _infographic(video_id: int, row: InfographicRow | None) -> Infographic:
     return Infographic(state=row.state, image=image, error_reason=row.error_reason)
 
 
+async def _brief(session: AsyncSession, video_id: int) -> InfographicBrief:
+    """인포그래픽 재료 — 제목 · 한 줄 요약 · 인사이트 · 챕터 제목. 스크립트는 읽지 않는다."""
+    summary, insights = await crud.summary_with_insights(session, video_id)
+    return InfographicBrief(
+        title=await crud.video_title(session, video_id) or "",
+        one_liner=summary.one_liner if summary else "",
+        insights=[i.text for i in insights],
+        chapter_titles=[c.title for c in await crud.chapter_rows(session, video_id)],
+    )
+
+
+def _draw_reason(video_id: int, e: Exception) -> str:
+    """그리기 실패 → 화면에 보일 한 줄. 알 수 없는 오류는 원인을 로그에 남긴다."""
+    if isinstance(e, LlmUnavailable):
+        return str(e.extra.get("reason") or "OpenAI 오류")
+    if isinstance(e, OSError):
+        return "그림 파일을 저장하지 못함"
+    log.error("영상 %s의 인포그래픽을 그리지 못했다", video_id, exc_info=e)
+    return "알 수 없는 오류"
+
+
+def _unlink(path: Path) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        path.unlink()
+
+
 def _files(result: Result, name: str) -> list[ExportFile]:
     # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다.
     # 노트 · 스크립트, 그리고 장면이 있는 챕터마다 장면 그림(챕터 순서)
@@ -228,6 +263,7 @@ class AnalysisService:
     # 요청이 끝난 뒤에도 돌아 프로세스에 하나다(VA-MS-003 0장)
     _making: ClassVar[set[int]] = set()
     _frame_tasks: ClassVar[dict[int, asyncio.Task[None]]] = {}
+    _image_tasks: ClassVar[dict[int, asyncio.Task[None]]] = {}
 
     def __init__(
         self,
@@ -235,11 +271,13 @@ class AnalysisService:
         summarizer: SummarizerPort | None = None,
         storyboard: FrameSourcePort | None = None,
         local_frames: FrameSourcePort | None = None,
+        image_maker: ImageMakerPort | None = None,
     ) -> None:
         self.session = session
         self._port = summarizer
         self._storyboard = storyboard
         self._local_frames = local_frames
+        self._image_maker = image_maker
 
     @property
     def summarizer(self) -> SummarizerPort:
@@ -585,6 +623,62 @@ class AnalysisService:
         if video.status != "analyzed":
             raise ResultNotReady(video_status=video.status)
         return _infographic(video.id, await crud.infographic(self.session, video.id))
+
+    async def draw_infographic(self, video_id: int, choice: ChosenModels) -> None:
+        """VA-MS-003#AnalysisService.draw_infographic
+
+        뒤에서 인포그래픽을 그린다 — 요청이 끝난 뒤에도 돌아 자기 세션을 연다. 재료는 제목 · 한 줄
+        요약 · 인사이트 · 챕터 제목뿐이다(스크립트는 없다). 임시 이름에 다 그린 뒤 한 번에
+        `{id}.png`로 바꾼다 — 실패해도 이전 그림이 그대로다. 실패 이유는 어댑터가 준 한 줄
+        (llm-unavailable) · 파일 오류 · 알 수 없는 오류 셋이다.
+
+        Args:
+            video_id: 영상 id — 행은 start_infographic이 making으로 만들어 두었다
+            choice: 맡긴 때의 이미지 모델 · 품질(한 장 값)
+
+        Raises:
+            CancelledError: 취소만 올린다 — 행은 둔다(영상 삭제면 cascade, 서버 종료면 다음
+                시작의 fail_orphans가 정리한다)
+        """
+        final = Path(config.INFOGRAPHICS_DIR) / f"{video_id}.png"
+        tmp = final.with_name(f"{video_id}.png.part")
+        try:
+            async with SessionLocal() as session:
+                try:
+                    brief = await _brief(session, video_id)
+                    await asyncio.to_thread(final.parent.mkdir, parents=True, exist_ok=True)
+                    shot = await self.image_maker.infographic(
+                        brief, choice.image_model, choice.image_quality.id, str(tmp)
+                    )
+                    await asyncio.to_thread(os.replace, shot.path, final)
+                except Exception as e:  # 취소(CancelledError)는 Exception이 아니라 그대로 올라간다
+                    await crud.fail_infographic(session, video_id, _draw_reason(video_id, e))
+                    await session.commit()
+                    return
+                await crud.finish_infographic(
+                    session,
+                    video_id,
+                    model=choice.image_model,
+                    quality=choice.image_quality.id,
+                    width=shot.width,
+                    height=shot.height,
+                    cost_usd=choice.image_quality.price_usd,
+                    path=str(final),
+                    created_at=datetime.now(UTC),
+                )
+                await session.commit()
+        finally:
+            await asyncio.to_thread(_unlink, tmp)
+            # 제 핸들만 뺀다 — 끝낸 뒤 새로 맡긴 그리기의 핸들을 지우지 않게
+            if AnalysisService._image_tasks.get(video_id) is asyncio.current_task():
+                del AnalysisService._image_tasks[video_id]
+
+    @property
+    def image_maker(self) -> ImageMakerPort:
+        # 포트 없이 만든 서비스로 그리기를 부르면 코드 실수 — 앱 수준에서 internal(500)
+        if self._image_maker is None:
+            raise RuntimeError("이미지 포트 없이 만든 AnalysisService로 인포그래픽을 그리려 했다")
+        return self._image_maker
 
     async def save_transcript(
         self,

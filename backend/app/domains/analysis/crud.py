@@ -5,14 +5,18 @@
 
 from __future__ import annotations
 
-from sqlalchemy import delete, insert, select
+from datetime import datetime
+
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import ImageQuality
 from app.domains.analysis.models import (
     ChapterFrameRow,
     ChapterRow,
     FrameSource,
     InfographicRow,
+    InfographicState,
     InsightRow,
     PartRow,
     SegmentRow,
@@ -22,6 +26,7 @@ from app.domains.analysis.models import (
     TranscriptSource,
 )
 from app.domains.analysis.schemas import CaptionLine
+from app.domains.video.models import VideoRow
 
 
 async def replace_transcript(
@@ -244,3 +249,47 @@ async def frame_by_seq(session: AsyncSession, video_id: int, seq: int) -> Chapte
 async def infographic(session: AsyncSession, video_id: int) -> InfographicRow | None:
     """그 영상의 인포그래픽 행. 없으면 None(만든 적 없음)."""
     return await session.scalar(select(InfographicRow).where(InfographicRow.video_id == video_id))
+
+
+async def video_title(session: AsyncSession, video_id: int) -> str | None:
+    """영상 제목 — 인포그래픽 재료. 뒤 태스크는 영상 DTO가 없어 id로 읽는다."""
+    return await session.scalar(select(VideoRow.title).where(VideoRow.id == video_id))
+
+
+async def finish_infographic(
+    session: AsyncSession,
+    video_id: int,
+    *,
+    model: str,
+    quality: ImageQuality,
+    width: int,
+    height: int,
+    cost_usd: float,
+    path: str,
+    created_at: datetime,
+) -> None:
+    """다 그렸다 — done과 새 그림 컬럼, 실패 이유는 지운다."""
+    await session.execute(
+        update(InfographicRow)
+        .where(InfographicRow.video_id == video_id)
+        .values(
+            state=InfographicState.done,
+            model=model,
+            quality=quality,
+            width=width,
+            height=height,
+            cost_usd=cost_usd,
+            path=path,
+            created_at=created_at,
+            error_reason=None,
+        )
+    )
+
+
+async def fail_infographic(session: AsyncSession, video_id: int, reason: str) -> None:
+    """그리지 못했다 — failed와 이유. 그림 컬럼은 그대로(이전 그림이 남는다)."""
+    await session.execute(
+        update(InfographicRow)
+        .where(InfographicRow.video_id == video_id)
+        .values(state=InfographicState.failed, error_reason=reason)
+    )

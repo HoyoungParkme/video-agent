@@ -8,9 +8,10 @@ from pathlib import Path
 import pytest
 
 from app.core.config import ImageQuality, config
-from app.core.errors import ResultNotReady
+from app.core.errors import LlmUnavailable, ResultNotReady
+from app.core.settings import settings
 from app.domains.analysis import crud
-from app.domains.analysis.models import InfographicRow, InfographicState
+from app.domains.analysis.models import InfographicRow, InfographicState, SummaryRow
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
@@ -107,3 +108,88 @@ async def test_infographic_of_before_result_is_not_ready(db, make) -> None:
     video = await _video(db, make, status=JobStatus.running)
     with pytest.raises(ResultNotReady):
         await AnalysisService(db).infographic_of(video)
+
+
+# --- draw_infographic
+
+
+async def _analyzed(db, make, **kw):
+    """결과가 다 있는 영상 — 스크립트 · 요약 · 인사이트 · 챕터."""
+    video = await _video(db, make, title="RAG 서비스 1년 운영기", **kw)
+    await make.transcript(video.id, ["스크립트 줄 비밀"] * 5, step=100)
+    db.add(SummaryRow(video_id=video.id, one_liner="검색 품질을 올린 기록", model="gpt-5-mini"))
+    await db.commit()
+    await make.chapters(video.id, [(0.0, "발표자 소개", ["a"]), (200.0, "운영과 리뷰", ["b"])])
+    return video
+
+
+async def test_draw_done_writes_picture_and_columns(
+    db, make, image_maker, env_file, data_dir
+) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.making)
+    choice = settings.current_models()
+    await AnalysisService(db, image_maker=image_maker).draw_infographic(video.id, choice)
+    await db.refresh(row := await crud.infographic(db, video.id))
+    assert (row.state, row.model, row.quality, row.width, row.height) == (
+        "done",
+        "gpt-image-2",
+        "low",
+        1024,
+        1536,
+    )
+    assert row.cost_usd == choice.image_quality.price_usd == 0.006  # 그 품질의 한 장 값
+    assert row.path == str(data_dir / "infographics" / f"{video.id}.png")
+    assert (data_dir / "infographics" / f"{video.id}.png").read_bytes() == b"png-new"
+    assert sorted(p.name for p in (data_dir / "infographics").iterdir()) == [f"{video.id}.png"]
+    brief, model, quality = image_maker.calls[0]
+    assert (brief.title, brief.one_liner, brief.chapter_titles) == (
+        "RAG 서비스 1년 운영기",
+        "검색 품질을 올린 기록",
+        ["발표자 소개", "운영과 리뷰"],
+    )
+    assert "스크립트 줄 비밀" not in repr(brief)  # 스크립트는 보내지 않는다
+    assert (model, quality) == ("gpt-image-2", "low")
+
+
+async def test_draw_failure_keeps_previous_picture(
+    db, make, image_maker, env_file, data_dir
+) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.making, **_picture(data_dir, video.id))
+    image_maker.fail = LlmUnavailable(reason="OpenAI 연결 시간 초과")
+    svc = AnalysisService(db, image_maker=image_maker)
+    await svc.draw_infographic(video.id, settings.current_models())
+    await db.refresh(row := await crud.infographic(db, video.id))
+    assert (row.state, row.error_reason, row.created_at) == ("failed", "OpenAI 연결 시간 초과", T1)
+    assert (data_dir / "infographics" / f"{video.id}.png").read_bytes() == b"png"  # 이전 그림
+    assert sorted(p.name for p in (data_dir / "infographics").iterdir()) == [f"{video.id}.png"]
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (OSError(28, "No space left"), "그림 파일을 저장하지 못함"),
+        (ValueError("?"), "알 수 없는 오류"),
+    ],
+)
+async def test_draw_other_failures(db, make, image_maker, env_file, error, reason) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.making)
+    image_maker.fail = error
+    await AnalysisService(db, image_maker=image_maker).draw_infographic(
+        video.id, settings.current_models()
+    )
+    await db.refresh(row := await crud.infographic(db, video.id))
+    assert (row.state, row.error_reason, row.path) == ("failed", reason, None)
+
+
+async def test_draw_again_replaces_picture(db, make, image_maker, env_file, data_dir) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.making, **_picture(data_dir, video.id))
+    await AnalysisService(db, image_maker=image_maker).draw_infographic(
+        video.id, settings.current_models()
+    )
+    await db.refresh(row := await crud.infographic(db, video.id))
+    assert row.state == "done" and row.created_at > T1  # 새 그림 — 주소의 ?v=가 바뀐다
+    assert (data_dir / "infographics" / f"{video.id}.png").read_bytes() == b"png-new"
