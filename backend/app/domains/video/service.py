@@ -153,6 +153,11 @@ async def _receive(part: Path, size: int, body: AsyncIterator[bytes]) -> str:
     return sha.hexdigest()
 
 
+async def _remove_copy(origin: str, source_id: str) -> None:
+    # 올린 사본을 지운다 — 없으면(이미 지웠다) 조용히. 놓기 · 지우기 · 청소가 같은 규칙이다
+    await asyncio.to_thread(sources.local_path(origin, source_id, True).unlink, missing_ok=True)
+
+
 def _check_inbox_name(name: str) -> None:
     # inbox 바로 아래 파일 이름만 — 하위 폴더 · 절대 경로 · 숨김 · ..는 막는다
     if "/" in name or "\\" in name or name.startswith(".") or ".." in name:
@@ -177,6 +182,7 @@ class VideoService:
     - upload(): 키 → 이름 · 형식 → 디스크 → 받으며 해시 → 판정 → 중복 → 사본(원본 자리)
     - list() · get(): 작업이 있는 영상 목록(최근 순) · 영상 하나와 최근 작업
     - delete(): 영상과 딸린 것 전부 — 행은 cascade, 임시 폴더는 커밋 뒤
+    - release_upload(): 올린 사본을 놓는다(작업이 done이 된 뒤)
     - info_of() · to_dto(): 출처별 정보 조회 · 행 → Video
     """
 
@@ -536,3 +542,17 @@ class VideoService:
         await asyncio.to_thread(shutil.rmtree, frames, ignore_errors=True)
         infographic = Path(config.INFOGRAPHICS_DIR) / f"{video_id}.png"
         await asyncio.to_thread(infographic.unlink, missing_ok=True)
+
+    @staticmethod
+    async def release_upload(video: Video) -> None:
+        """VA-MS-001#VideoService.release_upload
+
+        올린 사본을 놓는다 — 작업이 done이 된 뒤 파이프라인이 부른다(main.py가 감싸 넘긴다).
+        inbox · YouTube 영상이면 아무것도 하지 않는다. 행은 건드리지 않는다 — uploaded는 그대로다
+        (다시 시도할 때 어디서 읽을지 정하는 값). 세션이 필요 없다.
+
+        Args:
+            video: 분석이 끝난 영상
+        """
+        if video.uploaded:
+            await _remove_copy(video.origin, video.source_id)

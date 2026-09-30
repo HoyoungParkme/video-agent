@@ -646,6 +646,31 @@ async def test_upload_twice_at_once_makes_one_row(db, youtube, probe, key, uploa
     assert _left(uploads) == [f"{a.source_id}.mp4"]
 
 
+# --- release_upload
+
+
+async def test_release_upload(db, make, uploads) -> None:
+    row = await _uploaded(make, b"recording", origin="Talk.MOV")
+    uploads.mkdir(parents=True)
+    copy = uploads / f"{row.source_id}.mov"
+    copy.write_bytes(b"recording")
+    video = VideoService.to_dto(row, None, 0)
+    await VideoService.release_upload(video)
+    assert not copy.exists()
+    await VideoService.release_upload(video)  # 두 번 불러도 예외가 없다
+    await db.refresh(row)
+    assert row.uploaded is True  # 행은 그대로 — 다시 시도가 어디서 읽을지 정한다
+
+
+async def test_release_upload_leaves_inbox_file(db, make, uploads) -> None:
+    inbox = Path(config.INBOX_DIR)
+    inbox.mkdir()
+    (inbox / "a.mp4").write_bytes(b"x")
+    row = await make.video(source_kind="local", source_id="d" * 64, origin="a.mp4")
+    await VideoService.release_upload(VideoService.to_dto(row, None, 0))
+    assert (inbox / "a.mp4").exists()
+
+
 # --- list
 
 
