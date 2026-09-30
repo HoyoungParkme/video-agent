@@ -1,5 +1,5 @@
-"""ffmpeg · ffprobe 공용 클라이언트 — 길이 · 음성 추출 · 무음 · 자르기 · 장면 한 장(VA-MS-007).
-어댑터만 부른다.
+"""ffmpeg · ffprobe 공용 클라이언트(VA-MS-007) — 길이 · 음성 추출 · 무음 · 자르기 · 장면 한 장 ·
+칸 자르기. 어댑터만 부른다.
 
 셸 없이 인자 목록으로 띄운다. 실패는 FfmpegError(표준 오류 끝줄들, 종료 코드).
 """
@@ -200,4 +200,42 @@ async def frame(src: str, sec: float, width: int, dest: str) -> str:
     )
     if not os.path.exists(dest):
         raise FfmpegError("프레임을 뽑지 못함", 0)
+    return dest
+
+
+async def crop(src: str, x: int, y: int, w: int, h: int, dest: str) -> str:
+    """VA-MS-007#ffmpeg.crop
+
+    그림에서 칸 하나를 잘라 JPEG로 쓴다. src는 파일 경로도, 스토리보드 장의 https 주소도 된다 —
+    ffmpeg가 직접 받아 자르므로 HTTP 클라이언트 의존성을 더하지 않는다(VA-INFRA-001 C12).
+    칸이 그림 밖이면 폭 · 높이 식이 0이 되어 ffmpeg가 실패한다 — crop 필터는 x · y가 그림을 넘으면
+    오류 없이 그림 안으로 당겨 붙여, 덜 찬 마지막 장에서 엉뚱한 칸을 자르기 때문이다.
+
+    Args:
+        src: 그림 파일 경로 또는 주소
+        x: 칸 왼쪽(px)
+        y: 칸 위(px)
+        w: 칸 폭(px)
+        h: 칸 높이(px)
+        dest: 쓸 JPEG 경로
+
+    Returns:
+        dest. 주소를 못 받거나 칸이 그림 밖이면 FfmpegError
+    """
+    await _run(
+        config.FFMPEG_BIN,
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        src,
+        "-vf",
+        f"crop=w='if(lte({x}+{w},iw),{w},0)':h='if(lte({y}+{h},ih),{h},0)':x={x}:y={y}",
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        dest,
+        timeout=config.FRAME_TIMEOUT_SEC,
+    )
     return dest
