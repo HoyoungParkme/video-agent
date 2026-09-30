@@ -28,10 +28,29 @@ export interface ModelOption {
   price: ModelPrice;
 }
 
+export type ImageQuality = "low" | "medium";
+
+export interface ImageQualityOption {
+  id: ImageQuality;
+  /** '낮음' · '중간' */
+  label: string;
+  /** 한 장 값 — UI-4 카드 · UI-5 · UI-8이 같이 쓴다 */
+  price_usd: number;
+}
+
+export interface ImageSettings {
+  model: string;
+  quality: ImageQuality;
+  models: string[];
+  qualities: ImageQualityOption[];
+}
+
 export interface Settings {
   key: KeyStatus;
   models: Models;
   model_options: { stt: ModelOption[]; text: ModelOption[] };
+  /** 인포그래픽 이미지 모델 · 품질과 품질마다 한 장 값 */
+  image: ImageSettings;
   inbox_path: string;
 }
 
@@ -208,6 +227,28 @@ export interface FrameSet {
   frames: Frame[];
 }
 
+/** none = 만든 적 없음 · making = 그리는 중 · done = 그림 있음 · failed = 마지막 그리기 실패 */
+export type InfographicState = "none" | "making" | "done" | "failed";
+
+export interface InfographicImage {
+  /** /api/videos/{id}/infographic/image?v={만든 시각} — 그림이 바뀌면 주소가 바뀐다 */
+  url: string;
+  model: string;
+  quality: ImageQuality;
+  width: number;
+  height: number;
+  created_at: string;
+  cost_usd: number;
+}
+
+export interface Infographic {
+  state: InfographicState;
+  /** 지금 쓰는 그림 — 다시 만들기가 실패해도 이전 그림이 남는다 */
+  image: InfographicImage | null;
+  /** failed일 때 한 줄 */
+  error_reason: string | null;
+}
+
 export interface Chapter {
   seq: number;
   part_seq: number | null;
@@ -244,6 +285,8 @@ export interface Result {
   analyzed_at: string;
   /** 대표 장면 — making이면 UI-4가 3초마다 장면을 다시 받는다, absent면 한 번 채우기를 맡긴다 */
   frames_state: FramesState;
+  /** 인포그래픽 — making이면 UI-4가 3초마다 다시 받는다 */
+  infographic: Infographic;
 }
 
 /** 질문 하나와 답(VA-API-001 4장 ChatTurn). cited_secs가 비면 '영상에 없는 내용'. */
@@ -341,8 +384,11 @@ export const api = {
   /** POST /api/settings/key — 확인이 통과해야 저장된다. */
   saveKey: (key: string) => call<Settings>("POST", "/api/settings/key", { key }),
   /** PUT /api/settings/models */
-  saveModels: (stt_model: string, text_model: string) =>
-    call<Settings>("PUT", "/api/settings/models", { stt_model, text_model }),
+  saveModels: (
+    stt_model: string,
+    text_model: string,
+    image?: { image_model: string; image_quality: ImageQuality },
+  ) => call<Settings>("PUT", "/api/settings/models", { stt_model, text_model, ...image }),
   /** POST /api/videos — YouTube 주소를 등록하고 사전 안내 예상치를 받는다. 중복이면 기존 영상 */
   register: (url: string) =>
     call<RegisterResponse>("POST", "/api/videos", { source: "youtube", url }),
@@ -367,6 +413,10 @@ export const api = {
   frames: (id: number) => call<FrameSet>("GET", `/api/videos/${id}/frames`),
   /** POST /api/videos/{id}/frames — 옛 결과에 장면 채우기를 맡긴다(202). 두 번 불러도 같다 */
   fillFrames: (id: number) => call<FrameSet>("POST", `/api/videos/${id}/frames`),
+  /** GET /api/videos/{id}/infographic — 상태와 지금 그림. UI-4가 그리는 동안 3초마다 */
+  infographic: (id: number) => call<Infographic>("GET", `/api/videos/${id}/infographic`),
+  /** POST /api/videos/{id}/infographic — 그리기를 맡긴다(202). 그리는 중이면 409, 키가 없으면 503 */
+  makeInfographic: (id: number) => call<Infographic>("POST", `/api/videos/${id}/infographic`),
   /** GET /api/videos/{id}/chat — 질문 · 답변 기록, 시간순 */
   chat: (id: number) => call<ChatTurn[]>("GET", `/api/videos/${id}/chat`),
   /** POST /api/videos/{id}/chat — 질문하고 답을 받는다. 실패하면 저장되지 않는다 */
