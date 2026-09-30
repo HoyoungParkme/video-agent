@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // 가짜 yt-dlp — E2E의 api가 YTDLP_BIN으로 부른다(VA-MS-007 ytdlp.*). 영상 정보(JSON)와 자막(VTT)을
 // 정해 둔 대로 준다. 음성 내려받기는 가짜 ffmpeg가 읽는 모양의 파일을 쓴다. 네트워크에 닿지 않는다.
+// 영상 정보에는 스토리보드 형식(sb0 — 320×180 칸, 장마다 3 × 3, 10분에 한 장)이 있다. storyboard: false면
+// 없고, frameDelayMs를 주면 장 주소에 붙여 가짜 ffmpeg가 칸마다 그만큼 늦게 자른다.
 // 영상 ID는 e2e/*.spec.ts와 같은 값.
 import { writeFileSync } from "node:fs";
 
@@ -40,7 +42,52 @@ const VIDEOS = {
   e2eOffline1: { title: "연결이 돌아온 뒤의 발표", duration: 1500, subtitles: { ko: [] } },
   e2eJobExst1: { title: "다른 창에서 시작한 발표", duration: 1500, subtitles: { ko: [] } },
   e2eDirect01: { title: "주소로 바로 여는 발표", duration: 1500, subtitles: { ko: [] } },
+  // 챕터 대표 장면 — 칸을 천천히 잘라 진행 화면에서 장면 칸이 차는 것을 본다(frames)
+  e2eFrames01: {
+    title: "장면이 있는 발표",
+    duration: 3012,
+    subtitles: { ko: [] },
+    frameDelayMs: 500,
+  },
+  // 스토리보드가 없다 — 장면 없이 끝난다(frames)
+  e2eNoBoard1: {
+    title: "스토리보드 없는 발표",
+    duration: 3012,
+    subtitles: { ko: [] },
+    storyboard: false,
+  },
+  // 장면 단계 전에 분석한 결과처럼 — 장면을 지운 뒤 열어 채운다(frames)
+  e2eOldRes01: { title: "장면을 나중에 채우는 발표", duration: 3012, subtitles: { ko: [] } },
+  e2eOldRes02: {
+    title: "채우다 지우는 발표",
+    duration: 3012,
+    subtitles: { ko: [] },
+    frameDelayMs: 800,
+  },
 };
+
+// 스토리보드 — 칸 320×180, 장마다 3 × 3칸, 칸 하나가 600 / 9초(장 하나가 10분)
+const SB_FPS = 9 / 600;
+
+function storyboard(id, video) {
+  if (video.storyboard === false) return [];
+  const sheets = Math.ceil(Math.ceil(video.duration * SB_FPS) / 9);
+  const delay = video.frameDelayMs ? `?delay=${video.frameDelayMs}` : "";
+  return [
+    {
+      format_id: "sb0",
+      format_note: "storyboard",
+      width: 320,
+      height: 180,
+      rows: 3,
+      columns: 3,
+      fps: SB_FPS,
+      fragments: Array.from({ length: sheets }, (_, i) => ({
+        url: `https://e2e.invalid/sb/${id}/M${i}.jpg${delay}`,
+      })),
+    },
+  ];
+}
 
 const args = process.argv.slice(2);
 const url = args[args.length - 1] ?? "";
@@ -86,6 +133,7 @@ if (args.includes("--dump-single-json")) {
       subtitles: video.subtitles,
       automatic_captions: {},
       language: "ko",
+      formats: storyboard(id, video),
     }),
   );
   process.exit(0);

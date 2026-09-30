@@ -1,4 +1,6 @@
-/** E2E 공용 — 요소 번호로 찾기 · 키 저장 · 가짜 OpenAI 조절 · 결과 화면 열기. */
+/** E2E 공용 — 요소 번호로 찾기 · 키 저장 · 가짜 OpenAI 조절 · 결과 화면 열기 · 장면 지우기. */
+import { execFileSync } from "node:child_process";
+import { rmSync } from "node:fs";
 import path from "node:path";
 
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
@@ -9,6 +11,26 @@ export const DATA = path.join(__dirname, ".tmp", "data");
 // E2E inbox(playwright.config.ts의 INBOX_DIR) — 파일을 넣고 지워 본다
 export const INBOX = path.join(__dirname, ".tmp", "inbox");
 const FAKE = "http://127.0.0.1:8190";
+const BACKEND = path.join(__dirname, "..", "..", "backend");
+// playwright.config.ts의 DATABASE_URL과 같은 테스트 DB
+const TEST_DB = "postgresql+asyncpg://va:va@127.0.0.1:5433/va_test";
+const FORGET_FRAMES = `
+import asyncio, sys
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+async def main(url, video_id):
+    engine = create_async_engine(url)
+    async with engine.begin() as c:
+        await c.execute(
+            text("DELETE FROM chapter_frames WHERE chapter_id IN "
+                 "(SELECT id FROM chapters WHERE video_id = :v)"),
+            {"v": video_id},
+        )
+    await engine.dispose()
+
+asyncio.run(main(sys.argv[1], int(sys.argv[2])))
+`;
 
 export const el = (page: Page, no: string) => page.locator(`[data-el="${no}"]`);
 
@@ -74,4 +96,16 @@ export async function openResult(page: Page, url: string): Promise<string> {
   if (await start.isVisible()) await start.click();
   await expect(page).toHaveURL(/\/videos\/\d+$/, { timeout: 30_000 });
   return page.url();
+}
+
+/**
+ * 장면 단계 전에 분석한 결과처럼 만든다 — 그 영상의 장면 행과 장면 폴더를 지운다.
+ * 화면 · API에는 장면을 지우는 길이 없어 백엔드의 파이썬으로 테스트 DB에 직접 한다.
+ */
+export function forgetFrames(videoId: number): void {
+  execFileSync("uv", ["run", "--quiet", "python", "-c", FORGET_FRAMES, TEST_DB, String(videoId)], {
+    cwd: BACKEND,
+    stdio: "pipe",
+  });
+  rmSync(path.join(DATA, "frames", String(videoId)), { recursive: true, force: true });
 }
