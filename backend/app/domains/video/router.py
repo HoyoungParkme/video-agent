@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import ClientDisconnect
 
 from app.core.db import get_session
-from app.core.errors import Problem, Validation
+from app.core.errors import Validation
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.service import JobService
 from app.domains.video.schemas import (
@@ -90,7 +90,7 @@ async def post_upload(request: Request, videos: Videos, jobs: Jobs) -> RegisterR
         if name is None or length is None or errors:
             raise Validation(errors=errors)
         video = await videos.upload(name, int(length), body)
-    except Problem:
+    except Exception:  # 어느 판정이든 — 뜻밖의 오류(500)도 브라우저가 답을 읽어야 한다
         await _drain(body)
         raise
     return RegisterResponse(video=video, estimate=await jobs.estimate(video))

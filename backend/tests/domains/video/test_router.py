@@ -7,11 +7,14 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
+import pytest
+
 from app.core.config import config
 from app.core.errors import SourceUnavailable
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
+from app.domains.video.service import VideoService
 from app.infra.openai import ReasonKind
 
 PROBLEM = "application/problem+json"
@@ -300,4 +303,24 @@ async def test_post_upload_rejected_reads_the_rest(api, env_file, verify) -> Non
     headers = _upload_headers("a.mp4") | {"Content-Length": "9"}
     r = await api.post("/api/uploads", content=body(), headers=headers)
     assert (r.status_code, r.json()["type"]) == (503, "urn:va:key-missing")
+    assert pulled == [b"rec", b"ord", b"ing"]
+
+
+async def test_post_upload_unexpected_error_reads_the_rest(api, key, monkeypatch) -> None:
+    # 판정이 아닌 뜻밖의 오류(500)여도 남은 본문을 끝까지 읽는다(MS-001 upload 입력)
+    async def broken(self, name, size, body) -> None:
+        raise PermissionError(13, "Permission denied", "/app/data/uploads")
+
+    monkeypatch.setattr(VideoService, "upload", broken)
+    pulled: list[bytes] = []
+
+    async def body():
+        for chunk in (b"rec", b"ord", b"ing"):
+            pulled.append(chunk)
+            yield chunk
+
+    headers = _upload_headers("a.mp4") | {"Content-Length": "9"}
+    # 시험용 클라이언트는 뜻밖의 오류를 응답(500) 대신 다시 던진다 — 던지기 전에 다 읽었는지 본다
+    with pytest.raises(PermissionError):
+        await api.post("/api/uploads", content=body(), headers=headers)
     assert pulled == [b"rec", b"ord", b"ing"]
