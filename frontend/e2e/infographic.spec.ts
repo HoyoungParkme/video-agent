@@ -173,6 +173,37 @@ test("실패한 카드에서 맡기기가 거절되면 — 거절 이유가 먼�
   await expect(el(page, "15.11")).toHaveCount(0);
 });
 
+test("다른 창에서 먼저 맡겼으면 — 지금 상태를 받아 닫히고, 못 받으면 한 줄", async ({
+  page,
+  context,
+  request,
+}) => {
+  const url = await openResult(page, "https://youtu.be/e2eInfogr07");
+  const other = await context.newPage();
+  await other.goto(url);
+  await expect(el(other, "15.3")).toBeVisible(); // 다른 창은 만들기 전에 열어 두었다
+  await fakeOpenAI(request, { image_delay_ms: 4000 });
+  await make(page);
+  await expect(el(page, "15.4")).toBeVisible();
+  // 다른 창에서 맡기면 서버는 이미 그리는 중(409) — 지금 상태도 받지 못하면 닫지 않고 한 줄
+  const state = "**/api/videos/*/infographic";
+  await other.route(state, (route) =>
+    route.request().method() === "GET" ? route.abort() : route.continue(),
+  );
+  await el(other, "15.3").click();
+  await inDialog(other, "4.2").click();
+  await expect(other.getByRole("dialog").getByRole("alert")).toHaveText(
+    "인포그래픽을 맡기지 못했어요 — 서버에 연결할 수 없음",
+  );
+  await other.unroute(state);
+  // 다시 누르면 지금 상태를 받아 닫히고 카드가 그리는 중이 된다
+  await inDialog(other, "4.2").click();
+  await expect(other.getByRole("dialog")).toHaveCount(0);
+  await expect(el(other, "15.4")).toBeVisible();
+  await expect(el(other, "15.5")).toBeVisible({ timeout: 10_000 });
+  expect((await fakeOpenAI(request)).images).toHaveLength(1); // 그림은 한 장만
+});
+
 test("설정에서 품질을 바꾸면 카드 · 확인 창의 한 장 값이 바뀐다", async ({ page }) => {
   const url = await openResult(page, "https://youtu.be/e2eInfogr05");
   await expect(el(page, "15.2")).toContainText("한 장 약 $0.01");

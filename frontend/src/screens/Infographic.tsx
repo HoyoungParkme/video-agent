@@ -73,8 +73,12 @@ export default function Infographic({
       if (e.kind === "infographic-busy") {
         // 다른 창에서 먼저 맡겼다 — 지금 상태를 받아 카드가 그리는 중을 보인다
         const now = await api.infographic(videoId).catch(() => null);
-        if (now) onStarted(now);
-        else onClose();
+        if (now) {
+          onStarted(now);
+          return;
+        }
+        setError("인포그래픽을 맡기지 못했어요 — 서버에 연결할 수 없음"); // 받지 못했다 — 닫지 않는다
+        setBusy(false);
         return;
       }
       if (e.kind === "key-missing" || e.kind === "key-invalid") void loadSettings(); // 배너가 따라온다
