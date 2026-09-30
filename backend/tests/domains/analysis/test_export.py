@@ -256,22 +256,18 @@ def test_mindmap_matches_the_wireframe_block() -> None:
     assert export.mindmap(glance_42m(chapter_count=3)) + "\n" == expected
 
 
-def test_mindmap_long_video_goes_root_part_chapter_bullet() -> None:
+def test_mindmap_long_video_goes_root_part_chapter_without_bullets() -> None:
+    # 파트가 있으면 요점을 넣지 않는다 — 화면 마인드맵과 같다(VA-UI-001 7장 20)
     assert export.mindmap(local_150m()) == (
         "```mermaid\n"
         "mindmap\n"
         "  root(데이터 카탈로그를 처음부터 만드는 종일 워크숍.)\n"
         "    0:00:00 1부 — 기초\n"
         "      0:00:00 소개\n"
-        "        목표와 일정\n"
         "      0:06:20 카탈로그란\n"
-        "        메타데이터\n"
-        "        검색\n"
         "    1:00:00 2부 — 운영\n"
         "      1:00:00 두 번째 세션\n"
-        "        운영 이야기\n"
         "      1:30:00 소유자 정하기\n"
-        "        팀마다 한 명\n"
         "```"
     )
 

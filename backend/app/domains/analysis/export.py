@@ -115,8 +115,9 @@ def mindmap(result: Result) -> str:
     """VA-MS-003#export.mindmap
 
     한눈에 보기 — 마인드맵. Mermaid `mindmap` 블록(울타리 포함). 뿌리는 한 줄 요약, 그 아래
-    파트(있으면) → 챕터(시각과 제목) → 요점. 들여쓰기 두 칸이 한 단계다. mindmap은 괄호를 노드
-    모양으로 읽어 글 속 괄호를 전각으로 바꾼다.
+    챕터(시각과 제목) → 요점. 파트가 있으면 뿌리 → 파트 → 챕터이고 요점은 넣지 않는다 — 화면
+    마인드맵과 같고, 요점까지 넣으면 2시간 30분 영상은 노드가 겹쳐 읽히지 않는다(VA-UI-001 7장 20).
+    들여쓰기 두 칸이 한 단계다. mindmap은 괄호를 노드 모양으로 읽어 글 속 괄호를 전각으로 바꾼다.
 
     Args:
         result: 결과 화면이 받는 것 전부
@@ -126,20 +127,17 @@ def mindmap(result: Result) -> str:
     """
     v = result.video
 
-    def chapter(c: Chapter, pad: str) -> list[str]:
-        head = f"{pad}{timecode(c.start_sec, v.duration_sec)} {_mind_text(c.title)}"
-        return [head] + [f"{pad}  {_mind_text(b)}" for b in c.bullets]
+    def chapter(c: Chapter, pad: str) -> str:
+        return f"{pad}{timecode(c.start_sec, v.duration_sec)} {_mind_text(c.title)}"
 
     lines = ["```mermaid", "mindmap", f"  root({_mind_text(result.summary.one_liner)})"]
     if result.parts:
         for p in result.parts:
             lines.append(f"    {timecode(p.start_sec, v.duration_sec)} {_mind_text(p.title)}")
-            for c in result.chapters:
-                if c.part_seq == p.seq:
-                    lines += chapter(c, "      ")
+            lines += [chapter(c, "      ") for c in result.chapters if c.part_seq == p.seq]
     else:
         for c in result.chapters:
-            lines += chapter(c, "    ")
+            lines += [chapter(c, "    ")] + [f"      {_mind_text(b)}" for b in c.bullets]
     lines.append("```")
     return "\n".join(lines)
 
