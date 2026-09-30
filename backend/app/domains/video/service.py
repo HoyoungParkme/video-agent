@@ -104,7 +104,7 @@ def _check_inbox_name(name: str) -> None:
 
 
 def _check_length(duration_sec: int) -> None:
-    # 3시간 상한(PRD N2) — 길이를 실어야 화면이 시작 불가 판에 보인다. info_of 한곳에서만 부른다
+    # 3시간 상한(PRD N2) — 길이를 실어야 화면이 시작 불가 판에 보인다. info_of · _probed만 부른다
     if duration_sec > config.MAX_DURATION_SEC:
         raise VideoTooLong(duration_sec=duration_sec, max_sec=config.MAX_DURATION_SEC)
 
@@ -210,14 +210,23 @@ class VideoService:
         files.sort(key=lambda f: f.modified_at, reverse=True)
         return InboxListing(path=config.INBOX_DISPLAY_PATH, files=files)
 
+    async def _probed(self, path: str) -> int:
+        # 로컬 파일 판정 — 열기 · 음성 트랙 · 3시간 상한. inbox 등록(info_of)과 올리기(upload)가
+        # 같은 판정을 지난다(두 벌이 되지 않게). 해시보다 먼저 부른다
+        duration, has_audio = await self.media_probe.probe(path)
+        if not has_audio:
+            raise NoAudioTrack(duration_sec=duration)
+        _check_length(duration)
+        return duration
+
     async def info_of(self, req: RegisterRequest) -> SourceInfo:
         """VA-MS-001#VideoService.info_of
 
         출처에서 영상 정보를 읽는다. YouTube는 포트가 정보만 받는다(내려받지 않는다).
         로컬 파일은 길이 · 음성 트랙을 재고 내용 SHA-256을 출처 식별자로 쓴다 — 이름을 바꿔도
         같은 영상이다. 해시는 스레드에서 1MB씩(수 GB면 몇 초 — 화면은 버튼 대기 표시).
-        길이 상한(3시간)은 여기 한곳에서 본다 — YouTube는 정보를 받은 뒤, 로컬은 해시 전에
-        (4시간짜리 큰 파일을 다 읽고 나서 거절하지 않게).
+        길이 상한(3시간)은 여기서 본다 — YouTube는 정보를 받은 뒤, 로컬은 해시 전에(4시간짜리 큰
+        파일을 다 읽고 나서 거절하지 않게). 로컬 판정은 올리기(upload)와 같은 함수다.
 
         Args:
             req: YouTube 주소 또는 inbox 파일 이름
@@ -236,10 +245,7 @@ class VideoService:
             _check_length(info.duration_sec)
             return info
         path = Path(config.INBOX_DIR) / req.path
-        duration, has_audio = await self.media_probe.probe(str(path))
-        if not has_audio:
-            raise NoAudioTrack(duration_sec=duration)
-        _check_length(duration)  # 해시 전에
+        duration = await self._probed(str(path))  # 해시 전에
         return SourceInfo(
             source_kind=SourceKind.local,
             source_id=await asyncio.to_thread(_sha256, path),
@@ -247,6 +253,7 @@ class VideoService:
             channel=None,
             duration_sec=duration,
             origin=req.path,
+            uploaded=False,
             has_captions=False,
             caption_language=None,
             caption_kind=None,

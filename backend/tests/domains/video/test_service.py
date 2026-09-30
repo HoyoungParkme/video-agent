@@ -230,6 +230,7 @@ async def test_info_of_local(db, youtube, probe, tmp_path, monkeypatch) -> None:
     )
     assert (info.duration_sec, info.has_captions, info.caption_language) == (3011, False, None)
     assert info.source_id == hashlib.sha256(b"voice").hexdigest()
+    assert info.uploaded is False  # inbox 파일 — 올린 사본이 아니다
     assert probe.calls == [str(tmp_path / "talk.mp3")]
 
 
