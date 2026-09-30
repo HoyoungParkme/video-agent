@@ -115,6 +115,21 @@ async def test_put_models(client, env_file) -> None:
     assert "TEXT_MODEL=gpt-5.4-mini" in env_file.read_text()
 
 
+async def test_put_models_image(client, env_file) -> None:
+    env_file.write_text(f"OPENAI_API_KEY={KEY}\n")
+    r = await client.put(
+        "/api/settings/models",
+        json={"stt_model": "whisper-1", "text_model": "gpt-5-mini", "image_quality": "medium"},
+    )
+    assert (r.status_code, r.json()["image"]["quality"]) == (200, "medium")
+    r = await client.put(
+        "/api/settings/models",
+        json={"stt_model": "whisper-1", "text_model": "gpt-5-mini", "image_quality": "high"},
+    )
+    assert (r.status_code, r.json()["type"]) == (422, "urn:va:validation")
+    assert "IMAGE_QUALITY=medium" in env_file.read_text()
+
+
 async def test_put_models_unknown(client, env_file) -> None:
     r = await client.put(
         "/api/settings/models", json={"stt_model": "whisper-1", "text_model": "gpt-4o"}

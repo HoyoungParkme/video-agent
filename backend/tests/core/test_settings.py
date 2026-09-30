@@ -399,6 +399,29 @@ def test_set_models(svc, env_file) -> None:
     assert svc.read_env()["OPENAI_API_KEY"] == KEY
 
 
+def test_set_models_image(svc, env_file) -> None:
+    _write(env_file)
+    svc.set_models("whisper-1", "gpt-5-mini", image_quality="medium")
+    assert svc.read_env()["IMAGE_QUALITY"] == "medium"
+    assert "IMAGE_MODEL" not in svc.read_env()  # 안 보낸 줄은 그대로(없던 줄은 없다)
+    assert svc.current_models().image_quality.price_usd == 0.05
+    svc.set_models("whisper-1", "gpt-5-mini")  # 이미지 값을 안 보내면 이미지 줄이 그대로
+    assert svc.read_env()["IMAGE_QUALITY"] == "medium"
+    assert svc.read_env()["OPENAI_API_KEY"] == KEY
+
+
+@pytest.mark.parametrize(
+    ("kw", "field"),
+    [({"image_quality": "high"}, "image_quality"), ({"image_model": "dall-e-3"}, "image_model")],
+)
+def test_set_models_image_unknown(svc, env_file, kw, field) -> None:
+    before = _write(env_file)
+    with pytest.raises(Validation) as e:
+        svc.set_models("whisper-1", "gpt-5-mini", **kw)
+    assert [x["field"] for x in e.value.extra["errors"]] == [field]
+    assert env_file.read_text() == before
+
+
 def test_set_models_unknown(svc, env_file) -> None:
     before = _write(env_file)
     with pytest.raises(Validation) as e:

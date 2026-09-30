@@ -329,14 +329,23 @@ class SettingsService:
         self.last_check = check
         return self.get()
 
-    def set_models(self, stt_model: str, text_model: str) -> Settings:
+    def set_models(
+        self,
+        stt_model: str,
+        text_model: str,
+        image_model: str | None = None,
+        image_quality: ImageQuality | None = None,
+    ) -> Settings:
         """VA-MS-005#SettingsService.set_models
 
-        모델 선택을 `.env`에 저장한다. 다음 작업 · 질문부터 쓴다. 키 줄은 그대로.
+        모델 선택을 `.env`에 저장한다. 다음 작업 · 질문 · 인포그래픽부터 쓴다. 키 줄은 그대로.
+        이미지 값은 온 것만 쓰고, 안 오면 그 줄을 그대로 둔다(첫 화면은 두 값만 보냈다).
 
         Args:
             stt_model: 받아쓰기 모델 id
             text_model: 요약 · 챕터 · 질문 모델 id
+            image_model: 인포그래픽 이미지 모델 id. None이면 그대로
+            image_quality: 인포그래픽 품질. None이면 그대로
 
         Returns:
             갱신된 설정
@@ -353,10 +362,20 @@ class SettingsService:
             )
             if value not in {o.id for o in options}
         ]
+        image = config.IMAGE_OPTIONS
+        if image_model is not None and image_model not in image.models:
+            errors.append({"field": "image_model", "message": "목록에 없는 모델이에요"})
+        if image_quality is not None and image_quality not in {q.id for q in image.qualities}:
+            errors.append({"field": "image_quality", "message": "목록에 없는 품질이에요"})
         if errors:
             raise Validation(errors=errors)
+        values = {"STT_MODEL": stt_model, "TEXT_MODEL": text_model}
+        if image_model is not None:
+            values["IMAGE_MODEL"] = image_model
+        if image_quality is not None:
+            values["IMAGE_QUALITY"] = str(image_quality)
         try:
-            self.write_env({"STT_MODEL": stt_model, "TEXT_MODEL": text_model})
+            self.write_env(values)
         except (OSError, UnicodeError) as e:
             raise Internal("모델 선택을 .env에 쓰지 못했어요") from e
         return self.get()
