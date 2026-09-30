@@ -22,6 +22,8 @@ from app.core.db import SessionLocal
 from app.core.errors import KeyMissing, NotFound
 from app.core.settings import settings
 from app.domains.analysis import router as analysis_router
+from app.domains.analysis.adapters.frames_local import FramesLocal
+from app.domains.analysis.adapters.frames_storyboard import FramesStoryboard
 from app.domains.analysis.adapters.summarizer_openai import SummarizerOpenAI
 from app.domains.chat import router as chat_router
 from app.domains.chat.adapters.answerer_openai import AnswererOpenAI
@@ -95,10 +97,15 @@ app.state.youtube_info = YouTubeInfoAdapter()
 app.state.media_probe = MediaProbeAdapter()
 app.state.summarizer = SummarizerOpenAI(client_for)
 app.state.answerer = AnswererOpenAI(client_for)
+# 장면 — 파이프라인의 장면 단계와 옛 결과 채우기(결과 라우터)가 같은 어댑터를 쓴다(INFRA C12)
+app.state.storyboard = FramesStoryboard()
+app.state.local_frames = FramesLocal()
 pipeline.audio_source = AudioSourceAdapter()
 pipeline.audio_split = AudioSplitAdapter()
 pipeline.stt = SttOpenAI(client_for)
 pipeline.summarizer = app.state.summarizer
+pipeline.storyboard = app.state.storyboard
+pipeline.local_frames = app.state.local_frames
 
 app.include_router(settings_router.router)
 app.include_router(video_router.router)

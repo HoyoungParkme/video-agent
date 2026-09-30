@@ -165,6 +165,23 @@ def mindmap(result: Result) -> str:
     return "\n".join(lines)
 
 
+def frame_name(file_name: str, sec: float, duration_sec: int) -> str:
+    """VA-MS-003#export.frame_name
+
+    장면 그림 파일 이름 — `{이름} {시각}.jpg`, 쌍점은 하이픈(쌍점을 파일 이름에 못 쓰는 곳이 있다).
+    챕터 시작 시각이라 한 노트 안에서 겹치지 않는다. 노트의 그림 줄과 복사할 파일이 이것을 쓴다.
+
+    Args:
+        file_name: 노트 파일 이름(확장자 없이)
+        sec: 챕터 시작(초)
+        duration_sec: 영상 길이(초) — 시각 표기를 정한다
+
+    Returns:
+        `RAG 운영기 09-51.jpg` · `워크숍 1-05-26.jpg`
+    """
+    return f"{file_name} {timecode(sec, duration_sec).replace(':', '-')}.jpg"
+
+
 def build(result: Result, turns: list[ChatTurn] | None, file_name: str | None = None) -> str:
     """VA-MS-003#export.build
 
@@ -175,9 +192,9 @@ def build(result: Result, turns: list[ChatTurn] | None, file_name: str | None = 
     Args:
         result: 결과 화면이 받는 것 전부
         turns: 질문 기록. None이면 절을 붙이지 않고, 빈 목록이면 절 제목과 '질문 기록이 없습니다'
-        file_name: 파일로 저장할 노트의 이름(확장자 없이). 오면(파일로 저장 · 그 미리 보기) 챕터
-            다음에 스크립트 파일 `{file_name} 스크립트`를 가리키는 위키링크 절을 둔다. 복사는 None
-            — 가리킬 파일이 없다
+        file_name: 파일로 저장할 노트의 이름(확장자 없이). 오면(파일로 저장 · 그 미리 보기) 장면이
+            있는 챕터의 제목 줄 다음에 장면 그림 줄을, 챕터 다음에 스크립트 파일
+            `{file_name} 스크립트`를 가리키는 위키링크 절을 둔다. 복사는 None — 가리킬 파일이 없다
 
     Returns:
         마크다운(줄바꿈 `\n`, 끝에 줄바꿈 하나)
@@ -198,9 +215,9 @@ def build(result: Result, turns: list[ChatTurn] | None, file_name: str | None = 
             span = f"{at(part.start_sec)} – {at(part.end_sec)}"
             lines += [""] * (n > 0) + [f"### {part.title} ({span})"]
             inside = [c for c in result.chapters if c.part_seq == part.seq]
-            lines += _chapters(inside, v, "####")
+            lines += _chapters(inside, v, "####", file_name)
     else:
-        lines += _chapters(result.chapters, v, "###")
+        lines += _chapters(result.chapters, v, "###", file_name)
     if file_name:
         lines += ["", "## 스크립트", f"[[{file_name}{SCRIPT_SUFFIX}]]"]
     if turns is not None:
@@ -241,11 +258,13 @@ def _origin(video: Video) -> str:
     return f"원본: {video.origin} · {at}"
 
 
-def _chapters(chapters: list[Chapter], video: Video, mark: str) -> list[str]:
-    # 챕터마다 머리 줄과 요점 — 챕터 사이는 빈 줄
+def _chapters(chapters: list[Chapter], video: Video, mark: str, file_name: str | None) -> list[str]:
+    # 챕터마다 머리 줄 · (파일로 저장이고 장면이 있으면) 장면 그림 줄 · 요점 — 챕터 사이는 빈 줄
     lines: list[str] = []
     for n, c in enumerate(chapters):
         lines += [""] * (n > 0) + [f"{mark} {link(c.start_sec, video)} {c.title}"]
+        if file_name and c.frame is not None:
+            lines.append(f"![[{frame_name(file_name, c.start_sec, video.duration_sec)}]]")
         lines += [f"- {b}" for b in c.bullets]
     return lines
 

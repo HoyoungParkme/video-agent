@@ -77,7 +77,12 @@ class Config(BaseSettings):
     CHUNK_MAX_ATTEMPTS: int = 3
     CHUNK_RETRY_WAIT_SEC: float = 2  # 다시 보내기 전 첫 기다림, 다음은 두 배
     CHUNK_EST_SEC: int = 45
-    TEXT_EST_SEC: int = 60
+    # 요약 세 단계 합 — 추론 강도 low 실측 21~22초. 장면 몫과 합쳐 자막 있음이 '약 1분'(카드 D2)
+    TEXT_EST_SEC: int = 45
+    # 장면 단계 전체의 예상 · 그 단계 안에서 남은 한 장의 예상 — 실측 YouTube 5~13초(칸마다 약 1초),
+    # 로컬 27장 12초(카드 D2)
+    FRAMES_EST_SEC: int = 15
+    FRAME_EST_SEC: int = 1
     # 스크립트를 한 번 보낼 때 영상 1분당 입력 토큰 — 실측 323~497(줄 앞 시각 표기까지, 카드 C)
     TOKENS_PER_MIN: int = 450
     WORKER_IDLE_SEC: float = 5
@@ -117,9 +122,14 @@ class Config(BaseSettings):
     LLM_RETRY: int = 1
     NOT_COVERED_TEXT: str = "이 영상에서는 다루지 않습니다."
     QUESTION_COUNT: int = 3
+    # 장면 — 스토리보드 가운데 가장 큰 칸(1080p 영상 320×180) · 로컬 프레임 폭(높이는 비율대로)
+    STORYBOARD_FORMAT: str = "sb0"
+    FRAME_WIDTH: int = 640
 
     # infra — MS-007
     PROC_TIMEOUT_SEC: float = 1800
+    # 장면 한 장(로컬 프레임 · 스토리보드 장 받아 칸 자르기) 상한 — 한 장 1~2초라 넉넉하다(MS-007)
+    FRAME_TIMEOUT_SEC: float = 30
     # 등록 때 yt-dlp 영상 정보 읽기 상한 — 누를 때의 키 확인(10초)과 더해 web 프록시 60초 안(MS-007)
     INFO_TIMEOUT_SEC: float = 40
     YTDLP_BIN: str = "yt-dlp"
@@ -135,6 +145,16 @@ class Config(BaseSettings):
     def EXPORT_DIR(self) -> str:
         """내보낸 마크다운을 쓰는 곳 — data 폴더 안 export/(MS-003)."""
         return f"{self.DATA_DIR}/export"
+
+    @property
+    def FRAMES_DIR(self) -> str:
+        """챕터 대표 장면 — data 폴더 안 frames/{video_id}/{chapter_seq}.jpg(MS-003)."""
+        return f"{self.DATA_DIR}/frames"
+
+    @property
+    def UPLOAD_DIR(self) -> str:
+        """브라우저로 올린 사본의 자리 — data 폴더 안 uploads/(MS-001, INFRA C4)."""
+        return f"{self.DATA_DIR}/uploads"
 
 
 config = Config()

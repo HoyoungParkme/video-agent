@@ -1,4 +1,4 @@
-"""결과 테이블 일곱 접근 — DB만. 판단은 service가 한다.
+"""결과 테이블 여덟 접근 — DB만. 판단은 service가 한다.
 
 여러 줄을 넣을 때는 한 번에(executemany) — 3,000줄 스크립트도 쿼리 하나다.
 """
@@ -9,7 +9,9 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.analysis.models import (
+    ChapterFrameRow,
     ChapterRow,
+    FrameSource,
     InsightRow,
     PartRow,
     SegmentRow,
@@ -187,4 +189,52 @@ async def questions(session: AsyncSession, video_id: int) -> list[SuggestedQuest
             .where(SuggestedQuestionRow.video_id == video_id)
             .order_by(SuggestedQuestionRow.seq)
         )
+    )
+
+
+async def chapter_rows(session: AsyncSession, video_id: int) -> list[ChapterRow]:
+    """챕터 행, 번호순."""
+    return list(
+        await session.scalars(
+            select(ChapterRow).where(ChapterRow.video_id == video_id).order_by(ChapterRow.seq)
+        )
+    )
+
+
+async def frames(session: AsyncSession, video_id: int) -> list[ChapterFrameRow]:
+    """영상의 장면 행(그림 컬럼이 null인 「해 봤다」 행 포함) — 챕터와 조인, 챕터 번호순."""
+    return list(
+        await session.scalars(
+            select(ChapterFrameRow)
+            .join(ChapterRow, ChapterRow.id == ChapterFrameRow.chapter_id)
+            .where(ChapterRow.video_id == video_id)
+            .order_by(ChapterRow.seq)
+        )
+    )
+
+
+async def add_frame(
+    session: AsyncSession,
+    chapter_id: int,
+    sec: float | None = None,
+    source: FrameSource | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    path: str | None = None,
+) -> None:
+    """장면 행 하나. 그림 없이 부르면 「해 봤지만 없다」 행이다(CHECK — 모두 있거나 모두 null)."""
+    session.add(
+        ChapterFrameRow(
+            chapter_id=chapter_id, sec=sec, source=source, width=width, height=height, path=path
+        )
+    )
+    await session.flush()
+
+
+async def frame_by_seq(session: AsyncSession, video_id: int, seq: int) -> ChapterFrameRow | None:
+    """그 영상의 seq번 챕터의 장면 행."""
+    return await session.scalar(
+        select(ChapterFrameRow)
+        .join(ChapterRow, ChapterRow.id == ChapterFrameRow.chapter_id)
+        .where(ChapterRow.video_id == video_id, ChapterRow.seq == seq)
     )

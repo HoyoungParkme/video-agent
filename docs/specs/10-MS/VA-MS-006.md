@@ -318,8 +318,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 **처리**
 1. `raw = EXT: ytdlp.info(f"https://www.youtube.com/watch?v={source}", timeout=config.INFO_TIMEOUT_SEC)` — 영상을 내려받지 않는다. 장 주소에는 서명이 있어 오래 두면 만료되므로 등록 때 받은 정보를 쓰지 않고 이때 새로 받는다 · `YtdlpError`는 그대로 올린다(통째로 실패)
 2. `sb` = `raw.formats` 중 `format_id == config.STORYBOARD_FORMAT`, 없으면 `format_note == "storyboard"` 가운데 `width × height`가 가장 큰 것 · if 없음 → `! YtdlpError('스토리보드가 없음', kind=other)`(통째로 실패, [[VA-UC-001#UC-S7]] 3a) · `(w, h, rows, cols, fps) = (sb.width, sb.height, sb.rows, sb.columns, sb.fps)` · `sheets = sb.fragments`(장마다 `url`)
-3. 시각마다 차례로(`i`는 1부터) — `n = floor(sec × fps)` · `per = rows × cols` · `(sheet, k) = divmod(n, per)` · if `sheet ≥ len(sheets)` → 마지막 장의 마지막 칸(영상 끝 가까이) · `(row, col) = divmod(k, cols)` · `dest = f"{dest_dir}/sb-{i}.jpg"` · `EXT: ffmpeg.crop(sheets[sheet].url, col × w, row × h, w, h, dest)` — 장 주소를 ffmpeg 입력으로 주고 그 칸만 자른다(HTTP 클라이언트를 더하지 않는다, [[VA-INFRA-001#C12]]) · `yield FrameShot(sec=n / fps, source=storyboard, width=w, height=h, path=dest)` — `sec`는 실제 칸의 시각이라 챕터 시작과 몇 초 다를 수 있다([[VA-UC-001#UC-S7]] 3b) · 칸 하나가 실패하면(`FfmpegError`) → `yield None` · 다음 시각으로
-4. 파일은 `sb-{i}.jpg`로 쓰고, 챕터 번호 이름으로 옮기는 것은 서비스다
+3. `per = rows × cols` · 실제 칸 수 `total = Σ 장마다 round(장.duration × fps)` — 마지막 장은 덜 차 있다(실제 42분 영상 sb0: 장 29개, 마지막 장은 9칸 중 4칸). 장에 `duration`이 없으면 `len(sheets) × per`
+4. 시각마다 차례로(`i`는 1부터) — `n = min(floor(sec × fps), total − 1)` — 영상 끝 가까운 시각은 실제로 있는 마지막 칸이다(덜 찬 장의 빈 자리를 자르면 [[VA-MS-007#ffmpeg.crop]]이 실패한다, 카드 D2 코드 리뷰) · `(sheet, k) = divmod(n, per)` · `(row, col) = divmod(k, cols)` · `dest = f"{dest_dir}/sb-{i}.jpg"` · `EXT: ffmpeg.crop(sheets[sheet].url, col × w, row × h, w, h, dest)` — 장 주소를 ffmpeg 입력으로 주고 그 칸만 자른다(HTTP 클라이언트를 더하지 않는다, [[VA-INFRA-001#C12]]) · `yield FrameShot(sec=n / fps, source=storyboard, width=w, height=h, path=dest)` — `sec`는 실제 칸의 시각이라 챕터 시작과 몇 초 다를 수 있다([[VA-UC-001#UC-S7]] 3b) · 칸 하나가 실패하면(`FfmpegError`) → `yield None` · 다음 시각으로
+5. 파일은 `sb-{i}.jpg`로 쓰고, 챕터 번호 이름으로 옮기는 것은 서비스다
 
 **출력** 시각마다 `FrameShot` 또는 `None`(순서대로 하나씩)
 
@@ -327,7 +328,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **호출하는 것** `ytdlp.info` · `ffmpeg.crop`([[VA-MS-007]])
 
-**테스트 관점** 가짜 정보로(sb0 320×180 · 3×3 · fps 0.1): 763초 → 칸 76 → 장 8의 네 번째 칸, `crop(장 8 주소, 320, 180, 320, 180)`, `sec=760` · 시각이 여럿이어도 정보는 한 번만 받는다 · sb0이 없고 160×90 · 5×5만 있으면 그것으로 · 스토리보드가 없으면 `YtdlpError` · 칸 하나의 crop이 실패하면 그 시각만 `None` · 마지막 장을 넘는 시각 → 마지막 칸
+**테스트 관점** 가짜 정보로(sb0 320×180 · 3×3 · fps 0.1): 763초 → 칸 76 → 장 8의 네 번째 칸, `crop(장 8 주소, 320, 180, 320, 180)`, `sec=760` · 시각이 여럿이어도 정보는 한 번만 받는다 · sb0이 없고 160×90 · 5×5만 있으면 그것으로 · 스토리보드가 없으면 `YtdlpError` · 칸 하나의 crop이 실패하면 그 시각만 `None` · 마지막 장이 덜 찼으면(장 셋, 마지막 장 두 칸) 영상 끝 가까운 시각 → 실제로 있는 마지막 칸(셋째 장의 둘째 칸) · 장에 `duration`이 없으면 장 수 × 칸 수로 센다
 
 ---
 
@@ -484,7 +485,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 - [x] 자동 자막의 굴러가는 중복 제거 규칙(`captions` 4번)이 YouTube 형식 변화에 약하다. 실제 영상 셋으로 검증 뒤 조정 — 카드 B1에서 실제 한국어 영상 하나(22분, 자동 728큐 → 365줄, 겹침 0 · 수동 388큐)로 확인했다. 같은 카드의 코드 리뷰로 겹침 떼기를 글자에서 줄 단위로 바꿨다 — 같은 영상에서 결과가 같다. 나머지는 C 카드의 세 영상으로. 검증(카드 C): 자동 자막인 실제 한국어 강연 둘 — 46:47(1,289줄) · 42:24(1,198줄)에서 같은 줄이 이어진 곳 0, 앞 줄 끝 두 낱말 이상이 다음 줄 앞에 다시 나온 곳 0(42:24 영상의 한 곳은 강연자가 실제로 되풀이한 말), 시각이 거꾸로 간 곳 0. 규칙은 그대로 둔다. C의 나머지 두 영상은 자막이 없어 받아쓰기라 해당 없다
 - [x] 파이프라인 안에서 난 yt-dlp 실패의 이유 한 줄 — 결정(카드 B2): 이유 한 줄은 [[VA-MS-002#pipeline.reason_of]]가 만든다. 어댑터는 예외를 그대로 올린다 — 재시도 · 분류가 파이프라인의 몫이듯, 어댑터가 SDK 예외를 감싸 바꾸면 종류(`error_kind`)를 가를 수 없다. 메시지에 한글이 있으면(앱이 만든 문장) 그대로, 아니면 종류별 한국어 표(yt-dlp는 `YtdlpError.kind`, OpenAI는 상태 코드). 받아쓰기 조각 실패의 '네트워크 시간 초과' 같은 이유도 같은 함수다(카드 B1 코드 리뷰에서 찾음)
 - [x] 자동 자막 목록에 기계 번역이 섞인다 — 실제 yt-dlp 출력(2026-09-23)에서 `automatic_captions` 키가 150개 넘게 왔다(원래 언어의 받아쓰기 `xx-orig` 하나 + 나머지는 번역). 수동 키도 `ko-FmoQciUtYSc`처럼 트랙 이름이 붙어 온다. 옛 규칙(자동에서 `ko`를 찾는다)이면 영어 영상도 번역된 한국어를 골랐다. 결정(카드 B1): 원래 언어만 보고 키의 앞 부분을 언어로 읽는다 — 규칙은 [[#captions.pick]] 하나에
-- [ ] 스토리보드는 YouTube 내부 형식이라 바뀔 수 있다 — 칸 계산(⌊t × fps⌋, `rows × columns`)이 실제 장과 맞는지 카드 D2에서 42분 영상으로 본다. 어긋나거나 없으면 장면 없이 넘어간다(작업은 성공, [[VA-UC-001#UC-S7]] 3a)
+- [x] 스토리보드는 YouTube 내부 형식이라 바뀔 수 있다 — 칸 계산(⌊t × fps⌋, `rows × columns`)이 실제 장과 맞는지 카드 D2에서 42분 영상으로 본다. 어긋나거나 없으면 장면 없이 넘어간다(작업은 성공, [[VA-UC-001#UC-S7]] 3a). 결정(카드 D2, 실제 YouTube 결과 넷): 칸 계산이 실제 장과 맞았다 — 42분 영상 챕터 여덟의 칸이 모두 그 챕터의 슬라이드였고(9:51 「코어 이벤트와 지표 정의」 · 12:18 「성장기」 · 24:14 「성숙기」), 칸 시각은 챕터 시작보다 2.6~6.6초 앞이다(칸 하나가 몇 초를 묶는다). 19 · 30 · 46분 영상도 챕터마다 모두 얻었다. 계산은 그대로 둔다
 - [ ] 인포그래픽 프롬프트(`infographic.md`)의 품질 — 그림 속 글자 · 숫자는 모델이 틀릴 수 있다([[VA-INFRA-001#C11]]). 카드 D3에서 한 장 만들어 보고 문장을 고친다
 - [ ] 로컬 음성 파일(mp3 · m4a · wav)도 mp3 64kbps로 다시 변환한다(`extract_audio`). 이미 작은 mp3면 건너뛸지 — 첫 버전은 항상 변환(형식을 하나로)
 - [ ] whisper-1 언어 이름 → ISO 코드 표 — 자주 나오는 20개만 두고 나머지는 그대로. 음성 형식 미결은 `config.AUDIO_FORMAT`으로 닫혔다([[VA-INFRA-001]] 9절)

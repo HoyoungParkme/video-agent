@@ -163,9 +163,9 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 근거: [[VA-MS-006#frames_local.frames]] · [[VA-INFRA-001#C12]] · [[VA-UC-001#UC-S7]] 2번
 
-**처리** `PROC: ffmpeg -y -v error -ss {sec} -i {src} -frames:v 1 -vf scale={width}:-2 -q:v 3 {dest}` — `-ss`를 `-i` 앞에 두어 그 시각으로 바로 건너뛴다(수 GB 원본도 1초 안팎). 높이는 비율대로 짝수(`-2`), 회전 정보가 있는 영상은 ffmpeg가 돌려 놓는다 · 시간 제한 `config.FRAME_TIMEOUT_SEC` · 실패 → `! FfmpegError` · 끝났는데 `dest`가 없으면(시각이 영상 끝을 넘음) → `! FfmpegError('프레임을 뽑지 못함')` · `src`는 읽기만 · `→ dest`
+**처리** 먼저 `dest`를 지운다(없으면 넘어간다) — 앞선 실행이 남긴 같은 이름의 파일을 새 프레임으로 보지 않게(카드 D2 코드 리뷰) · `PROC: ffmpeg -y -v error -ss {sec} -i {src} -frames:v 1 -vf scale={width}:-2 -q:v 3 {dest}` — `-ss`를 `-i` 앞에 두어 그 시각으로 바로 건너뛴다(수 GB 원본도 1초 안팎). 높이는 비율대로 짝수(`-2`), 회전 정보가 있는 영상은 ffmpeg가 돌려 놓는다 · 시간 제한 `config.FRAME_TIMEOUT_SEC` · 실패 → `! FfmpegError` · 끝났는데 `dest`가 없으면(시각이 영상 끝을 넘음) → `! FfmpegError('프레임을 뽑지 못함')` · `src`는 읽기만 · `→ dest`
 
-**테스트 관점** 결과가 JPEG, 폭 640 · 높이 짝수 · 영상 끝을 넘는 시각 → `FfmpegError` · `src`의 mtime · 크기가 그대로 · 공백 · 한글이 든 경로 · 시간 제한을 넘으면 자식 프로세스가 죽고 `FfmpegError`
+**테스트 관점** 결과가 JPEG, 폭 640 · 높이 짝수 · 영상 끝을 넘는 시각 → `FfmpegError` · `dest`에 옛 파일이 있어도 영상 끝을 넘는 시각 → `FfmpegError`(옛 파일을 돌려주지 않는다) · `src`의 mtime · 크기가 그대로 · 공백 · 한글이 든 경로 · 시간 제한을 넘으면 자식 프로세스가 죽고 `FfmpegError`
 
 ---
 
@@ -296,6 +296,6 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 - [ ] yt-dlp 버전 고정과 업데이트 주기 — 이미지 빌드 때 최신을 넣고, 깨지면 이미지를 다시 빌드한다([[VA-INFRA-001#C7]] · 7절). 자동 업데이트(`yt-dlp -U`)를 컨테이너 시작 때 돌릴지 사용자 확인
 - [ ] `ffmpeg.cut`의 `-c copy` 오차 — mp3 프레임 경계라 수십 ms. 받아쓰기 시각에는 무시할 수준이지만, 재인코딩(`-c:a libmp3lame`)으로 바꾸면 정확해지는 대신 15조각에 수십 초가 든다. 첫 버전은 `-c copy`
 - [ ] OpenAI 사용량 로그를 작업 행에 모아 실제 비용을 보여 줄지 — 사전 안내 예상치와 비교하는 화면이 요구에 없어 첫 버전은 로그만
-- [ ] 스토리보드 장 주소를 ffmpeg가 받을 때 YouTube가 머리(User-Agent 등)를 요구하는지 — 카드 D 조사에서는 그대로 받혔다. 막히면 [[#ffmpeg.crop]]에 `-user_agent`를 준다(카드 D2에서 실제로 본다)
+- [x] 스토리보드 장 주소를 ffmpeg가 받을 때 YouTube가 머리(User-Agent 등)를 요구하는지 — 카드 D 조사에서는 그대로 받혔다. 막히면 [[#ffmpeg.crop]]에 `-user_agent`를 준다(카드 D2에서 실제로 본다). 결정(카드 D2, 실제 YouTube 결과 넷 · 장면 26장): 머리 없이 모두 받혔다 — `-user_agent`를 주지 않는다
 - [ ] `verify_key`의 `format` 검사(`sk-` 접두)가 앞으로의 키 형식과 맞는지 — 형식이 바뀌면 이 검사만 풀고 요청으로 판정
 - [x] 키 확인의 실패 가르기(카드 A 코드 리뷰, 2026-09-23) — 앞 판은 401 · quota 말고는 모두 `auth`라, OpenAI가 잠깐 5xx를 내면 멀쩡한 키가 막힌 채 다시 확인되지 않았다(`require_key`는 `network`만 다시 확인한다). 잠깐의 실패를 `network`로 옮기고 이유를 한국어 한 줄로 고정했다. [[VA-API-001]] v4 `ReasonKind` 설명을 함께 고쳤다

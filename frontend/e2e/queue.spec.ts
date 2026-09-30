@@ -40,7 +40,7 @@ test("둘째 영상은 대기 중 · 1번째로 기다렸다가 첫 영상이 �
   await expect(el(page, "3.1")).toHaveText("차례를 기다리는 중");
   await expect(el(page, "3.2")).toHaveText("앞 영상 1개가 끝나면 시작해요");
   await expect(el(page, "3.3")).toHaveText("0%");
-  await expect(page.locator(".step-memo")).toHaveText(["—", "—", "—", "—"]);
+  await expect(page.locator(".step-memo")).toHaveText(["—", "—", "—", "—", "—"]);
   await expect(el(page, "6.1")).toHaveText("아직 OpenAI로 보내는 것이 없어요");
   await expect(el(page, "6.2")).toHaveText("이 화면을 닫아도 차례가 되면 시작돼요.");
 

@@ -25,6 +25,8 @@ from app.core.errors import (
     UrlInvalid,
     VideoTooLong,
 )
+from app.domains.analysis import crud as analysis_crud
+from app.domains.analysis.models import FrameSource
 from app.domains.job.models import ChunkState, JobStatus
 from app.domains.job.service import JobService
 from app.domains.video import service as service_module
@@ -472,7 +474,7 @@ async def test_get_after_finish(db, make, youtube, probe) -> None:
 # --- delete
 
 
-async def _owned(db, video_id: int, job_id: int) -> dict[str, int]:
+async def _owned(db, video_id: int, job_id: int, chapter_id: int) -> dict[str, int]:
     # 이 영상의 것만 센다 — 같은 DB에 남은 다른 행과 섞이지 않게
     tables = {
         "videos": ("id", video_id),
@@ -480,6 +482,7 @@ async def _owned(db, video_id: int, job_id: int) -> dict[str, int]:
         "audio_chunks": ("job_id", job_id),
         "transcripts": ("video_id", video_id),
         "chapters": ("video_id", video_id),
+        "chapter_frames": ("chapter_id", chapter_id),
         "chat_turns": ("video_id", video_id),
     }
     counts = {}
@@ -498,21 +501,31 @@ async def test_delete_removes_everything_of_that_video(
     await make.chunks(job.id, [ChunkState.done, ChunkState.failed])
     await make.transcript(row.id, ["하나", "둘"])
     await make.chapters(row.id, [(0.0, "처음", ["요점"])])
+    chapter_id = await db.scalar(text("SELECT id FROM chapters WHERE video_id = :v"), {"v": row.id})
+    shot = tmp_path / "frames" / str(row.id) / "1.jpg"
+    shot.parent.mkdir(parents=True)
+    shot.write_bytes(b"jpeg")
+    await analysis_crud.add_frame(db, chapter_id, 3.0, FrameSource.storyboard, 320, 180, str(shot))
     await make.turn(row.id, "왜?", "그래서.", at=T0)
     other = await make.video()
     await make.transcript(other.id, ["남는다"])
+    kept = tmp_path / "frames" / str(other.id) / "1.jpg"  # 다른 영상의 장면
+    kept.parent.mkdir(parents=True)
+    kept.write_bytes(b"jpeg")
     tmp = tmp_path / "tmp" / str(row.id)
     tmp.mkdir(parents=True)
     (tmp / "3.mp3").write_bytes(b"mp3")  # 실패한 작업이 보존한 조각
     inbox = tmp_path / "inbox.wav"
     inbox.write_bytes(b"wav")
-    before = await _owned(db, row.id, job.id)
+    before = await _owned(db, row.id, job.id, chapter_id)
     assert all(n > 0 for n in before.values())
 
     svc = VideoService(db, youtube, probe)
     await svc.delete(row.id)
-    assert await _owned(db, row.id, job.id) == dict.fromkeys(before, 0)
+    assert await _owned(db, row.id, job.id, chapter_id) == dict.fromkeys(before, 0)
     assert not tmp.exists()
+    assert not shot.parent.exists()  # 장면 폴더째
+    assert kept.read_bytes() == b"jpeg"
     assert inbox.read_bytes() == b"wav"  # 원본 파일은 건드리지 않는다
     assert (await svc.get(other.id)).video.id == other.id  # 다른 영상은 그대로
     with pytest.raises(NotFound):

@@ -39,7 +39,14 @@ test("8번 조각이 세 번 실패 → 실패 알림 → 다시 시도하면 8�
   await expect(el(page, "5")).toBeVisible({ timeout: 20_000 });
   await expect(el(page, "3.1")).toHaveText("받아쓰기가 멈췄어요");
   await expect(el(page, "3.2")).toHaveText("조각 8 / 9에서 실패 · 완료한 8개는 저장됨");
-  await expect(page.locator(".step-memo")).toHaveText([/초$/, "8 / 9에서 멈춤", "—", "—", "—"]);
+  await expect(page.locator(".step-memo")).toHaveText([
+    /초$/,
+    "8 / 9에서 멈춤",
+    "—",
+    "—",
+    "—",
+    "—",
+  ]);
   await expect(page.locator(".step-mark").nth(1)).toHaveAttribute("data-state", "failed");
   await expect(el(page, "4.6")).toHaveAttribute("aria-label", "조각 9개 중 8개 완료, 1개 실패");
   await expect(el(page, "4.8")).toHaveText("완료 8실패 1");
@@ -123,13 +130,14 @@ test("인터넷 끊김 · 다른 영상이 도는 동안 다시 시도 — 대�
   await expect(inDialog(page, "6.1")).toHaveCount(0); // 실패한 영상은 도는 영상이 아니다
   await inDialog(page, "6.3").click();
   await expect(page).toHaveURL(/\/videos\/\d+\/progress$/);
-  // 내려받기가 mp3까지 만든다 — 추출 단계가 없다(DOM-002 stages_for)
+  // 내려받기가 mp3까지 만든다 — 추출 단계가 없다(DOM-002 stages_for). 장면이 마지막
   await expect(page.locator(".step-name")).toHaveText([
     "음성 내려받기",
     "받아쓰기",
     "핵심 요약",
     "챕터",
     "추천 질문",
+    "장면",
   ]);
   await expect(el(page, "3.1")).toHaveText(/만드는 중$/, { timeout: 20_000 });
 
@@ -164,8 +172,8 @@ test("핵심 요약 단계에서 실패 → 그 단계부터 다시 시도한다
   // 받아쓰기 아닌 단계의 실패 — 격자 없이 단계 X, 스크립트는 저장돼 있다
   await expect(el(page, "5")).toBeVisible({ timeout: 20_000 });
   await expect(el(page, "3.1")).toHaveText("핵심 요약 단계가 멈췄어요");
-  await expect(el(page, "3.2")).toHaveText("4단계 중 2단계에서 실패 · 스크립트는 저장됨");
-  await expect(page.locator(".step-memo")).toHaveText([/초$/, "멈춤", "—", "—"]);
+  await expect(el(page, "3.2")).toHaveText("5단계 중 2단계에서 실패 · 스크립트는 저장됨");
+  await expect(page.locator(".step-memo")).toHaveText([/초$/, "멈춤", "—", "—", "—"]);
   await expect(page.locator(".step-mark").nth(1)).toHaveAttribute("data-state", "failed");
   await expect(el(page, "4.6")).toHaveCount(0);
   await expect(el(page, "5.1")).toHaveText("OpenAI가 요청을 처리하지 못했어요");

@@ -12,6 +12,8 @@ from sqlalchemy import select
 from app.core.config import config
 from app.core.db import SessionLocal
 from app.core.settings import settings
+from app.domains.analysis.adapters.frames_local import FramesLocal
+from app.domains.analysis.adapters.frames_storyboard import FramesStoryboard
 from app.domains.job import pipeline
 from app.domains.job.models import AnalysisJobRow, AudioChunkRow, ChunkState, ErrorKind, JobStatus
 from app.domains.job.service import JobService
@@ -163,3 +165,11 @@ async def test_load_video(db, make) -> None:
     row = await make.video()
     assert (await load_video(row.id)).id == row.id
     assert await load_video(999) is None  # 그 사이 지워진 영상
+
+
+def test_frame_adapters_are_shared() -> None:
+    """장면 어댑터는 하나씩 — 결과 라우터(app.state)와 파이프라인(모듈 속성)이 같은 것을 쓴다."""
+    assert isinstance(app.state.storyboard, FramesStoryboard)
+    assert isinstance(app.state.local_frames, FramesLocal)
+    assert pipeline.storyboard is app.state.storyboard
+    assert pipeline.local_frames is app.state.local_frames

@@ -9,22 +9,24 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import logging
 import os
 import re
 import tempfile
 import unicodedata
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
-from app.core.errors import ExportFailed, ResultNotReady
+from app.core.db import SessionLocal
+from app.core.errors import ExportFailed, FramesUnavailable, NotFound, ResultNotReady
 from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.export import SCRIPT_SUFFIX
-from app.domains.analysis.models import TranscriptSource
-from app.domains.analysis.ports import SummarizerPort
+from app.domains.analysis.models import ChapterFrameRow, ChapterRow, TranscriptSource
+from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
@@ -32,6 +34,9 @@ from app.domains.analysis.schemas import (
     ExportMethod,
     ExportPreview,
     ExportResult,
+    Frame,
+    FrameSet,
+    FramesState,
     Insight,
     Part,
     Result,
@@ -41,11 +46,14 @@ from app.domains.analysis.schemas import (
     SummaryDraft,
     Transcript,
 )
-from app.shared import tokens
+from app.domains.job.schemas import FrameProgress, FrameProgressItem
+from app.shared import sources, tokens
 
 if TYPE_CHECKING:
     from app.domains.chat.schemas import ChatTurn  # 타입만 — chat을 import하지 않는다
     from app.domains.video.schemas import Video
+
+log = logging.getLogger(__name__)
 
 # 인사이트 수 상한 — 1시간 이하 8, 넘으면 10(PRD R4). 5개보다 적으면 있는 만큼 둔다
 INSIGHTS_MAX, INSIGHTS_MAX_LONG = 8, 10
@@ -122,11 +130,41 @@ def _sample(segments: list[Segment], limit: int) -> list[Segment]:
     return sorted({s.seq: s for s in picked}.values(), key=lambda s: s.seq)
 
 
-def _files(name: str) -> list[ExportFile]:
-    # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다
+def _frame_list(
+    video_id: int, chapters: list[ChapterRow], frames: list[ChapterFrameRow]
+) -> list[Frame]:
+    """그림이 있고 파일도 있는 장면만, 챕터 순서로 — 응답의 장면 목록."""
+    by_chapter = {f.chapter_id: f for f in frames}
+    out: list[Frame] = []
+    for c in chapters:
+        f = by_chapter.get(c.id)
+        if f is None or f.path is None or not os.path.isfile(f.path):
+            continue
+        out.append(
+            Frame(
+                chapter_seq=c.seq,
+                sec=f.sec,
+                source=f.source,
+                width=f.width,
+                height=f.height,
+                url=f"/api/videos/{video_id}/frames/{c.seq}",
+            )
+        )
+    return out
+
+
+def _files(result: Result, name: str) -> list[ExportFile]:
+    # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다.
+    # 노트 · 스크립트, 그리고 장면이 있는 챕터마다 장면 그림(챕터 순서)
+    duration = result.video.duration_sec
     return [
         ExportFile(kind="note", name=f"{name}.md"),
         ExportFile(kind="script", name=f"{name}{SCRIPT_SUFFIX}.md"),
+        *(
+            ExportFile(kind="frame", name=export.frame_name(name, c.start_sec, duration))
+            for c in result.chapters
+            if c.frame is not None
+        ),
     ]
 
 
@@ -134,7 +172,7 @@ def _write(folder: Path, name: str, data: bytes) -> None:
     # 같은 폴더의 임시 파일에 쓴 뒤 바꿔 끼운다 — 쓰다 멈춰도 반쯤 쓴 파일이 남지 않는다.
     # mkstemp는 0600으로 만들어 보통 파일처럼(0644) 읽히게 바꾼다 — 노트 앱이 읽는 파일이다
     folder.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".export-", suffix=".md")
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".export-", suffix=Path(name).suffix)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -152,14 +190,29 @@ class AnalysisService:
     - save_transcript(): 자막 · 받아쓰기 결과를 스크립트로
     - generate_summary() · generate_chapters() · generate_questions(): 파이프라인 단계 셋
     - result_of(): 결과 화면 응답 전부
+    - make_frames(): 챕터마다 장면 한 장(파이프라인 장면 단계 · 채우기 태스크)
 
-    요약 포트는 생성 단계 셋만 쓴다 — 구간 · 챕터만 읽는 곳(대화 맥락)은 포트 없이 만든다
-    (VA-DOM-002 6장).
+    포트는 그 메서드가 쓸 때만 필요하다 — 요약 포트는 생성 단계 셋, 장면 포트 둘(스토리보드 ·
+    로컬 프레임)은 장면 만들기만 쓴다. 읽기만 하는 곳(대화 맥락 · 진행의 장면 칸)은 포트 없이
+    만든다(VA-DOM-002 6장).
     """
 
-    def __init__(self, session: AsyncSession, summarizer: SummarizerPort | None = None) -> None:
+    # 뒤 일 — 장면을 만드는 중인 영상(파이프라인 장면 단계도 넣는다)과 채우기 태스크.
+    # 요청이 끝난 뒤에도 돌아 프로세스에 하나다(VA-MS-003 0장)
+    _making: ClassVar[set[int]] = set()
+    _frame_tasks: ClassVar[dict[int, asyncio.Task[None]]] = {}
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        summarizer: SummarizerPort | None = None,
+        storyboard: FrameSourcePort | None = None,
+        local_frames: FrameSourcePort | None = None,
+    ) -> None:
         self.session = session
         self._port = summarizer
+        self._storyboard = storyboard
+        self._local_frames = local_frames
 
     @property
     def summarizer(self) -> SummarizerPort:
@@ -167,6 +220,20 @@ class AnalysisService:
         if self._port is None:
             raise RuntimeError("요약 포트 없이 만든 AnalysisService로 생성 단계를 불렀다")
         return self._port
+
+    def _frame_source(self, video: Video) -> tuple[FrameSourcePort, str]:
+        """영상의 장면 포트와 그 포트에 줄 것 — YouTube는 영상 ID, 로컬은 원본 경로."""
+        if video.source_kind == "youtube":
+            port, source = self._storyboard, video.source_id
+        else:
+            # 올린 영상은 카드 D4가 더한다 — 그 전에는 모두 inbox 파일이다
+            port, source = (
+                self._local_frames,
+                str(sources.local_path(video.origin, video.source_id, False)),
+            )
+        if port is None:  # 코드 실수 — 앱 수준에서 internal(500)
+            raise RuntimeError("장면 포트 없이 만든 AnalysisService로 장면을 만들려 했다")
+        return port, source
 
     async def segments_of(self, video_id: int) -> list[Segment]:
         """VA-MS-003#AnalysisService.segments_of
@@ -256,6 +323,222 @@ class AnalysisService:
         while len(name.encode()) > NAME_BYTES_MAX:
             name = name[:-1]
         return name.strip(" .") or f"video-{video.id}"
+
+    async def make_frames(self, video: Video) -> None:
+        """VA-MS-003#AnalysisService.make_frames
+
+        장면 행이 없는 챕터마다 장면 한 장. 받는 대로 행을 쓰고 커밋한다 — 진행 폴링이 한 장씩
+        본다. 포트가 통째로 실패하면(스토리보드 없음 · 원본 없음 · yt-dlp · ffmpeg) 남은 챕터에
+        그림 없는 행을 쓰고 로그만 남긴다 — 「해 봤다」를 남겨 옛 결과를 다시 채우지 않는다.
+
+        Args:
+            video: 장면을 만들 영상(출처 종류 · 영상 ID · 원본 이름)
+
+        Raises:
+            DB 오류 · 취소(CancelledError)는 그대로 올린다 — 포트 실패만 삼킨다
+        """
+        AnalysisService._making.add(video.id)
+        try:
+            tried = {f.chapter_id for f in await crud.frames(self.session, video.id)}
+            todo = [c for c in await crud.chapter_rows(self.session, video.id) if c.id not in tried]
+            if not todo:  # 다시 시도 · 이어 채우기는 해 본 챕터를 건너뛴다
+                return
+            port, source = self._frame_source(video)
+            dest = Path(config.FRAMES_DIR) / str(video.id)
+            await asyncio.to_thread(dest.mkdir, parents=True, exist_ok=True)
+            shots = port.frames(source, [c.start_sec for c in todo], str(dest))
+            failed = False
+            for c in todo:
+                shot = None
+                if not failed:
+                    try:
+                        shot = await anext(shots, None)
+                    except Exception as e:  # 포트 실패 — 남은 챕터는 그림 없이
+                        failed = True
+                        log.warning("영상 %s의 장면을 얻지 못했다: %s", video.id, e)
+                if shot is None:
+                    await crud.add_frame(self.session, c.id)
+                else:
+                    path = dest / f"{c.seq}.jpg"
+                    await asyncio.to_thread(os.replace, shot.path, path)
+                    await crud.add_frame(
+                        self.session,
+                        c.id,
+                        shot.sec,
+                        shot.source,
+                        shot.width,
+                        shot.height,
+                        str(path),
+                    )
+                await self.session.commit()
+            await shots.aclose()
+        finally:
+            AnalysisService._making.discard(video.id)
+
+    @staticmethod
+    def frames_state(
+        video: Video, chapters: list[ChapterRow], frames: list[ChapterFrameRow]
+    ) -> FramesState:
+        """VA-MS-003#AnalysisService.frames_state
+
+        결과의 장면 상태. 위에서부터 — 만드는 중 → 챕터마다 행이 있다(그림 없는 행 포함, 챕터가
+        없어도) → 로컬인데 음성 파일이거나 원본이 없다 → 채울 수 있다.
+
+        Args:
+            video: 영상
+            chapters: 그 영상의 챕터 행
+            frames: 그 영상의 장면 행
+
+        Returns:
+            making · done · unavailable · absent
+        """
+        if video.id in AnalysisService._making:
+            return FramesState.making
+        tried = {f.chapter_id for f in frames}
+        if all(c.id in tried for c in chapters):
+            return FramesState.done
+        if video.source_kind == "local":
+            ext = Path(video.origin).suffix.lower().lstrip(".")
+            original = sources.local_path(video.origin, video.source_id, False)
+            if ext in config.AUDIO_EXTS or not original.is_file():
+                return FramesState.unavailable
+        return FramesState.absent
+
+    async def fill_frames(self, video: Video) -> FrameSet:
+        """VA-MS-003#AnalysisService.fill_frames
+
+        장면 단계 전에 분석한 결과에 장면 채우기를 맡긴다 — 뒤에서 돌고 바로 돌려준다(202).
+        이미 만드는 중이거나 끝났으면 아무것도 하지 않는다. 키를 보지 않는다(OpenAI 비용이 없다).
+
+        Args:
+            video: 결과를 연 영상
+
+        Returns:
+            지금 상태(맡겼으면 making)와 이미 있는 장면
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+            FramesUnavailable: 음성 파일이거나 원본 파일이 없다
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        chapters = await crud.chapter_rows(self.session, video.id)
+        frames = await crud.frames(self.session, video.id)
+        state = self.frames_state(video, chapters, frames)
+        if state == FramesState.unavailable:
+            audio = Path(video.origin).suffix.lower().lstrip(".") in config.AUDIO_EXTS
+            reason = "음성 파일이라 장면이 없어요" if audio else "원본 파일을 찾을 수 없어요"
+            raise FramesUnavailable(reason=reason)
+        if state == FramesState.absent:
+            # 태스크를 띄우기 전에 넣는다 — 곧바로 다시 불러도 태스크가 둘 생기지 않게
+            AnalysisService._making.add(video.id)
+            AnalysisService._frame_tasks[video.id] = asyncio.create_task(self._fill(video))
+            state = FramesState.making
+        return FrameSet(state=state, frames=_frame_list(video.id, chapters, frames))
+
+    async def _fill(self, video: Video) -> None:
+        """채우기 태스크 — 요청이 끝난 뒤에도 돌아 자기 세션을 연다. 실패는 로그 한 줄."""
+        try:
+            async with SessionLocal() as session:
+                service = AnalysisService(
+                    session, storyboard=self._storyboard, local_frames=self._local_frames
+                )
+                await service.make_frames(video)
+        except Exception:
+            log.exception("영상 %s의 장면 채우기가 실패했다", video.id)
+        finally:
+            AnalysisService._frame_tasks.pop(video.id, None)
+            AnalysisService._making.discard(video.id)
+
+    async def frames_of(self, video: Video) -> FrameSet:
+        """VA-MS-003#AnalysisService.frames_of
+
+        장면 상태와 목록 — 채우는 동안 화면이 3초마다 부른다. 쿼리 둘(챕터 · 장면).
+
+        Args:
+            video: 결과를 연 영상
+
+        Returns:
+            상태와 그림이 있고 파일도 있는 장면(챕터 순서)
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        chapters = await crud.chapter_rows(self.session, video.id)
+        frames = await crud.frames(self.session, video.id)
+        return FrameSet(
+            state=self.frames_state(video, chapters, frames),
+            frames=_frame_list(video.id, chapters, frames),
+        )
+
+    async def frame_progress(self, video_id: int) -> FrameProgress:
+        """VA-MS-003#AnalysisService.frame_progress
+
+        진행 화면의 장면 칸 — 1초 폴링이라 쿼리 둘. 챕터마다 그림이 있으면 done, 그림 없는 행이면
+        missing, 행이 없으면 도는 중인 첫 칸만 in_flight이고 나머지는 waiting. 챕터가 아직
+        없으면(받아쓰기 중) 0 / 0 — 싣는지는 JobService.progress가 단계 목록을 보고 정한다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            받은 장면 수 · 챕터 수 · 칸들
+        """
+        chapters = await crud.chapter_rows(self.session, video_id)
+        by_chapter = {f.chapter_id: f for f in await crud.frames(self.session, video_id)}
+        running = video_id in AnalysisService._making
+        items: list[FrameProgressItem] = []
+        for c in chapters:
+            f = by_chapter.get(c.id)
+            if f is not None and f.path is not None:
+                url = f"/api/videos/{video_id}/frames/{c.seq}"
+                items.append(FrameProgressItem(chapter_seq=c.seq, state="done", url=url))
+            elif f is not None:
+                items.append(FrameProgressItem(chapter_seq=c.seq, state="missing", url=None))
+            else:
+                first = running and all(i.state != "in_flight" for i in items)
+                state = "in_flight" if first else "waiting"
+                items.append(FrameProgressItem(chapter_seq=c.seq, state=state, url=None))
+        done = sum(1 for i in items if i.state == "done")
+        return FrameProgress(done=done, total=len(chapters), items=items)
+
+    async def frame_file(self, video_id: int, seq: int) -> str:
+        """VA-MS-003#AnalysisService.frame_file
+
+        장면 그림 파일 경로 — 라우터가 image/jpeg · no-cache로 준다.
+
+        Args:
+            video_id: 영상 id
+            seq: 챕터 번호
+
+        Returns:
+            파일 경로
+
+        Raises:
+            NotFound: 행이 없거나 그림이 없는 행이거나 파일이 없다(영상이 없어도 같다)
+        """
+        row = await crud.frame_by_seq(self.session, video_id, seq)
+        if row is None or row.path is None or not os.path.isfile(row.path):
+            raise NotFound(resource="frame", id=seq)
+        return row.path
+
+    async def cancel_tasks(self, video_id: int) -> None:
+        """VA-MS-003#AnalysisService.cancel_tasks
+
+        지우기 전에 그 영상의 뒤 일(장면 채우기)을 멈추고 끝나기를 기다린다 — 지운 폴더에 다시 쓰지
+        않게. 파이프라인의 장면 단계는 작업 태스크의 일부라 JobService.cancel이 멈춘다.
+
+        Args:
+            video_id: 영상 id. 도는 뒤 일이 없으면 아무것도 하지 않는다
+        """
+        task = AnalysisService._frame_tasks.pop(video_id, None)
+        if task is not None:
+            task.cancel()
+            # wait는 태스크의 CancelledError를 올리지 않는다 — 부른 쪽 자신의 취소는 그대로 전해진다
+            await asyncio.wait({task})
+        AnalysisService._making.discard(video_id)
 
     async def save_transcript(
         self,
@@ -374,7 +657,7 @@ class AnalysisService:
         duration_sec: int,
         segments: list[Segment],
     ) -> list[tuple[float, str, list[str]]]:
-        # 시작 시각 보정 · 시각순(같은 시각이면 모델이 준 순서 — 안정 정렬) · 같은 시각은 하나 ·
+        # 시작 시각 보정 · 시각순(같은 시각이면 모델이 준 순서 — 안정 정렬) · 같은 초는 하나 ·
         # 첫 챕터 0초 · 요점 셋까지
         placed = sorted(
             (
@@ -389,7 +672,9 @@ class AnalysisService:
         )
         chapters: list[tuple[float, str, list[str]]] = []
         for start, title, bullets in placed:
-            if chapters and chapters[-1][0] == start:
+            # 같은 초(소수를 버린 초)면 뒤 것을 뺀다 — 길이 밖 시각은 구간 시작(소수 초)으로
+            # 보정되어, 같은 초의 두 시각이 남으면 시각 표기와 장면 그림 이름이 겹친다(이슈 #16)
+            if chapters and int(chapters[-1][0]) == int(start):
                 continue
             chapters.append((start, title, bullets))
         if chapters and chapters[0][0] != 0:  # 스크립트 처음이 어느 챕터에도 안 들어가지 않게
@@ -452,7 +737,8 @@ class AnalysisService:
     async def result_of(self, video: Video) -> Result:
         """VA-MS-003#AnalysisService.result_of
 
-        결과 화면 응답 전부 — 구간을 나누지 않는다. 읽기만 한다. 쿼리 여섯.
+        결과 화면 응답 전부 — 구간을 나누지 않는다. 읽기만 한다 — 장면 채우기를 시작하지 않는다.
+        쿼리 일곱. 챕터의 장면은 그림이 있고 파일도 있을 때만 싣는다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상(상태 · 길이 · 대화 수)
@@ -473,6 +759,11 @@ class AnalysisService:
         part_rows = await crud.parts(self.session, video.id)
         chapter_rows = await crud.chapters_with_part_seq(self.session, video.id)
         questions = await crud.questions(self.session, video.id)
+        frame_rows = await crud.frames(self.session, video.id)
+        frames = {
+            f.chapter_seq: f
+            for f in _frame_list(video.id, [c for c, _ in chapter_rows], frame_rows)
+        }
         parts = [
             Part(
                 seq=p.seq,
@@ -511,12 +802,14 @@ class AnalysisService:
                     start_sec=c.start_sec,
                     title=c.title,
                     bullets=c.bullets,
+                    frame=frames.get(c.seq),
                 )
                 for c, seq in chapter_rows
             ],
             suggested_questions=[SuggestedQuestion(seq=q.seq, text=q.text) for q in questions],
             models=Models(stt=t.model, text=s.model),
             analyzed_at=video.analyzed_at,
+            frames_state=self.frames_state(video, [c for c, _ in chapter_rows], frame_rows),
         )
 
     async def export_markdown(
@@ -545,7 +838,7 @@ class AnalysisService:
         name = self.filename_for(video)
         past = turns if with_chat else None
         if method == ExportMethod.file:
-            md, files = export.build(result, past, name), _files(name)
+            md, files = export.build(result, past, name), _files(result, name)
         else:
             md, files = export.build(result, past, None), []
         return ExportPreview(
@@ -557,10 +850,10 @@ class AnalysisService:
     ) -> ExportResult:
         """VA-MS-003#AnalysisService.export_to_file
 
-        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않고 다시
-        만든다. 노트는 챕터 다음에 스크립트 파일을 가리키는 절(`[[{이름} 스크립트]]`)이 붙는다.
-        스크립트를 먼저 써 노트의 링크가 헛돌지 않게 한다. 같은 이름이 있으면 둘 다 덮어쓰고,
-        폴더가 없으면 만든다.
+        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓰고, 장면이 있는 챕터의 그림을 곁에
+        복사한다 — 화면이 보낸 본문을 쓰지 않고 다시 만든다. 노트는 장면 그림 줄과 스크립트 파일을
+        가리키는 절(`[[{이름} 스크립트]]`)을 갖는다. 스크립트를 먼저 써 노트의 링크가 헛돌지 않게
+        한다. 같은 이름이 있으면 모두 덮어쓰고, 폴더가 없으면 만든다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
@@ -573,23 +866,43 @@ class AnalysisService:
         Raises:
             ResultNotReady: 분석이 끝나지 않았다
             ExportFailed: 쓰지 못했다 — path는 쓰지 못한 파일의 보일 경로, reason은 errno로
-                고른 한 줄
+                고른 한 줄. 복사할 그림이 그 사이 없어졌으면 '그림 파일을 찾을 수 없음'
         """
         result = await self.result_of(video)
         name = self.filename_for(video)
         script = f"{name}{SCRIPT_SUFFIX}"
         note = export.build(result, turns if with_chat else None, name).encode("utf-8")
         text = export.build_script(result).encode("utf-8")
-        for file, data in ((script, text), (name, note)):
+        written = [(f"{script}.md", text), (f"{name}.md", note)]
+        for file, data in written:
+            await self._write_export(file, data)
+        images = 0
+        for c in result.chapters:  # 장면이 있는 챕터의 그림을 노트의 그림 줄이 가리키는 이름으로
+            if c.frame is None:
+                continue
+            file = export.frame_name(name, c.start_sec, video.duration_sec)
             try:
-                await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{file}.md", data)
-            except OSError as e:
-                reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
-                raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}.md", reason=reason) from e
+                src = await self.frame_file(video.id, c.seq)
+                data = await asyncio.to_thread(Path(src).read_bytes)
+            except (NotFound, OSError) as e:  # 결과를 읽은 뒤 다시 채우기 · 지우기로 없어졌다
+                raise ExportFailed(
+                    path=f"{EXPORT_SHOWN}/{file}", reason="그림 파일을 찾을 수 없음"
+                ) from e
+            await self._write_export(file, data)
+            written.append(("", data))
+            images += 1
         return ExportResult(
             filename=name,
             path=f"{EXPORT_SHOWN}/{name}.md",
-            bytes=len(note) + len(text),
-            images=0,
-            files=_files(name),
+            bytes=sum(len(data) for _, data in written),
+            images=images,
+            files=_files(result, name),
         )
+
+    async def _write_export(self, file: str, data: bytes) -> None:
+        """내보낼 파일 하나를 EXPORT_DIR에 쓴다. 실패는 보일 경로와 errno로 고른 이유로."""
+        try:
+            await asyncio.to_thread(_write, Path(config.EXPORT_DIR), file, data)
+        except OSError as e:
+            reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
+            raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}", reason=reason) from e

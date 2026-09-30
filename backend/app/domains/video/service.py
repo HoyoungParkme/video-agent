@@ -354,10 +354,11 @@ class VideoService:
     async def delete(self, video_id: int) -> None:
         """VA-MS-001#VideoService.delete
 
-        영상과 딸린 것 전부 — 작업 · 조각 · 스크립트 · 요약 · 챕터 · 추천 질문 · 대화는 FK cascade가
-        지우고(앱이 자식을 차례로 지우지 않는다), 커밋 뒤 임시 폴더 `data/tmp/{id}`를 지운다.
-        진행 중 작업은 라우터가 먼저 JobService.cancel로 멈춘다 — 여기서는 멈춰 있다고 본다.
-        inbox 원본은 건드리지 않는다(INFRA C4).
+        영상과 딸린 것 전부 — 작업 · 조각 · 스크립트 · 요약 · 챕터 · 장면 · 추천 질문 · 대화는
+        FK cascade가 지우고(앱이 자식을 차례로 지우지 않는다), 커밋 뒤 임시 폴더 `data/tmp/{id}`와
+        장면 폴더 `data/frames/{id}`를 지운다. 진행 중 작업은 라우터가 먼저 JobService.cancel로,
+        장면 채우기는 AnalysisService.cancel_tasks로 멈춘다 — 여기서는 멈춰 있다고 본다.
+        inbox 원본과 내보낸 노트 · 그림은 건드리지 않는다(INFRA C4).
 
         Args:
             video_id: 영상 id
@@ -371,3 +372,5 @@ class VideoService:
         # 수백 MB 음성 · 조각 파일일 수 있다 — 지우는 동안 다른 요청을 막지 않게 스레드로
         tmp = Path(config.DATA_DIR) / "tmp" / str(video_id)
         await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
+        frames = Path(config.FRAMES_DIR) / str(video_id)
+        await asyncio.to_thread(shutil.rmtree, frames, ignore_errors=True)

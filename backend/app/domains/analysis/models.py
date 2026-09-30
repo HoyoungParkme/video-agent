@@ -1,4 +1,5 @@
-"""결과 테이블 일곱(VA-DOM-003 transcripts ~ suggested_questions)과 그 열거형(VA-DOM-002 2.5)."""
+"""결과 테이블 여덟(VA-DOM-003 transcripts ~ suggested_questions · chapter_frames)과 그 열거형
+(VA-DOM-002 2.5)."""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -31,6 +33,13 @@ class TranscriptSource(StrEnum):
     caption_manual = "caption_manual"
     caption_auto = "caption_auto"
     stt = "stt"
+
+
+class FrameSource(StrEnum):
+    """장면을 어디서 얻었나 — YouTube 스토리보드 칸 · 로컬 원본 프레임."""
+
+    storyboard = "storyboard"
+    local_frame = "local_frame"
 
 
 class TranscriptRow(Base):
@@ -151,3 +160,32 @@ class SuggestedQuestionRow(Base):
     video_id: Mapped[int] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"))
     seq: Mapped[int]
     text: Mapped[str] = mapped_column(Text)
+
+
+class ChapterFrameRow(Base):
+    """챕터의 대표 장면(DOM-002 2.3 ChapterFrame). 챕터마다 0..1.
+
+    얻지 못한 챕터도 그림 컬럼이 모두 null인 행으로 남긴다 — 「해 봤다」를 알아야 옛 결과를
+    다시 채우지 않는다. CHECK가 반쪽 행을 막는다(DOM-003 4장 7). 그림 파일은 DB 밖이다.
+    """
+
+    __tablename__ = "chapter_frames"
+    __table_args__ = (
+        UniqueConstraint("chapter_id"),
+        CheckConstraint(
+            "(path IS NULL AND sec IS NULL AND source IS NULL AND width IS NULL AND height IS NULL)"
+            " OR (path IS NOT NULL AND sec IS NOT NULL AND source IS NOT NULL"
+            " AND width IS NOT NULL AND height IS NOT NULL)",
+            name="all_or_none",
+        ),
+        CheckConstraint("sec >= 0", name="sec_nonnegative"),
+        CheckConstraint("width > 0 AND height > 0", name="size_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"))
+    sec: Mapped[float | None] = mapped_column(SEC)
+    source: Mapped[FrameSource | None] = mapped_column(str_enum(FrameSource, 12))
+    width: Mapped[int | None] = mapped_column(SmallInteger)
+    height: Mapped[int | None] = mapped_column(SmallInteger)
+    path: Mapped[str | None] = mapped_column(String(500))

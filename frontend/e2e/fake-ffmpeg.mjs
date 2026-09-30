@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 // 가짜 ffmpeg · ffprobe — E2E의 api가 FFMPEG_BIN · FFPROBE_BIN으로 부른다(VA-MS-007 ffmpeg.*).
-// 한 파일이 인자 모양으로 역할을 가른다: -show_format 재기 · -af 무음 · -c copy 자르기 · -vn 추출.
+// 한 파일이 인자 모양으로 역할을 가른다: -show_format 재기 · -af 무음 · -c copy 자르기 · -vn 추출 ·
+// crop= 스토리보드 칸 자르기 · scale= 프레임 뽑기.
 // 미디어 파일은 길이 · 음성 유무를 담은 JSON 한 줄이다 — inbox의 가짜 파일도, 추출 · 자르기가 쓰는 파일도.
 // JSON이 아니면 진짜 ffprobe처럼 "Invalid data"로 실패한다. 무음은 600초마다 5초 뒤에 둔다.
+// 장면(칸 · 프레임)은 작은 JPEG 한 장이다. 스토리보드 장 주소에 delay=ms가 있으면 그만큼 늦게 끝난다 —
+// 진행 화면에서 장면 칸이 차는 것을 보이게(e2e/fake-ytdlp.mjs).
 // `--make-inbox <폴더>`는 E2E inbox를 만든다(파일 이름은 e2e/*.spec.ts와 같은 값).
 import { mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -17,6 +20,12 @@ const INBOX = [
   ["notes.mp4", null], // 영상 · 음성이 아니다(열 수 없다)
   ["marathon_0901.mp4", { duration: 15150, audio: true }], // S6 — 4:12:30, 3시간 초과
 ];
+
+// 64×36 JPEG(청록 그러데이션) — 진짜 ffmpeg로 만든 것
+const JPEG = Buffer.from(
+  "/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYxLjE5LjEwMQD/2wBDAAgQEBMQExYWFhYWFhoYGhsbGxoaGhobGxsdHR0iIiIdHR0bGx0dICAiIiUmJSMjIiMmJigoKDAwLi44ODpFRVP/xABZAAEBAQEBAQEBAAAAAAAAAAAFAwABCAQCBwEAAwEBAQAAAAAAAAAAAAAAAAECAwQGEAEBAQAAAAAAAAAAAAAAAAAAAgERAQEAAAAAAAAAAAAAAAAAAAAB/8AAEQgAJABAAwESAAISAAMSAP/aAAwDAQACEQMRAD8A/rl4teKDlp0JeK3iiYU6FvFbxQYVVCXi14oMKdCXi14omFOhLxW8UGFVQl4teKDCnRzumGYelKfvXGHpzEXi14omNOhLxW8WTCqoS8WvFBhToS8WvFEwp0JeK3iyYVVCXi14oMKdDUpeKDE69JM4w9MHw27ZhFFE21qDGiirazDGiibdtQZUUTbWoMaKKtrUGNOibdswxor/2Q==",
+  "base64",
+);
 
 const args = process.argv.slice(2);
 
@@ -52,6 +61,13 @@ if (args[0] === "--make-inbox") {
   process.exit(0);
 }
 
+if (args.includes("-show_format") && args[args.length - 1].endsWith(".jpg")) {
+  // 뽑은 프레임의 크기 재기(frames_local) — 폭 640, 16:9
+  const streams = [{ codec_type: "video", width: 640, height: 360 }];
+  process.stdout.write(JSON.stringify({ format: {}, streams }));
+  process.exit(0);
+}
+
 if (args.includes("-show_format")) {
   const info = media(args[args.length - 1]);
   const streams = [];
@@ -77,6 +93,21 @@ if (args.includes("-c") && after("-c") === "copy") {
   const start = Number(after("-ss"));
   const end = Math.min(Number(after("-to")), duration);
   write(args[args.length - 1], end - start);
+  process.exit(0);
+}
+
+if (args.includes("-vf") && after("-vf").startsWith("crop=")) {
+  // 스토리보드 칸 자르기 — 장 주소는 가짜 yt-dlp가 준 것이다(받지 않는다)
+  const delay = Number(new URL(after("-i")).searchParams.get("delay") ?? 0);
+  if (delay) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
+  writeFileSync(args[args.length - 1], JPEG);
+  process.exit(0);
+}
+
+if (args.includes("-vf") && after("-vf").startsWith("scale=")) {
+  // 로컬 원본에서 프레임 한 장 — 영상 끝을 넘는 시각이면 진짜처럼 파일을 쓰지 않는다
+  const { duration } = media(after("-i"));
+  if (Number(after("-ss")) <= duration) writeFileSync(args[args.length - 1], JPEG);
   process.exit(0);
 }
 

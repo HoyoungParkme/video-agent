@@ -36,6 +36,7 @@ from app.domains.job.schemas import (
     ChunkPlan,
     Chunks,
     Estimate,
+    FrameProgress,
     Job,
     JobError,
     JobSummary,
@@ -107,7 +108,8 @@ class JobService:
     def stages_for(video: Video) -> list[JobStage]:
         """VA-MS-002#JobService.stages_for
 
-        출처에 필요한 단계만, 순서대로 — 화면의 단계 목록이 이것을 그대로 그린다.
+        출처에 필요한 단계만, 순서대로 — 화면의 단계 목록이 이것을 그대로 그린다. 장면 단계는 늘
+        맨 끝이고 로컬 음성에는 없다(그릴 장면이 없다).
 
         Args:
             video: 영상(출처 · 자막 유무 · 파일 이름)
@@ -115,17 +117,19 @@ class JobService:
         Returns:
             단계 목록
         """
-        tail = [JobStage.summarize, JobStage.chapter, JobStage.suggest]
+        text = [JobStage.summarize, JobStage.chapter, JobStage.suggest]
         if video.source_kind == "youtube":
             if video.has_captions:
-                return [JobStage.download, *tail]
-            return [JobStage.download, JobStage.transcribe, *tail]
+                return [JobStage.download, *text, JobStage.frames]
+            return [JobStage.download, JobStage.transcribe, *text, JobStage.frames]
         if _is_audio(video):
-            return [JobStage.transcribe, *tail]
-        return [JobStage.extract, JobStage.transcribe, *tail]
+            return [JobStage.transcribe, *text]
+        return [JobStage.extract, JobStage.transcribe, *text, JobStage.frames]
 
     @staticmethod
-    def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None:
+    def remaining_sec(
+        row: AnalysisJobRow, chunks: list[AudioChunkRow], frames: FrameProgress | None = None
+    ) -> int | None:
         """VA-MS-002#JobService.remaining_sec
 
         남은 시간 — 작업 전체가 끝날 때까지. 끝난 단계가 예상보다 빨랐거나 늦었던 차이는 뒤로
@@ -134,11 +138,14 @@ class JobService:
         끝난 조각(단계 시작 뒤에 끝난 것)만 센다. 다시 시도 뒤 이전 실행의 조각까지 세면 속도가
         부푼다. 아직 끝난 조각이 없으면 조각당 예상 시간으로. 요약 세 단계는 그 몫에서 세 단계에
         쓴 시간을 빼고, 그 앞 단계(와 조각을 나누는 중)는 예상 전체에서 지난 시간을 뺀다.
-        0 아래로 가지 않는다.
+        장면 단계가 있는 작업은 받아쓰기 · 요약 단계의 값에 장면 몫을 더하고(요약이 늦어도 줄이지
+        않는다), 장면 단계 안에서는 남은 칸 × 한 장 예상 — 칸이 아직 없으면 장면 몫에서 지난 시간을
+        뺀다. 0 아래로 가지 않는다.
 
         Args:
             row: 작업 행
             chunks: 작업의 조각들
+            frames: 장면 칸(라우터가 AnalysisService.frame_progress로 받아 넘긴다)
 
         Returns:
             초. 돌고 있지 않으면 None, 0이면 화면이 비운다
@@ -146,6 +153,7 @@ class JobService:
         if row.status != JobStatus.running:
             return None
         text = config.TEXT_EST_SEC
+        pics = config.FRAMES_EST_SEC if JobStage.frames in row.stages else 0
         if row.stage == JobStage.transcribe and chunks:
             left = sum(1 for c in chunks if c.state != ChunkState.done)
             now_done = sum(
@@ -154,27 +162,39 @@ class JobService:
                 if c.state == ChunkState.done and c.done_at and c.done_at >= row.stage_started_at
             )
             if not now_done:
-                return math.ceil(left / row.concurrency) * config.CHUNK_EST_SEC + text
+                return math.ceil(left / row.concurrency) * config.CHUNK_EST_SEC + text + pics
             rate = now_done / max(_elapsed(row.stage_started_at), 1.0)  # 초당 조각
-            return math.ceil(left / rate) + text
+            return math.ceil(left / rate) + text + pics
         if row.stage in TEXT_STAGES:
             spent = sum(row.stage_durations_sec.get(s.value, 0) for s in TEXT_STAGES)
-            return max(round(text - spent - _elapsed(row.stage_started_at)), 0)
+            return max(round(text - spent - _elapsed(row.stage_started_at)), 0) + pics
+        if row.stage == JobStage.frames:
+            if frames is not None and frames.items:
+                left = sum(1 for i in frames.items if i.state in ("waiting", "in_flight"))
+                return left * config.FRAME_EST_SEC
+            return max(round(pics - _elapsed(row.stage_started_at)), 0)
         spent = sum(row.stage_durations_sec.values()) + _elapsed(row.stage_started_at)
         return max(round(row.est_seconds - spent), 0)
 
     @staticmethod
     def to_job(
-        row: AnalysisJobRow, chunks: list[AudioChunkRow], queue_position: int | None = None
+        row: AnalysisJobRow,
+        chunks: list[AudioChunkRow],
+        queue_position: int | None = None,
+        frames: FrameProgress | None = None,
     ) -> Job:
         """VA-MS-002#JobService.to_job
 
         행 + 조각 → 폴링 응답. 차례는 DB를 읽어야 해서 부르는 쪽이 세어 넘긴다 — 순수 함수.
+        장면 칸은 장면 단계가 있는 작업에만 싣고, 받지 않았으면 빈 칸이다 — 시작 · 다시 시도의
+        응답은 장면 칸을 받지 않는다(시작 때는 챕터가 없어 빈 칸이 참값, 다시 시도는 첫 폴링이
+        채운다).
 
         Args:
             row: 작업 행
             chunks: 조각들(번호순)
             queue_position: 대기열에서의 차례
+            frames: 장면 칸(AnalysisService.frame_progress)
 
         Returns:
             Job
@@ -213,8 +233,13 @@ class JobService:
             stages=row.stages,
             stage_index=row.stages.index(row.stage) + 1 if row.stage != JobStage.pending else 1,
             progress_pct=row.progress_pct,
-            remaining_sec=JobService.remaining_sec(row, chunks),
+            remaining_sec=JobService.remaining_sec(row, chunks, frames),
             chunks=chunks_dto,
+            frames=(
+                None
+                if JobStage.frames not in row.stages
+                else frames or FrameProgress(done=0, total=0, items=[])
+            ),
             concurrency=row.concurrency if JobStage.transcribe in row.stages else None,
             models=Models(stt=row.stt_model, text=row.text_model),
             error=error,
@@ -291,6 +316,8 @@ class JobService:
             # 내려받기 · 추출 · 로컬 음성 변환 몫 — 길이(분)만큼의 초. 로컬 음성도 받아쓰기 단계가
             # 조각을 나누기 전에 mp3로 바꾼다
             seconds += math.ceil(video.duration_sec / 60)
+        if JobStage.frames in self.stages_for(video):  # 장면 단계 몫 — 로컬 음성에는 없다
+            seconds += config.FRAMES_EST_SEC
         # 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 3천 토큰으로 본다 — 추론
         # 모델은 생각한 토큰도 출력으로 센다(추론 강도 low 실측 2.5천, 카드 C)
         in_tokens = video.duration_sec / 60 * config.TOKENS_PER_MIN
@@ -370,13 +397,16 @@ class JobService:
     def _exists(row: AnalysisJobRow) -> JobExists:
         return JobExists(job_id=row.id, job_status=row.status.value)
 
-    async def progress(self, video_id: int) -> Job:
+    async def progress(self, video_id: int, frames: FrameProgress | None) -> Job:
         """VA-MS-002#JobService.progress
 
         폴링 응답 — 영상의 가장 최근 작업. 1초마다 불리므로 쿼리 둘(대기 중이면 셋)로 끝난다.
+        장면 칸은 라우터가 AnalysisService.frame_progress로 받아 넘긴다 — 작업 묶음은 장면
+        테이블을 모른다. 싣는지는 to_job이 단계 목록으로 정한다.
 
         Args:
             video_id: 영상 id
+            frames: 장면 칸
 
         Returns:
             단계 · 진행률 · 조각 · 남은 시간 · 실패 내용
@@ -388,7 +418,7 @@ class JobService:
         if row is None:
             raise NotFound(resource="job", id=video_id)
         chunks = await crud.chunks(self.session, row.id)
-        return self.to_job(row, chunks, await self.queue_position(row))
+        return self.to_job(row, chunks, await self.queue_position(row), frames)
 
     async def latest(self, video_id: int) -> JobSummary | None:
         """VA-MS-002#JobService.latest

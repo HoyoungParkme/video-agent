@@ -29,9 +29,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 | `config.CHUNK_MAX_ATTEMPTS` | 3 | 화면 문구 '3번 다시 보냈지만'([[VA-UI-002#UI-3]]) |
 | `config.CHUNK_RETRY_WAIT_SEC` | 2 | 조각을 다시 보내기 전에 기다리는 첫 시간. 다음은 두 배(2초 · 4초). SDK 재시도를 꺼서([[VA-MS-007]] `OPENAI_MAX_RETRIES`) 요청 한도 · 일시 오류에 바로 다시 보내면 세 번이 1초 안에 끝난다 |
 | `config.CHUNK_EST_SEC` | 45 | 조각 하나(10분)의 받아쓰기 예상 시간. 예상치 계산용. 측정 뒤 조정 |
-| `config.TEXT_EST_SEC` | 60 | 요약 · 챕터 · 추천 질문 세 단계 합. 자막 있음의 '약 1분' |
-| `config.FRAMES_EST_SEC` | 30 | 장면 단계 전체의 예상 시간(사전 안내 · 남은 시간). 한 장 1~2초에 챕터 8개 안팎이면 10~20초, YouTube는 영상 정보를 한 번 받는 몫이 더 든다(카드 D 조사). 3시간 영상은 챕터가 30개라 1분 안팎 — 카드 D2에서 재어 고친다 |
-| `config.FRAME_EST_SEC` | 2 | 장면 단계 안에서 남은 장면 한 장의 예상 시간(남은 시간 계산) |
+| `config.TEXT_EST_SEC` | 45 | 요약 · 챕터 · 추천 질문 세 단계 합. 실측: 추론 강도 low(지금 기본)로 분석한 42분 · 19분 영상 21초 · 22초, 카드 C의 medium 셋 43 · 59 · 72초. 첫 값 60이면 장면 몫을 더한 자막 있음이 '약 2분'이 된다 — 장면 몫 15와 합쳐 자막 있음 '약 1분'(카드 D2) |
+| `config.FRAMES_EST_SEC` | 15 | 장면 단계 전체의 예상 시간(사전 안내 · 남은 시간). 실측(카드 D2, 옛 결과 채우기 — 장면 단계와 같은 `make_frames`): YouTube 스토리보드 챕터 3 · 5 · 8 · 10개 5.1 · 6.2 · 13.2 · 10.2초(영상 정보 받기 3~4초 + 칸마다 약 1초), 로컬 2:30:30 챕터 27개 12.4초 — 모두 얻었다 |
+| `config.FRAME_EST_SEC` | 1 | 장면 단계 안에서 남은 장면 한 장의 예상 시간(남은 시간 계산). 실측 YouTube 약 1초 · 로컬 0.46초(카드 D2) |
 | `config.TOKENS_PER_MIN` | 450 | 스크립트를 한 번 보낼 때 영상 1분당 입력 토큰. 텍스트 비용 계산용. 실측(카드 C, gpt-5-mini): 자막 404 · 받아쓰기 323 · 497(줄 앞 시각 표기까지) — 첫 값 200은 비용을 절반쯤으로 예상했다 |
 | `config.WORKER_IDLE_SEC` | 5 | 워커가 신호 없이도 대기열을 다시 보는 간격. 깨우는 신호를 놓쳤을 때의 안전망이라 짧을 필요가 없다 |
 
@@ -95,7 +95,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** `SettingsService.current_models`
 
-**테스트 관점** 자막 있음 50분 → `chunks=None`, `stt_cost=0`, `seconds=90`(텍스트 60 + 장면 30), `text_cost>0` · 로컬 음성 → 장면 몫이 없다 · 로컬 150분 → `chunks=15`, `concurrency=3`, `stt_minutes=150`, `stt_cost=0.9`(단가 0.006) · 상태가 `in_progress`면 `None` · 단가를 바꾸면 값이 따라 바뀐다(설정에서 읽는다)
+**테스트 관점** 자막 있음 50분 → `chunks=None`, `stt_cost=0`, `seconds=60`(텍스트 45 + 장면 15 — '약 1분'), `text_cost>0` · 로컬 음성 → 장면 몫이 없다 · 로컬 150분 → `chunks=15`, `concurrency=3`, `stt_minutes=150`, `stt_cost=0.9`(단가 0.006) · 상태가 `in_progress`면 `None` · 단가를 바꾸면 값이 따라 바뀐다(설정에서 읽는다)
 
 ---
 
@@ -379,7 +379,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 - elif `row.stage == frames` → if `frames`에 칸이 있음 → `→ (waiting · in_flight 칸 수) × config.FRAME_EST_SEC` · else → `→ max(pics − (now − row.stage_started_at), 0)`
 - else(자막 가져오기 · 음성 내려받기 · 음성 추출 · 받아쓰기에 들어갔지만 조각 행이 없음 — 음성을 나누는 중) → `→ max(row.est_seconds − Σ row.stage_durations_sec.values() − (now − row.stage_started_at), 0)` — 앞 단계라 예상 전체에서 지난 시간을 뺀다. 0이 되면 화면이 '약 0초'가 아니라 값을 비운다([[VA-API-001#GET/api/videos/{id}/job]] — 0이면 화면이 비운다)
 
-**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 + 요약 세 단계 몫 · 첫 조각 완료 전에는 예상치 기반 · 받아쓰기가 예상보다 빨리 끝나도 요약 단계는 세 단계 몫에서 시작한다(받아쓰기 때보다 늘지 않는다) · 챕터 단계에서는 요약에 쓴 시간만큼 줄어 있다 · 요약 세 단계가 예상보다 오래 걸리면 0 · 다시 시도 뒤 이전 실행의 완료 조각은 속도에 안 든다 · 조각 행이 아직 없으면 예상 전체 − 지난 시간 · 받아쓰기 · 요약 단계의 값에 장면 몫 30초가 더해진다(장면 단계가 있는 작업만) · 장면 단계에서 칸 8개 중 5개가 끝났으면 3 × 2 = 6초
+**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 + 요약 세 단계 몫 · 첫 조각 완료 전에는 예상치 기반 · 받아쓰기가 예상보다 빨리 끝나도 요약 단계는 세 단계 몫에서 시작한다(받아쓰기 때보다 늘지 않는다) · 챕터 단계에서는 요약에 쓴 시간만큼 줄어 있다 · 요약 세 단계가 예상보다 오래 걸리면 0 · 다시 시도 뒤 이전 실행의 완료 조각은 속도에 안 든다 · 조각 행이 아직 없으면 예상 전체 − 지난 시간 · 받아쓰기 · 요약 단계의 값에 장면 몫 15초가 더해진다(장면 단계가 있는 작업만) · 장면 단계에서 칸 8개 중 5개가 끝났으면 3 × 1 = 3초
 
 ---
 
@@ -544,7 +544,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 - [x] (반영: 클래스 명세 v9 · ERD v3) **되먹임** — `AnalysisJob`에 `stage_started_at` 속성(`analysis_jobs.stage_started_at timestamptz`)이 필요하다. 걸린 시간과 남은 시간 계산의 기준이고, 재시도 뒤에는 `started_at`으로 계산할 수 없다. [[VA-DOM-002#AnalysisJob]] · [[VA-DOM-003#analysis_jobs]]에 더한다
 - [x] 조각이 없는 단계의 남은 시간을 0까지 내려 주는 것 — 결정: 0을 주고 화면이 비운다([[VA-API-001]] v2 4장 `remaining_sec`)
 - [ ] 진행률 반올림 — 30을 네 단계로 나누면 7.5. 단계마다 내림하고 마지막 단계에서 100을 맞춘다로 갈지. 장면 단계가 생겨 새 작업은 나눗셈이 모두 정수다(30 ÷ 5 · 100 ÷ 5 · 30 ÷ 3) — 남는 것은 장면 단계 전에 실패해 다시 시도하는 옛 작업뿐이다
-- [ ] 장면 단계 예상 시간 `FRAMES_EST_SEC` 30 · `FRAME_EST_SEC` 2 — 카드 D2에서 실제 영상(42분 YouTube · 2시간 30분 로컬)으로 잰다
+- [x] 장면 단계 예상 시간 `FRAMES_EST_SEC` 30 · `FRAME_EST_SEC` 2 — 카드 D2에서 실제 영상(42분 YouTube · 2시간 30분 로컬)으로 잰다. 결정(카드 D2, 실제 결과 다섯을 옛 결과 채우기로 잼 — 장면 단계와 같은 함수): `FRAMES_EST_SEC` 15 · `FRAME_EST_SEC` 1(YouTube 5.1~13.2초 · 로컬 27장 12.4초). 30이면 자막 있음 예상이 60 + 30 = 90초로 '약 2분'이 되어 [[VA-UI-002#UI-2]] · [[VA-UI-001]]의 '약 1분'과 [[VA-PRD-001#N1]](자막 있는 YouTube 1분 이내)에 어긋났다 — 실제로는 추론 강도 low에서 요약 세 단계 21~22초라 `TEXT_EST_SEC`도 60 → 45로 낮춰 자막 있음이 60초('약 1분')다
 - [x] 첫 값 여섯(`CHUNK_SEC` · `STT_CONCURRENCY` · `CHUNK_MAX_ATTEMPTS` · `CHUNK_EST_SEC` · `TEXT_EST_SEC` · `TOKENS_PER_MIN`)은 측정 뒤 조정 — 결정(카드 C, 실제 영상 셋): `TOKENS_PER_MIN`만 200 → 450, 나머지는 그대로다. 받아쓰기는 영상 1시간당 2.7 · 3.0분으로 [[VA-PRD-001#N1]] 목표 안이고(조각 600초 · 동시 3), 조각 한 차례 15~57초(예상 45초), 텍스트 세 단계 43~72초(예상 60초), 조각 재시도 0번이었다. 추출 · 내려받기 몫(`duration_sec / 60`초)은 넉넉하다(2시간 30분 추출 42초 · 31분 내려받기 19초) — 예상 시간은 실제보다 조금 길게 나온다. [[VA-INFRA-001]] 9절의 조각 길이 · 병렬 수 미결을 이 값으로 닫는다
 - [x] 동시 분석 대기열 — 결정: 대기열(사용자 결정 2026-09-21). `start` · `retry`는 `queued`로 넣고, `claim_next` · `wake` · `wait_for_work` · `queue_position` · `pipeline.worker`를 더했다. 부분 unique 인덱스는 그대로다
 - [x] 워커가 `Video`를 얻는 길(시퀀스 되먹임 #7) — 결정: `main.py`가 `worker(load_video)`로 넘긴다. 작업 행에 영상 값을 복사하는 안은 같은 값이 두 테이블에 생기고, 영상 정보가 덮어써질 때([[VA-API-001#POST/api/videos]] 다시 넣기) 어긋날 수 있어 버렸다. `run(job_id)`로 시그니처를 줄이는 안은 `AnalysisService.generate_*`가 `Video`를 받고 있어 고칠 곳이 더 많다

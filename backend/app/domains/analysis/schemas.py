@@ -1,6 +1,6 @@
 """결과 묶음의 응답 형태(VA-API-001 4장)와 내부 타입(VA-DOM-002 2.6).
 
-내부 타입 — CaptionLine · SummaryDraft · ChapterDraft. 포트와 서비스 사이에서만 오간다.
+내부 타입 — CaptionLine · SummaryDraft · ChapterDraft · FrameShot. 포트와 서비스 사이에서만 오간다.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.core.settings import Models
-from app.domains.analysis.models import TranscriptSource
+from app.domains.analysis.models import FrameSource, TranscriptSource
 from app.domains.video.schemas import Video
 
 
@@ -55,12 +55,41 @@ class Part(BaseModel):
     chapter_count: int
 
 
+class FramesState(StrEnum):
+    """결과의 장면 상태 — absent: 장면 단계 전 결과(채울 수 있다) · making: 만드는 중 · done: 끝남 ·
+    unavailable: 음성 파일 · 원본 없음(VA-API-001 FramesState)."""
+
+    absent = "absent"
+    making = "making"
+    done = "done"
+    unavailable = "unavailable"
+
+
+class Frame(BaseModel):
+    """챕터의 대표 장면. sec는 실제로 잘라 온 장면의 시각(챕터 시작과 다를 수 있다)."""
+
+    chapter_seq: int
+    sec: float
+    source: FrameSource
+    width: int
+    height: int
+    url: str
+
+
+class FrameSet(BaseModel):
+    """장면 상태와 장면이 있는 챕터의 장면(챕터 순서)."""
+
+    state: FramesState
+    frames: list[Frame]
+
+
 class Chapter(BaseModel):
     seq: int
     part_seq: int | None
     start_sec: float
     title: str
     bullets: list[str]
+    frame: Frame | None = None  # 대표 장면 — 없으면 null(UI-4 6.7이 없다)
 
 
 class SuggestedQuestion(BaseModel):
@@ -79,6 +108,7 @@ class Result(BaseModel):
     suggested_questions: list[SuggestedQuestion]
     models: Models
     analyzed_at: datetime
+    frames_state: FramesState
 
 
 class ExportMethod(StrEnum):
@@ -150,3 +180,14 @@ class ChapterDraft:
 
     parts: list[tuple[str, float]]
     chapters: list[tuple[int | None, float, str, list[str]]]
+
+
+@dataclass(frozen=True)
+class FrameShot:
+    """얻은 장면 한 장 — 실제 칸의 시각(챕터 시작과 몇 초 다를 수 있다) · 크기 · 임시 파일 경로."""
+
+    sec: float
+    source: FrameSource
+    width: int
+    height: int
+    path: str
