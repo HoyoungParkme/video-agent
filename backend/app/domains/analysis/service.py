@@ -154,11 +154,18 @@ def _frame_list(
     return out
 
 
-def _files(name: str) -> list[ExportFile]:
-    # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다
+def _files(result: Result, name: str) -> list[ExportFile]:
+    # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다.
+    # 노트 · 스크립트, 그리고 장면이 있는 챕터마다 장면 그림(챕터 순서)
+    duration = result.video.duration_sec
     return [
         ExportFile(kind="note", name=f"{name}.md"),
         ExportFile(kind="script", name=f"{name}{SCRIPT_SUFFIX}.md"),
+        *(
+            ExportFile(kind="frame", name=export.frame_name(name, c.start_sec, duration))
+            for c in result.chapters
+            if c.frame is not None
+        ),
     ]
 
 
@@ -830,7 +837,7 @@ class AnalysisService:
         name = self.filename_for(video)
         past = turns if with_chat else None
         if method == ExportMethod.file:
-            md, files = export.build(result, past, name), _files(name)
+            md, files = export.build(result, past, name), _files(result, name)
         else:
             md, files = export.build(result, past, None), []
         return ExportPreview(
@@ -876,5 +883,5 @@ class AnalysisService:
             path=f"{EXPORT_SHOWN}/{name}.md",
             bytes=len(note) + len(text),
             images=0,
-            files=_files(name),
+            files=_files(result, name),
         )

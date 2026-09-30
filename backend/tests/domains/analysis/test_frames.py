@@ -11,7 +11,7 @@ from app.core.config import config
 from app.core.errors import FramesUnavailable, NotFound, ResultNotReady
 from app.domains.analysis import crud
 from app.domains.analysis.models import FrameSource, SummaryRow
-from app.domains.analysis.schemas import FramesState
+from app.domains.analysis.schemas import ExportMethod, FramesState
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
@@ -377,3 +377,42 @@ async def test_result_has_frame_only_where_picture_and_file(
     assert first.frame is not None and first.frame.url == f"/api/videos/{video.id}/frames/1"
     assert (first.frame.sec, first.frame.source) == (1.0, FrameSource.storyboard)
     assert second.frame is None and third.frame is None  # 그림 없는 행 · 파일 없는 행
+
+
+# --- 내보내기의 장면
+
+
+async def _with_frames(db, make, storyboard, local_frames, none_at: set[int]):
+    """결과가 다 있는 영상(챕터 셋)과 장면 — none_at 차례는 장면이 없다."""
+    video = await _video(db, make, title="RAG 운영기")
+    await make.transcript(video.id, ["x"] * 30, step=100)
+    db.add(SummaryRow(video_id=video.id, one_liner="한 줄", model="gpt-5-mini"))
+    await db.commit()
+    storyboard.none_at = none_at
+    svc = _svc(db, storyboard, local_frames)
+    await svc.make_frames(video)
+    return video, svc
+
+
+async def test_export_file_lists_frames_in_chapter_order(
+    db, make, storyboard, local_frames, env_file
+) -> None:
+    video, svc = await _with_frames(db, make, storyboard, local_frames, {1})
+    got = await svc.export_markdown(video, False, [], ExportMethod.file)
+    assert [(f.kind, f.name) for f in got.files] == [
+        ("note", "RAG 운영기.md"),
+        ("script", "RAG 운영기 스크립트.md"),
+        ("frame", "RAG 운영기 00-00.jpg"),
+        ("frame", "RAG 운영기 20-00.jpg"),
+    ]
+    assert got.markdown.count("![[RAG 운영기 ") == 2  # 장면이 있는 챕터에만
+    copied = await svc.export_markdown(video, False, [], ExportMethod.clipboard)
+    assert copied.files == [] and "![[" not in copied.markdown
+
+
+async def test_export_without_frames_has_two_files(
+    db, make, storyboard, local_frames, env_file
+) -> None:
+    video, svc = await _with_frames(db, make, storyboard, local_frames, {0, 1, 2})
+    got = await svc.export_markdown(video, False, [], ExportMethod.file)
+    assert [f.kind for f in got.files] == ["note", "script"]
