@@ -14,10 +14,10 @@ upstream: [VA-DOM-002, VA-DOM-001, VA-API-001, VA-INFRA-001]
 
 클래스 명세의 엔티티 클래스를 **테이블**로 옮긴다. ERD는 그림, DD는 컬럼마다 타입·제약·의미를 적은 설명서다. 둘은 한 세트다.
 
-ORM 모델 = 도메인 객체로 정했으므로([[VA-DOM-002]] 0장) 이 문서의 테이블 11개는 [[VA-DOM-002]] 2장의 엔티티 클래스 11개와 1:1이다. 클래스가 바뀌면 이 문서에 `확인 필요`가 붙어야 한다. 테이블 이름은 클래스 이름의 snake_case 복수형이다 — `Video` ↔ `videos`, `AnalysisJob` ↔ `analysis_jobs`.
+ORM 모델 = 도메인 객체로 정했으므로([[VA-DOM-002]] 0장) 이 문서의 테이블 13개는 [[VA-DOM-002]] 2장의 엔티티 클래스 13개와 1:1이다. 클래스가 바뀌면 이 문서에 `확인 필요`가 붙어야 한다. 테이블 이름은 클래스 이름의 snake_case 복수형이다 — `Video` ↔ `videos`, `AnalysisJob` ↔ `analysis_jobs`.
 
 **전제 (앞 단계에서 결정)**
-- PostgreSQL 16, SQLAlchemy 2 async, Alembic([[VA-INFRA-001]] 3절). 첫 리비전 하나가 11개 테이블 전부다
+- PostgreSQL 16, SQLAlchemy 2 async, Alembic([[VA-INFRA-001]] 3절). 첫 리비전이 11개 테이블이었고, 결과 그림 · 파일 올리기(카드 D2 · D3 · D4)가 테이블 둘과 컬럼 하나를 카드마다 한 리비전씩 더한다(3장 마이그레이션)
 - 기본키는 대리키(int 자동 증가). 사람이 부르는 값(출처 식별자)은 unique 제약
 - 열거형은 DB enum이 아니라 `varchar` + 앱 검증. 값을 더할 때 마이그레이션을 피한다([[VA-DOM-002]] 2.5)
 - 사용자 · 계정 테이블이 없다. 사용자 한 명, 인증 없음([[VA-INFRA-001#C5]])
@@ -42,6 +42,8 @@ erDiagram
     parts ||--o{ chapters : "묶음"
     videos ||--o{ suggested_questions : "추천 질문"
     videos ||--o{ chat_turns : "대화"
+    chapters ||--o| chapter_frames : "대표 장면"
+    videos ||--o| infographics : "인포그래픽"
 
     videos {
         int id PK
@@ -51,6 +53,7 @@ erDiagram
         varchar channel
         int duration_sec
         varchar origin
+        boolean uploaded
         boolean has_captions
         varchar caption_language
         varchar caption_kind
@@ -151,16 +154,40 @@ erDiagram
         varchar model
         timestamptz asked_at
     }
+    chapter_frames {
+        int id PK
+        int chapter_id FK,UK
+        numeric sec
+        varchar source
+        smallint width
+        smallint height
+        varchar path
+    }
+    infographics {
+        int id PK
+        int video_id FK,UK
+        varchar state
+        varchar model
+        varchar quality
+        smallint width
+        smallint height
+        numeric cost_usd
+        varchar path
+        text error_reason
+        timestamptz created_at
+    }
 ```
 
 **설계 규칙**
 - 모든 테이블 PK는 `int` 자동 증가(`generated always as identity`). 출처 식별자 `videos.source_id`는 UK — 중복 판정의 근거다([[VA-UC-001#UC-S5]])
 - 때는 전부 `timestamptz`. 영상 속 시각 · 길이는 초 단위 — 길이는 `int`, 구간 · 조각 · 챕터 · 파트의 시각은 `numeric(9,3)`(밀리초까지, 최대 999,999초). `float`를 쓰지 않는다 — 같은 시각을 두 곳(인사이트 `source_secs`와 구간 `start_sec`)에서 비교하므로 표현이 같아야 한다
 - 열거형은 `varchar` + 앱 검증. 값 목록은 [[VA-DOM-002]] 2.5
-- FK는 전부 `on delete cascade`. 영상을 지우면 작업 · 조각 · 스크립트 · 구간 · 요약 · 인사이트 · 파트 · 챕터 · 추천 질문 · 대화가 한 번에 사라진다([[VA-UC-001#UC-H6]] 성공 보장). `chapters.part_id`는 `on delete set null`이 아니라 cascade다 — 파트는 영상과 함께만 지워진다
-- 1:1 관계(`transcripts` · `summaries`)는 `video_id`에 UK를 걸어 강제한다. 재분석은 행을 교체한다([[VA-DOM-001]] 6장, [[VA-DOM-002#AnalysisService]] `save_transcript`)
+- FK는 전부 `on delete cascade`. 영상을 지우면 작업 · 조각 · 스크립트 · 구간 · 요약 · 인사이트 · 파트 · 챕터 · 추천 질문 · 대화 · 대표 장면 · 인포그래픽이 한 번에 사라진다([[VA-UC-001#UC-H6]] 성공 보장). `chapters.part_id`는 `on delete set null`이 아니라 cascade다 — 파트는 영상과 함께만 지워진다
+- 1:1 관계(`transcripts` · `summaries` · `infographics`)는 `video_id`에 UK를 걸어 강제한다. 챕터마다 0..1인 `chapter_frames`는 `chapter_id`에 UK다. 재분석은 행을 교체한다([[VA-DOM-001]] 6장, [[VA-DOM-002#AnalysisService]] `save_transcript`)
 - 목록 속성(`stages` · `stage_durations_sec` · `result` · `source_secs` · `bullets` · `cited_secs`)은 `jsonb`다. 단독으로 조회 · 조인하는 일이 없어 자식 테이블을 만들지 않는다(3장 정규화)
 - **`videos`에 `status` · `analyzed_at`이 없다.** 가장 최근 `analysis_jobs` 행에서 계산한다([[VA-DOM-002#Video]]). 상태가 두 곳에 있으면 어긋난다
+- **올린 사본의 경로는 컬럼이 아니다.** `videos.uploaded`가 true면 사본은 (있는 동안) `data/uploads/{source_id}.{origin의 확장자}`다 — 규칙 하나(`shared/sources.py`)가 푼다([[VA-DOM-002]] 5장 12, 4장 9)
+- **그림 파일은 DB 밖이다.** `chapter_frames.path` · `infographics.path`는 `data/` 안의 파일을 가리킨다. 행은 cascade로 지워지고 파일은 서비스가 지운다([[VA-DOM-002#VideoService]] `delete`, 4장 5)
 - **`running`인 작업은 프로세스 전체에 하나다.** 나머지는 `queued`로 기다린다. 앱은 `running`이 없을 때만 다음 작업을 꺼내고([[VA-DOM-002#JobService]] `claim_next`), DB도 부분 unique 인덱스로 막는다(3장)
 - **영상 하나에 기다리는 · 도는 작업은 하나다.** 앱이 작업이 있는지 먼저 보고([[VA-DOM-002#JobService]] `start`), 같은 영상에 [분석 시작]이 동시에 두 번 오면 DB가 부분 unique 인덱스로 둘째를 막는다(3장 · 4장 6)
 
@@ -181,10 +208,13 @@ erDiagram
 | title | varchar(300) | not null | YouTube 제목 또는 파일 이름 | `RAG 서비스 1년 운영기` |
 | channel | varchar(200) | null 허용 | YouTube 채널. 로컬이면 null | |
 | duration_sec | int | not null, > 0, ≤ 10800 | 길이(초). 3시간 상한은 앱이 등록 때 거부하지만 CHECK로도 막는다([[VA-PRD-001#N2]]) | `3012` |
-| origin | varchar(500) | not null | YouTube URL 또는 inbox 파일 이름. 결과 화면 '원본 영상 열기'와 내보내기 링크의 재료 | `https://www.youtube.com/watch?v=…` |
+| origin | varchar(500) | not null | YouTube URL, inbox 파일 이름 또는 올린 파일의 원래 이름. 결과 화면 '원본 영상 열기'와 내보내기 링크의 재료 | `https://www.youtube.com/watch?v=…` |
+| uploaded | boolean | not null, default false | 원본 자리 — true면 끌어 놓아 올린 사본(`data/uploads`), false면 inbox 파일 또는 YouTube. 사본을 지운 뒤에도 그대로다 — 다시 시도할 때 어디서 읽을지 정한다([[VA-DOM-001]] 5장 6) | `false` |
 | has_captions | boolean | not null | 자막 유무. 사전 안내 판과 단계 목록을 가른다 | `true` |
 | caption_language | varchar(10) | null 허용 | 자막 언어 코드. 자막이 없거나 로컬이면 null | `ko` |
 | caption_kind | varchar(10) | null 허용, CaptionKind | 수동 · 자동 | `manual` |
+
+CHECK: `uploaded`가 true면 `source_kind = 'local'`.
 
 ### analysis_jobs
 
@@ -194,8 +224,8 @@ erDiagram
 |---|---|---|---|---|
 | video_id | int | FK videos cascade, not null | 어느 영상의 시도인가 | |
 | status | varchar(10) | not null, JobStatus | queued · running · failed · done. `queued`는 앞 작업이 끝나기를 기다리는 것. 실패한 단계는 `stage`가 말한다 | `failed` |
-| stage | varchar(12) | not null, JobStage | 지금 도는 단계, 실패했으면 실패한 단계. 시작 직후와 처음 대기하는 동안은 `pending`. 다시 시도해 대기하는 동안은 실패한 단계 그대로 | `transcribe` |
-| stages | jsonb | not null | 이 출처에 필요한 단계 목록, 순서대로. 시작할 때 정해 바뀌지 않는다 | `["extract","transcribe","summarize","chapter","suggest"]` |
+| stage | varchar(12) | not null, JobStage | 지금 도는 단계, 실패했으면 실패한 단계. 시작 직후와 처음 대기하는 동안은 `pending`. 다시 시도해 대기하는 동안은 실패한 단계 그대로. 장면 단계(`frames`)는 실패해도 작업을 실패로 만들지 않아, 서버가 그 단계에서 죽었을 때만 실패한 단계가 된다 | `transcribe` |
+| stages | jsonb | not null | 이 출처에 필요한 단계 목록, 순서대로. 시작할 때 정해 바뀌지 않는다. 장면 단계 전에 시작한 작업에는 `frames`가 없다 | `["extract","transcribe","summarize","chapter","suggest","frames"]` |
 | progress_pct | smallint | not null, 0~100 | 진행률. 파이프라인이 갱신 | `38` |
 | est_seconds | int | not null | 시작 전 예상 소요(초). 사전 안내 값의 사본 | `480` |
 | est_cost_usd | numeric(8,4) | not null | 시작 전 예상 비용. 센트 아래 넷째 자리까지 — 분당 단가 $0.006을 곱한 값이 소수 셋째 자리를 넘는다 | `0.9200` |
@@ -314,6 +344,40 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 | seq | int | (video_id, seq) UK, 1~3 | 순번 | `1` |
 | text | text | not null | 질문 문장. 스크립트로 답할 수 있는 것만([[VA-PRD-001#R9]]) | |
 
+### chapter_frames
+
+클래스: [[VA-DOM-002#ChapterFrame]] · 도메인: [[VA-DOM-001#ChapterFrame]]
+
+| 컬럼 | 타입 | 제약 | 의미 | 예시 |
+|---|---|---|---|---|
+| chapter_id | int | FK chapters cascade, UK not null | 챕터마다 0..1. 영상은 챕터를 거쳐 안다 | |
+| sec | numeric(9,3) | null 허용, ≥ 0 | 실제로 잘라 온 장면의 시각. 스토리보드는 약 10초 간격이라 챕터 시작과 몇 초 다를 수 있다([[VA-UC-001#UC-S7]] 3b) | `763.000` |
+| source | varchar(12) | null 허용, FrameSource | storyboard · local_frame | `storyboard` |
+| width | smallint | null 허용, > 0 | 얻은 그대로의 폭. 스토리보드 320 · 160 · 120, 로컬 640([[VA-INFRA-001#C12]]) | `320` |
+| height | smallint | null 허용, > 0 | 높이 | `180` |
+| path | varchar(500) | null 허용 | `data/frames/{video_id}/{chapter_seq}.jpg`. null이면 해 봤지만 얻지 못한 챕터 | `data/frames/12/3.jpg` |
+
+CHECK: `path`가 null이면 `sec` · `source` · `width` · `height`도 모두 null이고, 아니면 모두 not null — 행은 「얻었다」거나 「해 봤지만 없다」 둘 중 하나다([[VA-DOM-002#ChapterFrame]], 4장 7). 한 영상의 장면은 `chapters`와 조인해 읽는다 — 챕터 수십 개다.
+
+### infographics
+
+클래스: [[VA-DOM-002#Infographic]] · 도메인: [[VA-DOM-001#Infographic]]
+
+| 컬럼 | 타입 | 제약 | 의미 | 예시 |
+|---|---|---|---|---|
+| video_id | int | FK videos cascade, UK not null | 영상마다 0..1. 다시 만들면 같은 행을 고친다([[VA-DOM-001]] 5장 5) | |
+| state | varchar(10) | not null, InfographicState | making · done · failed — 마지막으로 맡긴 그리기의 상태. `none`은 행이 없을 때의 응답값이라 저장하지 않는다 | `done` |
+| model | varchar(50) | null 허용 | 지금 그림을 그린 이미지 모델 | `gpt-image-2` |
+| quality | varchar(10) | null 허용, ImageQuality | low · medium | `low` |
+| width | smallint | null 허용, > 0 | 지금 그림의 폭 | `1024` |
+| height | smallint | null 허용, > 0 | 높이 | `1536` |
+| cost_usd | numeric(8,4) | null 허용, ≥ 0 | 그 그림을 맡긴 때의 한 장 값(설정값) | `0.0060` |
+| path | varchar(500) | null 허용 | `data/infographics/{video_id}.png` | `data/infographics/12.png` |
+| error_reason | text | null 허용 | `failed`일 때 한 줄(한국어). UI-4 '인포그래픽을 만들지 못했어요 — {이유}' | `OpenAI 연결 시간 초과` |
+| created_at | timestamptz | null 허용 | 지금 그림을 다 그린 때 — 행이 생긴 때가 아니다. UI-4 '{시각} 만듦'과 그림 주소의 `?v=` | |
+
+CHECK: 그림 컬럼(`model` · `quality` · `width` · `height` · `cost_usd` · `path` · `created_at`)은 모두 null이거나 모두 not null — 처음 그리는 중이거나 처음 그리기가 실패한 행만 모두 null이다. `state = 'done'`이면 그림 컬럼이 not null. `state = 'failed'`이면 `error_reason`이 not null, 아니면 null. 다시 그리는 동안(`making`)과 다시 그리기가 실패한 뒤(`failed`)에도 이전 그림 컬럼은 그대로다(4장 8).
+
 ### chat_turns
 
 클래스: [[VA-DOM-002#ChatTurn]] · 도메인: [[VA-DOM-001#ChatTurn]]
@@ -346,13 +410,15 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 | chat_turns | `(video_id, asked_at)` | 시간순 기록 · 최근 10턴 · 영상별 개수 |
 | parts | `(id, video_id)` unique | `chapters`의 복합 FK 대상 |
 
+새 두 테이블은 추가 인덱스가 없다 — 장면은 `chapter_id` UK로, 인포그래픽은 `video_id` UK로 찾는다. 시작 때 `making`인 인포그래픽을 찾는 것(`fail_orphans`)은 행이 영상 수만큼이라 훑어도 된다.
+
 없는 것 — `videos.source_kind` · `analysis_jobs.stage` · `chapters.part_id` 단독 인덱스. 값 종류가 적거나 FK 인덱스로 충분하다. 사용자 한 명이 분석한 영상 수십 개 규모라 대부분의 조회는 `video_id` FK 인덱스 하나로 끝난다.
 
 **정규화** — 전 테이블 3NF. 1NF에서 벗어난 `jsonb` 배열이 여섯이고 이유는 같다 — **단독으로 조회 · 조인하지 않는다.** `insights.source_secs` · `chapters.bullets` · `chat_turns.cited_secs`는 부모 행과 함께만 읽고 쓰며([[VA-DOM-002]] 7장 이전 결정), `analysis_jobs.stages` · `stage_durations_sec`는 작업 행의 부속 값이다. `audio_chunks.result`는 스크립트를 만들기 전까지만 읽고 그 뒤는 이력이다 — 구간 하나를 조각에서 찾는 일이 없다. 자식 테이블로 빼면 조회마다 조인이 늘고 얻는 것이 없다. 일곱째가 생기면 여기 이유를 적는다.
 
 비정규화(중복 저장)는 없다. `videos`의 상태 · 분석 완료 시각을 컬럼으로 두지 않은 것이 그 결정이다(1장 설계 규칙). `analysis_jobs.est_*`는 사전 안내 값의 사본처럼 보이지만 설정(단가 · 조각 길이)이 바뀌면 다시 계산되는 값이라 그때의 예상치를 남기는 이력이다.
 
-**마이그레이션** — Alembic 리비전 하나 = ERD 변경 하나. 첫 리비전 `0001_initial`이 11개 테이블과 인덱스 전부였고, `0002_job_active_per_video`가 영상 하나에 기다리는 · 도는 작업 하나를 막는 부분 unique를 더한다(4장 6). 열거형 값 추가는 마이그레이션 없이 앱 상수만 바꾼다. `downgrade`를 반드시 쓴다.
+**마이그레이션** — Alembic 리비전 하나 = ERD 변경 하나. 첫 리비전 `0001_initial`이 11개 테이블과 인덱스 전부였고, `0002_job_active_per_video`가 영상 하나에 기다리는 · 도는 작업 하나를 막는 부분 unique를 더한다(4장 6). 결과 그림 · 파일 올리기는 카드마다 하나다 — `0003_chapter_frames`(카드 D2), `0004_infographics`(카드 D3), `0005_videos_uploaded`(카드 D4, default false라 있던 영상은 모두 올린 것이 아니다). 장면 단계 `frames`는 열거형 값이라 리비전이 없다. 열거형 값 추가는 마이그레이션 없이 앱 상수만 바꾼다. `downgrade`를 반드시 쓴다.
 
 ---
 
@@ -366,9 +432,15 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 
 **4. 챕터가 다른 영상의 파트를 가리키는 것을 막는다 — 결정: 복합 FK.** `chapters.part_id → parts.id` 하나로는 파트가 같은 영상 것인지 보장하지 못한다. `(part_id, video_id) → parts(id, video_id)`로 걸면 DB가 막는다. 앱 버그를 데이터로 굳히지 않기 위해서다.
 
-**5. 삭제는 cascade 하나로 — 결정: 앱은 `videos` 행만 지운다.** 딸린 것 열 종류를 앱이 순서대로 지우면 빠뜨린다. FK cascade가 전부 지운다. 임시 파일(`data/tmp/{video_id}`)만 DB 밖이라 서비스가 따로 지운다([[VA-DOM-002#VideoService]] `delete`).
+**5. 삭제는 cascade 하나로 — 결정: 앱은 `videos` 행만 지운다.** 딸린 것 열두 종류를 앱이 순서대로 지우면 빠뜨린다. FK cascade가 전부 지운다. DB 밖의 파일(`data/tmp/{video_id}` · 장면 · 인포그래픽 · 올린 사본)만 서비스가 따로 지운다([[VA-DOM-002#VideoService]] `delete`).
 
 **6. 같은 영상에 작업이 둘 생기지 않게 DB가 막는다 — 결정: `(video_id) where status in ('queued', 'running')` 부분 unique 인덱스.** `start`는 작업이 있는지 먼저 보지만, 보는 것과 넣는 것 사이에 같은 영상의 [분석 시작]이 하나 더 오면(탭 둘) 둘 다 들어간다 — 파이프라인이 두 번 돌아 비용이 두 배가 되고 뒤 것이 결과를 갈아 끼운다. 영상과 작업은 1:N(분석 시도)이라 `video_id` 전체에 unique를 걸지 않고 기다리거나 도는 작업만 막는다. 다시 시도는 같은 행을 쓰므로 걸리지 않는다. 카드 B1 코드 리뷰에서 찾았다(2026-09-23).
+
+**7. 얻지 못한 장면도 행으로 — 결정: 그림 컬럼이 모두 null인 `chapter_frames` 행 + CHECK.** 옛 결과의 장면 채우기가 끝났는지를 행으로 안다 — 이유는 [[VA-DOM-002]] 5장 11. 같은 테이블에 두 뜻(얻었다 · 해 봤지만 없다)이 섞이므로 CHECK로 반쪽 행(경로는 있는데 시각이 없는 것)을 막는다.
+
+**8. 인포그래픽은 영상마다 한 행을 고쳐 쓴다 — 결정: `video_id` UK, 상태와 지금 그림을 한 행에.** 이력을 쌓지 않는다([[VA-DOM-001]] 5장 5). 다시 그리는 동안에도 화면이 이전 그림을 보여야 하므로 그림 컬럼은 다 그렸을 때 한 번에 바뀐다. 그리기마다 행을 두면 「지금 그림」을 고르는 쿼리와 지울 때가 는다.
+
+**9. 올린 사본의 경로를 저장하지 않는다 — 결정: `videos.uploaded` boolean 하나.** 사본은 분석하는 동안만 있고 이름은 `source_id`와 원래 이름의 확장자로 정해진다. 경로 컬럼을 두면 사본을 지운 뒤 틀린 값이 남거나 지울 때마다 고쳐야 한다. 응답의 `upload_bytes`도 컬럼이 아니다 — 파일이 있으면 그 크기다([[VA-DOM-002#Video]]).
 
 ---
 
@@ -379,3 +451,5 @@ CHECK: `part_id`가 있으면 그 파트의 `video_id`와 같은 영상이어야
 - [ ] `segments.text` 검색 — 첫 버전은 스크립트 검색이 요구에 없어 인덱스가 없다. 질문 맥락 선별을 임베딩으로 바꾸면(`ChatService.context_for`) 그때 `pgvector` 컬럼과 인덱스를 여기 더한다([[VA-INFRA-001]] 9절)
 - [ ] `audio_chunks` 행의 보존 기간 — 지금은 영상과 함께 영구. 조각 이력이 쓸모없다고 판단되면 작업 완료 때 지우는 것으로 바꿀 수 있다([[VA-DOM-001]] 5장 2의 결정을 뒤집는 것이라 도메인 모델부터)
 - [x] (반영: 클래스 명세 v7) 클래스 명세 2장 각 항목에 `테이블: [[VA-DOM-003#…]]` 참조를 더한다 — [[VA-DOM-002]] 7장에 적힌 일. 이 문서가 생겼으므로 다음 클래스 명세 수정 때
+- [ ] (되먹임: 클래스 명세 7장) `chapter_frames` · `infographics`가 생겼으니 [[VA-DOM-002]] 2장 두 항목의 테이블 참조를 항목 링크로 — 다음 클래스 명세 수정 때
+- [ ] 재분석 때의 그림 — 챕터를 다시 만들면 `chapter_frames`는 cascade로 사라지지만 `infographics`는 영상에 붙어 남는다. 도메인 모델은 「결과가 바뀌면 함께 지운다」고 했다([[VA-DOM-001#Infographic]]). 재분석이 생길 때([[VA-DOM-001]] 6장 미결) 지우는 자리를 정한다
