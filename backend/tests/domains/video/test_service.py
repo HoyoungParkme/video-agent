@@ -821,3 +821,14 @@ async def test_delete_without_tmp_or_video(db, make, youtube, probe, tmp_path, m
     with pytest.raises(NotFound) as e:
         await svc.delete(row.id)
     assert e.value.extra == {"resource": "video", "id": row.id}
+
+
+async def test_delete_uploaded_removes_copy(db, make, youtube, probe, uploads) -> None:
+    # 사전 안내에서 취소한 올린 영상도 이 길 — 사본이 사라지고, 다른 영상의 사본은 그대로
+    row = await _uploaded(make, b"recording", origin="talk.mp4")
+    other = await _uploaded(make, b"other", origin="other.mp4")
+    uploads.mkdir(parents=True)
+    for v in (row, other):
+        (uploads / f"{v.source_id}.mp4").write_bytes(b"x")
+    await VideoService(db, youtube, probe).delete(row.id)
+    assert _left(uploads) == [f"{other.source_id}.mp4"]
