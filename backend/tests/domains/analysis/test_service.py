@@ -20,7 +20,13 @@ from app.domains.analysis.models import (
     TranscriptRow,
     TranscriptSource,
 )
-from app.domains.analysis.schemas import CaptionLine, ChapterDraft, Segment, SummaryDraft
+from app.domains.analysis.schemas import (
+    CaptionLine,
+    ChapterDraft,
+    ExportMethod,
+    Segment,
+    SummaryDraft,
+)
 from app.domains.analysis.service import SCRIPT_SUFFIX, AnalysisService
 from app.domains.chat.schemas import ChatTurn
 from app.domains.job.models import JobStatus
@@ -467,23 +473,34 @@ async def test_export_markdown(db, make, summarizer, youtube, env_file) -> None:
     svc = AnalysisService(db)  # 읽기만 — 요약 포트 없이
     at = video.analyzed_at
     turns = [ChatTurn(id=1, question="왜?", answer="그래서.", cited_secs=[], asked_at=at)]
-    pre = await svc.export_markdown(video, False, turns)
+    pre = await svc.export_markdown(video, False, turns, ExportMethod.file)
     assert (pre.filename, pre.path) == (
         "RAG 서비스 1년 운영기",
         "data/export/RAG 서비스 1년 운영기.md",  # 보일 경로 — 컨테이너 안 경로가 아니다
     )
     assert pre.markdown.startswith("# RAG 서비스 1년 운영기\n원본: [https://")
     assert "## 질문 기록" not in pre.markdown  # with_chat이 거짓이면 턴을 받아도 없다
-    empty = await svc.export_markdown(video, True, [])
+    # 파일로 저장 — 저장할 노트와 같다(스크립트 파일 링크) · 함께 쓸 파일은 노트 · 스크립트
+    assert pre.markdown.endswith("## 스크립트\n[[RAG 서비스 1년 운영기 스크립트]]\n")
+    assert pre.markdown == export.build(await svc.result_of(video), None, pre.filename)
+    assert [(f.kind, f.name) for f in pre.files] == [
+        ("note", "RAG 서비스 1년 운영기.md"),
+        ("script", "RAG 서비스 1년 운영기 스크립트.md"),
+    ]
+    # 복사 — 가리킬 파일이 없어 스크립트 절도 파일 목록도 없다. 한눈에 보기는 들어간다
+    copy = await svc.export_markdown(video, False, turns, ExportMethod.clipboard)
+    assert "## 스크립트" not in copy.markdown and copy.files == []
+    assert "## 한눈에 보기\n```mermaid\ngantt" in copy.markdown
+    empty = await svc.export_markdown(video, True, [], ExportMethod.clipboard)
     assert empty.markdown.endswith("## 질문 기록\n질문 기록이 없습니다\n")
-    chat = await svc.export_markdown(video, True, turns)
+    chat = await svc.export_markdown(video, True, turns, ExportMethod.clipboard)
     assert chat.markdown.endswith("## 질문 기록\n**Q.** 왜?\n**A.** 그래서.\n")
 
 
 async def test_export_markdown_needs_result(db, make) -> None:
     video = await _video(db, make, JobStatus.running)
     with pytest.raises(ResultNotReady):
-        await AnalysisService(db).export_markdown(video, False, [])
+        await AnalysisService(db).export_markdown(video, False, [], ExportMethod.file)
 
 
 async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path, monkeypatch):

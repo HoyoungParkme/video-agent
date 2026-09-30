@@ -28,6 +28,8 @@ from app.domains.analysis.ports import SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
+    ExportFile,
+    ExportMethod,
     ExportPreview,
     ExportResult,
     Insight,
@@ -118,6 +120,14 @@ def _sample(segments: list[Segment], limit: int) -> list[Segment]:
     around = sorted(segments, key=lambda s: abs(s.seq - segments[mid].seq))
     picked = take(segments) + take(around) + take(segments[::-1])
     return sorted({s.seq: s for s in picked}.values(), key=lambda s: s.seq)
+
+
+def _files(name: str) -> list[ExportFile]:
+    # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다
+    return [
+        ExportFile(kind="note", name=f"{name}.md"),
+        ExportFile(kind="script", name=f"{name}{SCRIPT_SUFFIX}.md"),
+    ]
 
 
 def _write(folder: Path, name: str, data: bytes) -> None:
@@ -504,28 +514,37 @@ class AnalysisService:
         )
 
     async def export_markdown(
-        self, video: Video, with_chat: bool, turns: list[ChatTurn]
+        self, video: Video, with_chat: bool, turns: list[ChatTurn], method: ExportMethod
     ) -> ExportPreview:
         """VA-MS-003#AnalysisService.export_markdown
 
-        내보낼 노트 전체와 파일 이름 — 미리 보기와 클립보드가 쓴다. 스크립트 줄도 스크립트 파일을
-        가리키는 절도 없다(복사한 노트에는 가리킬 파일이 없다). 결과는 읽기만 한다.
+        고른 방법의 노트 전체와 파일 이름 — 미리 보기와 클립보드가 쓴다. 파일로 저장(`file`)이면
+        저장할 노트와 같고(스크립트 파일 링크 절) 함께 쓸 파일 목록이 온다. 복사(`clipboard`)면
+        그 절도 목록도 없다 — 복사한 노트에는 가리킬 파일이 없다. 스크립트 줄은 어느 쪽에도 없다.
+        결과는 읽기만 한다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
             with_chat: 질문 기록을 맨 끝에 붙일지
             turns: 그 영상의 대화 턴(라우터가 ChatService.history로). with_chat이 거짓이면 안 쓴다
+            method: 내보내기 방법 — file · clipboard
 
         Returns:
-            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 노트 전체
+            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 노트 전체 · 함께 쓸 파일
 
         Raises:
             ResultNotReady: 분석이 끝나지 않았다(result_of)
         """
         result = await self.result_of(video)
         name = self.filename_for(video)
-        md = export.build(result, turns if with_chat else None)
-        return ExportPreview(filename=name, path=f"{EXPORT_SHOWN}/{name}.md", markdown=md)
+        past = turns if with_chat else None
+        if method == ExportMethod.file:
+            md, files = export.build(result, past, name), _files(name)
+        else:
+            md, files = export.build(result, past, None), []
+        return ExportPreview(
+            filename=name, path=f"{EXPORT_SHOWN}/{name}.md", markdown=md, files=files
+        )
 
     async def export_to_file(
         self, video: Video, with_chat: bool, turns: list[ChatTurn]

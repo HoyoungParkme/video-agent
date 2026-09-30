@@ -10,7 +10,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 
-from app.domains.analysis.schemas import ExportPreview, ExportRequest, ExportResult, Result
+from app.domains.analysis.schemas import (
+    ExportMethod,
+    ExportPreview,
+    ExportRequest,
+    ExportResult,
+    Result,
+)
 from app.domains.analysis.service import AnalysisService
 from app.domains.chat.service import ChatService
 from app.domains.video.router import Session, Videos
@@ -34,12 +40,17 @@ async def get_result(video_id: int, videos: Videos, analysis: Analysis) -> Resul
 
 @router.get("/export")
 async def get_export(
-    video_id: int, videos: Videos, analysis: Analysis, session: Session, with_chat: bool = False
+    video_id: int,
+    videos: Videos,
+    analysis: Analysis,
+    session: Session,
+    with_chat: bool = False,
+    method: ExportMethod = ExportMethod.file,
 ) -> ExportPreview:
-    """마크다운 본문 — UI-7 미리 보기와 복사용. with_chat이면 질문 기록을 맨 끝에 붙인다."""
+    """고른 방법의 노트 — UI-7 미리 보기와 복사용. with_chat이면 질문 기록을 맨 끝에 붙인다."""
     detail = await videos.get(video_id)
     turns = await ChatService(session).history(video_id) if with_chat else []
-    return await analysis.export_markdown(detail.video, with_chat, turns)
+    return await analysis.export_markdown(detail.video, with_chat, turns, method)
 
 
 @router.post("/export", status_code=201)
