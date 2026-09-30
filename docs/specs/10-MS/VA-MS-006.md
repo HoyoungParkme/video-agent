@@ -318,8 +318,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 **처리**
 1. `raw = EXT: ytdlp.info(f"https://www.youtube.com/watch?v={source}", timeout=config.INFO_TIMEOUT_SEC)` — 영상을 내려받지 않는다. 장 주소에는 서명이 있어 오래 두면 만료되므로 등록 때 받은 정보를 쓰지 않고 이때 새로 받는다 · `YtdlpError`는 그대로 올린다(통째로 실패)
 2. `sb` = `raw.formats` 중 `format_id == config.STORYBOARD_FORMAT`, 없으면 `format_note == "storyboard"` 가운데 `width × height`가 가장 큰 것 · if 없음 → `! YtdlpError('스토리보드가 없음', kind=other)`(통째로 실패, [[VA-UC-001#UC-S7]] 3a) · `(w, h, rows, cols, fps) = (sb.width, sb.height, sb.rows, sb.columns, sb.fps)` · `sheets = sb.fragments`(장마다 `url`)
-3. 시각마다 차례로(`i`는 1부터) — `n = floor(sec × fps)` · `per = rows × cols` · `(sheet, k) = divmod(n, per)` · if `sheet ≥ len(sheets)` → 마지막 장의 마지막 칸(영상 끝 가까이) · `(row, col) = divmod(k, cols)` · `dest = f"{dest_dir}/sb-{i}.jpg"` · `EXT: ffmpeg.crop(sheets[sheet].url, col × w, row × h, w, h, dest)` — 장 주소를 ffmpeg 입력으로 주고 그 칸만 자른다(HTTP 클라이언트를 더하지 않는다, [[VA-INFRA-001#C12]]) · `yield FrameShot(sec=n / fps, source=storyboard, width=w, height=h, path=dest)` — `sec`는 실제 칸의 시각이라 챕터 시작과 몇 초 다를 수 있다([[VA-UC-001#UC-S7]] 3b) · 칸 하나가 실패하면(`FfmpegError`) → `yield None` · 다음 시각으로
-4. 파일은 `sb-{i}.jpg`로 쓰고, 챕터 번호 이름으로 옮기는 것은 서비스다
+3. `per = rows × cols` · 실제 칸 수 `total = Σ 장마다 round(장.duration × fps)` — 마지막 장은 덜 차 있다(실제 42분 영상 sb0: 장 29개, 마지막 장은 9칸 중 4칸). 장에 `duration`이 없으면 `len(sheets) × per`
+4. 시각마다 차례로(`i`는 1부터) — `n = min(floor(sec × fps), total − 1)` — 영상 끝 가까운 시각은 실제로 있는 마지막 칸이다(덜 찬 장의 빈 자리를 자르면 [[VA-MS-007#ffmpeg.crop]]이 실패한다, 카드 D2 코드 리뷰) · `(sheet, k) = divmod(n, per)` · `(row, col) = divmod(k, cols)` · `dest = f"{dest_dir}/sb-{i}.jpg"` · `EXT: ffmpeg.crop(sheets[sheet].url, col × w, row × h, w, h, dest)` — 장 주소를 ffmpeg 입력으로 주고 그 칸만 자른다(HTTP 클라이언트를 더하지 않는다, [[VA-INFRA-001#C12]]) · `yield FrameShot(sec=n / fps, source=storyboard, width=w, height=h, path=dest)` — `sec`는 실제 칸의 시각이라 챕터 시작과 몇 초 다를 수 있다([[VA-UC-001#UC-S7]] 3b) · 칸 하나가 실패하면(`FfmpegError`) → `yield None` · 다음 시각으로
+5. 파일은 `sb-{i}.jpg`로 쓰고, 챕터 번호 이름으로 옮기는 것은 서비스다
 
 **출력** 시각마다 `FrameShot` 또는 `None`(순서대로 하나씩)
 
@@ -327,7 +328,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **호출하는 것** `ytdlp.info` · `ffmpeg.crop`([[VA-MS-007]])
 
-**테스트 관점** 가짜 정보로(sb0 320×180 · 3×3 · fps 0.1): 763초 → 칸 76 → 장 8의 네 번째 칸, `crop(장 8 주소, 320, 180, 320, 180)`, `sec=760` · 시각이 여럿이어도 정보는 한 번만 받는다 · sb0이 없고 160×90 · 5×5만 있으면 그것으로 · 스토리보드가 없으면 `YtdlpError` · 칸 하나의 crop이 실패하면 그 시각만 `None` · 마지막 장을 넘는 시각 → 마지막 칸
+**테스트 관점** 가짜 정보로(sb0 320×180 · 3×3 · fps 0.1): 763초 → 칸 76 → 장 8의 네 번째 칸, `crop(장 8 주소, 320, 180, 320, 180)`, `sec=760` · 시각이 여럿이어도 정보는 한 번만 받는다 · sb0이 없고 160×90 · 5×5만 있으면 그것으로 · 스토리보드가 없으면 `YtdlpError` · 칸 하나의 crop이 실패하면 그 시각만 `None` · 마지막 장이 덜 찼으면(장 셋, 마지막 장 두 칸) 영상 끝 가까운 시각 → 실제로 있는 마지막 칸(셋째 장의 둘째 칸) · 장에 `duration`이 없으면 장 수 × 칸 수로 센다
 
 ---
 
