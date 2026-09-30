@@ -15,4 +15,5 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: "/api/((?!uploads(?:/|$)).*)" };
+// 정확히 /api/uploads만 뺀다 — 그 아래 경로는 API 라우트가 받지 않아 넘기기로 가므로 Host를 여기서 본다
+export const config = { matcher: "/api/((?!uploads$).*)" };

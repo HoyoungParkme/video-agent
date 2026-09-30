@@ -305,4 +305,6 @@ test("다른 Host로 온 올리기는 막는다 — proxy에서 빠진 경로도
   const before = uploads();
   expect(await uploadWithHost(url, `evil.example:${port}`)).toBe(400);
   expect(uploads()).toEqual(before); // api에 닿지 않았다
+  // 그 아래 경로는 proxy가 본다 — API 라우트가 받지 않는 경로가 Host 확인 없이 api로 가지 않게
+  expect(await uploadWithHost(`${url}/x`, `evil.example:${port}`)).toBe(400);
 });
