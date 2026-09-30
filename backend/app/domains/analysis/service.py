@@ -562,7 +562,7 @@ class AnalysisService:
             turns: 그 영상의 대화 턴. with_chat이 거짓이면 안 쓴다
 
         Returns:
-            파일 이름 · 노트의 보일 경로 · 쓴 두 파일의 바이트 합
+            파일 이름 · 노트의 보일 경로 · 쓴 파일 전부의 바이트 합 · 쓴 그림 수 · 쓴 파일
 
         Raises:
             ResultNotReady: 분석이 끝나지 않았다
@@ -581,5 +581,9 @@ class AnalysisService:
                 reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
                 raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}.md", reason=reason) from e
         return ExportResult(
-            filename=name, path=f"{EXPORT_SHOWN}/{name}.md", bytes=len(note) + len(text)
+            filename=name,
+            path=f"{EXPORT_SHOWN}/{name}.md",
+            bytes=len(note) + len(text),
+            images=0,
+            files=_files(name),
         )

@@ -91,6 +91,8 @@ async def test_post_export(api, db, make, summarizer, env_file, tmp_path, monkey
     )
     assert script.startswith("# 제목 — 스크립트\n")  # 스크립트는 따로(API-001 v10)
     assert r.json()["bytes"] == len(written.encode()) + len(script.encode())  # 두 파일 합
+    assert r.json()["images"] == 0
+    assert [f["name"] for f in r.json()["files"]] == ["제목.md", "제목 스크립트.md"]
 
 
 async def test_export_errors(api, db, make, summarizer, env_file, tmp_path, monkeypatch) -> None:

@@ -109,11 +109,16 @@ class ExportPreview(BaseModel):
 
 
 class ExportResult(BaseModel):
-    """쓴 파일 — path는 보일 경로, bytes는 쓴 바이트 수."""
+    """쓴 파일 — path는 노트의 보일 경로, bytes는 쓴 파일 전부의 바이트 합.
+
+    images는 쓴 그림 수(장면 + 인포그래픽) — 짧은 알림의 '· 그림 {n}장'. files는 쓴 파일.
+    """
 
     filename: str
     path: str
     bytes: int
+    images: int
+    files: list[ExportFile]
 
 
 class ExportRequest(BaseModel):
