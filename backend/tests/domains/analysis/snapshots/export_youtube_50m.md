@@ -8,10 +8,11 @@
 gantt
   dateFormat HH:mm:ss
   axisFormat %M:%S
+  todayMarker off
   section 챕터
-  발표자 소개 : 00:00:00, 00:10:00
-  청킹 다시 보기 : 00:10:00, 00:20:00
-  pgvector 선택 : 00:20:00, 00:50:00
+  01 발표자 소개 : 00:00:00, 00:10:00
+  02 청킹 다시 보기 : 00:10:00, 00:20:00
+  03 pgvector 선택 : 00:20:00, 00:50:00
   section 인사이트
   01 : milestone, 00:01:40, 0s
   02 : milestone, 00:10:00, 0s

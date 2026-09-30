@@ -228,26 +228,47 @@ def test_gantt_long_video_has_part_sections_and_hour_axis() -> None:
     md = export.gantt(local_150m())
     assert "  axisFormat %-H:%M:%S" in md  # 1시간 이상은 앱의 h:mm:ss 모양
     assert (
-        "  section 1부 — 기초\n  소개 : 00:00:00, 00:06:20\n  카탈로그란 : 00:06:20, 01:00:00" in md
+        "  section 1 1부 — 기초\n  01 소개 : 00:00:00, 00:06:20\n  02 카탈로그란 : 00:06:20, 01:00:00"
+        in md
     )
-    assert "  section 2부 — 운영\n" in md and "  소유자 정하기 : 01:30:00, 02:30:00\n" in md
+    assert "  section 2 2부 — 운영\n" in md and "  04 소유자 정하기 : 01:30:00, 02:30:00\n" in md
     assert "  section 챕터" not in md
     assert md.endswith("  section 인사이트\n  01 : milestone, 01:30:00, 0s\n```")
 
 
 def test_gantt_escapes_what_gantt_reads_as_separators() -> None:
     result = youtube_50m()
-    result.chapters[0].title = "A: B; C #1 `x`\n줄"
+    result.chapters[0].title = "A: B; C #1 `x` 5%\n줄\r끝"
     result.chapters[1].title = "   "
     md = export.gantt(result)
-    assert "  A∶ B； C ＃1 'x' 줄 : 00:00:00, 00:10:00\n" in md
-    assert "  챕터 2 : 00:10:00, 00:20:00\n" in md  # 비면 번호로
+    assert "  01 A∶ B； C ＃1 'x' 5％ 줄 끝 : 00:00:00, 00:10:00\n" in md
+    assert "  02 챕터 : 00:10:00, 00:20:00\n" in md  # 비면 '챕터'
+
+
+def test_gantt_names_start_with_number_whatever_the_title() -> None:
+    # 줄 머리의 키워드 · 주석 · 날짜가 이름보다 먼저 읽혀 블록이 깨지던 제목들(카드 D1 코드 리뷰)
+    result = youtube_50m()
+    titles = ["Click 이벤트 설계", "2024-09-12 장애 회고", "Section 2 복습"]
+    for c, title in zip(result.chapters, titles, strict=True):
+        c.title = title
+    md = export.gantt(result)
+    assert "  01 Click 이벤트 설계 : " in md
+    assert "  02 2024-09-12 장애 회고 : " in md
+    assert "  03 Section 2 복습 : " in md
+    assert "  todayMarker off\n" in md  # 오늘 선이 막대를 긋지 않게
+
+
+def test_gantt_sections_of_same_titled_parts_do_not_merge() -> None:
+    result = local_150m()
+    result.parts[1].title = result.parts[0].title = "실습"
+    md = export.gantt(result)
+    assert "  section 1 실습\n" in md and "  section 2 실습\n" in md
 
 
 def test_gantt_zero_length_chapter_gets_one_second() -> None:
     result = youtube_50m()
     result.chapters[2].start_sec = 3000  # 영상 끝과 같은 시각
-    assert "  pgvector 선택 : 00:50:00, 00:50:01\n" in export.gantt(result)
+    assert "  03 pgvector 선택 : 00:50:00, 00:50:01\n" in export.gantt(result)
 
 
 def test_mindmap_matches_the_wireframe_block() -> None:

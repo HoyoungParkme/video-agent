@@ -35,8 +35,10 @@ LANGUAGES = {
 NO_CHAT = "질문 기록이 없습니다"
 # 노트 곁에 쓰는 스크립트 파일 이름의 꼬리 — `{노트 이름} 스크립트.md`(PRD R10)
 SCRIPT_SUFFIX = " 스크립트"
-# Mermaid gantt가 구분자로 읽는 글자 → 비슷해 보이는 다른 글자(MS-003 export.gantt)
-GANTT_CHARS = str.maketrans({":": "∶", ";": "；", "#": "＃", "`": "'", "\n": " "})
+# Mermaid gantt가 구분자 · 주석으로 읽는 글자 → 비슷해 보이는 다른 글자(MS-003 export.gantt)
+GANTT_CHARS = str.maketrans(
+    {":": "∶", ";": "；", "#": "＃", "%": "％", "`": "'", "\n": " ", "\r": " "}
+)
 # Mermaid mindmap이 노드 모양으로 읽는 괄호 → 전각(MS-003 export.mindmap)
 MIND_CHARS = str.maketrans("()[]{}`\n", "（）［］｛｝' ")
 
@@ -81,7 +83,9 @@ def gantt(result: Result) -> str:
     한눈에 보기 — 타임라인. Mermaid `gantt` 블록(울타리 포함)이고 옵시디언이 그대로 그린다.
     챕터는 시작부터 다음 챕터의 시작까지(마지막은 영상 길이)의 막대, 파트가 있으면 파트마다
     구역, 인사이트는 첫 출처 시각의 이정표다. `timeline`은 시각 `00:00`의 쌍점을 구분자로 읽어
-    깨져 `gantt`를 쓴다(INFRA 3절).
+    깨져 `gantt`를 쓴다(INFRA 3절). 막대 이름과 구역 이름 앞에 번호를 붙인다 — gantt는 줄 머리의
+    키워드(click · title · section …) · 주석 · 날짜를 이름보다 먼저 읽어 제목이 그것으로 시작하면
+    블록이 깨지고, 같은 이름의 구역은 하나로 섞는다(카드 D1 코드 리뷰).
 
     Args:
         result: 결과 화면이 받는 것 전부
@@ -91,12 +95,19 @@ def gantt(result: Result) -> str:
     """
     v = result.video
     axis = "%-H:%M:%S" if v.duration_sec >= 3600 else "%M:%S"  # 앱의 h:mm:ss와 같은 모양
-    lines = ["```mermaid", "gantt", "  dateFormat HH:mm:ss", f"  axisFormat {axis}"]
+    # todayMarker off — 날짜 없는 시각은 막대를 모두 오늘에 놓아 자정 무렵엔 오늘 선이 막대를 긋는다
+    lines = [
+        "```mermaid",
+        "gantt",
+        "  dateFormat HH:mm:ss",
+        f"  axisFormat {axis}",
+        "  todayMarker off",
+    ]
     ends = [c.start_sec for c in result.chapters[1:]] + [v.duration_sec]
     bars = {c.seq: _bar(c, end) for c, end in zip(result.chapters, ends, strict=True)}
     if result.parts:
         for p in result.parts:
-            lines.append(f"  section {_gantt_name(p.title, f'파트 {p.seq}')}")
+            lines.append(f"  section {p.seq} {_gantt_name(p.title, '파트')}")
             lines += [bars[c.seq] for c in result.chapters if c.part_seq == p.seq]
     else:
         lines.append("  section 챕터")
@@ -231,7 +242,8 @@ def _bar(chapter: Chapter, end: float) -> str:
     # gantt 막대 한 줄 — 초 단위로 길이가 0이면 1초로(그리지 않는 막대가 생기지 않게)
     start = int(chapter.start_sec)
     stop = int(end) if int(end) > start else start + 1
-    return f"  {_gantt_name(chapter.title, f'챕터 {chapter.seq}')} : {_hms(start)}, {_hms(stop)}"
+    name = f"{chapter.seq:02d} {_gantt_name(chapter.title, '챕터')}"
+    return f"  {name} : {_hms(start)}, {_hms(stop)}"
 
 
 def _hms(sec: float) -> str:
