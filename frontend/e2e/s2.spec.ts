@@ -90,6 +90,51 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
   await expect(page.locator(".chapter")).toHaveCount(3); // 접힌 파트의 챕터는 그리지 않는다
   await expect(el(page, "6.6")).toContainText("워크숍 소개");
 
+  // 한눈에 보기 — 막대 위 파트 띠(13.1), 눈금은 30분 간격. 마인드맵은 파트 노드(14.4)와 펼친 첫 파트의
+  // 챕터 노드(14.5)이고, 펼침은 챕터 목록의 파트 머리(6.5)와 같은 상태다
+  await expect(el(page, "12.1")).toHaveText("파트 2 · 챕터 6 · 인사이트 6");
+  await expect(page.locator(".band-cell")).toHaveText([
+    "1 오전 세션 — 현황과 문제",
+    "2 오후 세션 — 실습과 정리",
+  ]);
+  await expect(el(page, "13.4").locator("span")).toHaveText([
+    "0:00:00",
+    "0:30:00",
+    "1:00:00",
+    "1:30:00",
+    "2:00:00",
+    "2:30:00",
+  ]);
+  const mindParts = page.locator(".mind-part");
+  await expect(el(page, "14.4")).toHaveAttribute("aria-expanded", "true");
+  await expect(el(page, "14.4")).toContainText("1. 오전 세션 — 현황과 문제챕터 3개 · 0:00:00");
+  await expect(mindParts.nth(1)).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".mind-leaf")).toHaveCount(3);
+  await expect(el(page, "14.5")).toContainText("0:00:00워크숍 소개");
+  // 파트 띠 → 파트 시작 시각. 그 파트가 진해지고, 접힌 파트는 저절로 펴지 않는다
+  await page.getByRole("button", { name: "파트 2 · 1:15:00 오후 세션 — 실습과 정리" }).click();
+  await expect(el(page, "8.2")).toHaveText("1:15:00");
+  await expect(page.locator('.band-cell[aria-pressed="true"]')).toHaveText(
+    "2 오후 세션 — 실습과 정리",
+  );
+  await expect(parts.nth(1)).toHaveAttribute("aria-expanded", "false");
+  // 마인드맵에서 둘째 파트를 펴면 챕터 목록도 펴진다. 그 챕터 노드를 누르면 같은 이동
+  await mindParts.nth(1).click();
+  await expect(parts.nth(1)).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".mind-leaf")).toHaveCount(6);
+  await expect(page.locator(".chapter")).toHaveCount(6);
+  await page.locator(".mind-leaf", { hasText: "메타데이터 채우기" }).click();
+  await expect(el(page, "8.2")).toHaveText("1:50:00");
+  await expect(page.locator('.mind-leaf[aria-pressed="true"]')).toContainText("메타데이터 채우기");
+  await expect(page.locator('.bar-cell[aria-pressed="true"]')).toHaveAccessibleName(
+    "챕터 5 · 1:50:00 메타데이터 채우기",
+  );
+  await expect(page.locator('.chapter[aria-pressed="true"]')).toContainText("메타데이터 채우기");
+  // 챕터 목록에서 접으면 마인드맵도 접힌다 — 아래는 둘째 파트가 접힌 채로 시작한다
+  await parts.nth(1).click();
+  await expect(mindParts.nth(1)).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".mind-leaf")).toHaveCount(3);
+
   // 둘째 파트를 펴고 그 챕터를 누르면 스크립트가 그 시각으로 — 시각은 h:mm:ss
   await parts.nth(1).click();
   await expect(parts.nth(1)).toHaveAttribute("aria-expanded", "true");
