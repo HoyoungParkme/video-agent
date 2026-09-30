@@ -29,6 +29,7 @@ from app.core.errors import (
     ExportFailed,
     FramesUnavailable,
     InfographicBusy,
+    KeyMissing,
     LlmUnavailable,
     NotFound,
     ResultNotReady,
@@ -207,6 +208,8 @@ def _draw_reason(video_id: int, e: Exception) -> str:
     """그리기 실패 → 화면에 보일 한 줄. 알 수 없는 오류는 원인을 로그에 남긴다."""
     if isinstance(e, LlmUnavailable):
         return str(e.extra.get("reason") or "OpenAI 오류")
+    if isinstance(e, KeyMissing):  # 그리는 사이 .env에서 키가 빠져 클라이언트를 못 만든다
+        return "OpenAI API 키 없음"
     if isinstance(e, OSError):
         return "그림 파일을 저장하지 못함"
     log.error("영상 %s의 인포그래픽을 그리지 못했다", video_id, exc_info=e)
@@ -712,7 +715,8 @@ class AnalysisService:
         뒤에서 인포그래픽을 그린다 — 요청이 끝난 뒤에도 돌아 자기 세션을 연다. 재료는 제목 · 한 줄
         요약 · 인사이트 · 챕터 제목뿐이다(스크립트는 없다). 임시 이름에 다 그린 뒤 한 번에
         `{id}.png`로 바꾼다 — 실패해도 이전 그림이 그대로다. 실패 이유는 어댑터가 준 한 줄
-        (llm-unavailable) · 파일 오류 · 알 수 없는 오류 셋이다.
+        (llm-unavailable) · 키 없음 · 파일 오류 · 알 수 없는 오류(DB 오류 포함) 넷이다. 실패는
+        세션을 되돌린 뒤 적는다 — 그것마저 못 하면 로그만 남기고 다음 시작의 fail_orphans에 맡긴다.
 
         Args:
             video_id: 영상 id — 행은 start_infographic이 making으로 만들어 두었다
@@ -733,22 +737,26 @@ class AnalysisService:
                         brief, choice.image_model, choice.image_quality.id, str(tmp)
                     )
                     await asyncio.to_thread(os.replace, shot.path, final)
-                except Exception as e:  # 취소(CancelledError)는 Exception이 아니라 그대로 올라간다
-                    await crud.fail_infographic(session, video_id, _draw_reason(video_id, e))
+                    await crud.finish_infographic(
+                        session,
+                        video_id,
+                        model=choice.image_model,
+                        quality=choice.image_quality.id,
+                        width=shot.width,
+                        height=shot.height,
+                        cost_usd=choice.image_quality.price_usd,
+                        path=str(final),
+                        created_at=datetime.now(UTC),
+                    )
                     await session.commit()
-                    return
-                await crud.finish_infographic(
-                    session,
-                    video_id,
-                    model=choice.image_model,
-                    quality=choice.image_quality.id,
-                    width=shot.width,
-                    height=shot.height,
-                    cost_usd=choice.image_quality.price_usd,
-                    path=str(final),
-                    created_at=datetime.now(UTC),
-                )
-                await session.commit()
+                except Exception as e:  # 취소(CancelledError)는 Exception이 아니라 그대로 올라간다
+                    reason = _draw_reason(video_id, e)
+                    try:
+                        await session.rollback()  # DB 오류로 트랜잭션이 깨졌을 수 있다
+                        await crud.fail_infographic(session, video_id, reason)
+                        await session.commit()
+                    except Exception:  # 영영 making이면 만들기가 모두 busy — 다음 시작에 되돌린다
+                        log.exception("영상 %s의 인포그래픽 실패를 적지 못했다", video_id)
         finally:
             await asyncio.to_thread(_unlink, tmp)
             # 제 핸들만 뺀다 — 끝낸 뒤 새로 맡긴 그리기의 핸들을 지우지 않게

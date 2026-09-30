@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 from app.core.config import ImageQuality, config
 from app.core.db import SessionLocal
@@ -180,6 +181,7 @@ async def test_draw_failure_keeps_previous_picture(
     ("error", "reason"),
     [
         (OSError(28, "No space left"), "그림 파일을 저장하지 못함"),
+        (KeyMissing(), "OpenAI API 키 없음"),  # 그리는 사이 .env에서 키가 빠졌다
         (ValueError("?"), "알 수 없는 오류"),
     ],
 )
@@ -192,6 +194,41 @@ async def test_draw_other_failures(db, make, image_maker, env_file, error, reaso
     )
     await db.refresh(row := await crud.infographic(db, video.id))
     assert (row.state, row.error_reason, row.path) == ("failed", reason, None)
+
+
+async def _broken_sql(session, *args, **kwargs) -> None:
+    # 트랜잭션이 깨진다 — 되돌리지 않으면 실패도 못 적는다
+    await session.execute(text("select 1/0"))
+
+
+@pytest.mark.parametrize("step", ["summary_with_insights", "finish_infographic"])
+async def test_draw_db_error_still_fails(
+    db, make, image_maker, env_file, data_dir, monkeypatch, step
+) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.making)
+    monkeypatch.setattr(crud, step, _broken_sql)  # 재료 읽기(1번) · 다 됨 쓰기(5번)
+    await AnalysisService(db, image_maker=image_maker).draw_infographic(
+        video.id, settings.current_models()
+    )
+    await db.refresh(row := await crud.infographic(db, video.id))
+    assert (row.state, row.error_reason) == ("failed", "알 수 없는 오류")  # making에 멈추지 않는다
+    assert not (data_dir / "infographics" / f"{video.id}.png.part").exists()
+
+
+async def test_draw_cannot_record_failure(
+    db, make, image_maker, env_file, monkeypatch, caplog
+) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.making)
+    monkeypatch.setattr(crud, "finish_infographic", _broken_sql)
+    monkeypatch.setattr(crud, "fail_infographic", _broken_sql)  # DB가 없다
+    await AnalysisService(db, image_maker=image_maker).draw_infographic(
+        video.id, settings.current_models()
+    )  # 올리지 않는다 — 태스크가 미회수 예외로 죽지 않게
+    await db.refresh(row := await crud.infographic(db, video.id))
+    assert row.state == "making"  # 다음 시작의 fail_orphans가 되돌린다
+    assert "실패를 적지 못했다" in caplog.text
 
 
 async def test_draw_again_replaces_picture(db, make, image_maker, env_file, data_dir) -> None:
