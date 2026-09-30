@@ -14,10 +14,10 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 
 유스케이스 흐름을 **객체 수준**으로 내린다. 누가 누굴 어떤 순서로 부르고, 어디서 갈라지는지. 생명선은 클래스 명세([[VA-DOM-002]]) 4장의 서비스 · 파이프라인 · 어댑터와 화면이다.
 
-**1장 대응표의 입구 전부(REST 16 엔드포인트 + 서버 시작 + 백그라운드 파이프라인)를 다룬다.** 단순해 보이는 조회도 그려 본다 — 영상 목록은 세 묶음(video · job · chat)을 넘고, 결과 조회는 영상 DTO를 인자로 넘긴다. 시퀀스는 그런 것을 잡으려고 그린다.
+**1장 대응표의 입구 전부(REST 23 엔드포인트 + 서버 시작 + 백그라운드 파이프라인)를 다룬다.** 단순해 보이는 조회도 그려 본다 — 영상 목록은 세 묶음(video · job · chat)을 넘고, 결과 조회는 영상 DTO를 인자로 넘긴다. 시퀀스는 그런 것을 잡으려고 그린다.
 
 **두 종류로 나눈다.**
-- **고유 흐름** [[#SEQ-1]]~[[#SEQ-13]] — 분기가 있거나 묶음을 넘거나 바깥(YouTube · OpenAI · 파일)에 닿는 것. 각자 그림
+- **고유 흐름** [[#SEQ-1]]~[[#SEQ-18]] — 분기가 있거나 묶음을 넘거나 바깥(YouTube · OpenAI · 파일)에 닿는 것. 각자 그림
 - **공통 형태** [[#SEQ-C1]] — 정말로 `입구 → 서비스 하나 → 반환`인 것. 그림 하나에 표로 어느 입구가 따르는지. **그려서 확인한 뒤에** 넣었다
 
 **표기** — `alt` 분기, `opt` 조건부, `loop` 반복, `par` 동시. 실선 호출, 점선 반환. `DB`는 어느 묶음이든 자기 테이블이고, 서비스가 `crud`를 거쳐 닿는 것을 한 화살표로 그렸다. `rect`는 한 트랜잭션. 어댑터는 포트 이름이 아니라 구현 파일 이름으로 부르고, 그 뒤의 `infra/` 클라이언트와 외부(YouTube · OpenAI · ffmpeg)까지 한 생명선에 접었다 — 그려야 할 것은 「묶음이 바깥에 닿는 지점」이지 클라이언트 내부가 아니다.
@@ -30,6 +30,7 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 |---|---|---|---|---|
 | 사람 | U | 브라우저를 쓰는 본인 | 액터 | [[VA-UC-001]] 1장 |
 | 화면 | W | Next.js 화면과 `api/client.ts`. 어느 화면인지는 그림의 메시지에 | Boundary | [[VA-DOM-002]] 1장 frontend, [[VA-UI-002]] |
+| uploads route | UR | `frontend/src/app/api/uploads/route.ts` — Host를 확인하고 올리기 본문을 스트림 그대로 api에 넘기는 web의 라우트 핸들러 | Boundary | [[VA-DOM-002]] 1장 frontend, [[VA-INFRA-001#C4]] |
 | video/router | RV | `domains/video/router.py` | Boundary | [[VA-DOM-002]] 3.1, [[VA-API-001]] 3.2 · 3.3 |
 | job/router | RJ | `domains/job/router.py` | Boundary | [[VA-DOM-002]] 3.1, [[VA-API-001]] 3.4 |
 | analysis/router | RA | `domains/analysis/router.py` | Boundary | [[VA-DOM-002]] 3.1, [[VA-API-001]] 3.5 |
@@ -39,7 +40,7 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | VideoService | VS | `domains/video/service.py` | Control | [[VA-DOM-002#VideoService]] |
 | JobService | JS | `domains/job/service.py` | Control | [[VA-DOM-002#JobService]] |
 | pipeline | PL | `domains/job/pipeline.py` — 대기열 워커(`worker`)와, 워커가 띄운 백그라운드 태스크 안에서 도는 `run` · `resume` | Control | [[VA-DOM-002#JobService]] 파이프라인 |
-| AnalysisService | AS | `domains/analysis/service.py` | Control | [[VA-DOM-002#AnalysisService]] |
+| AnalysisService | AS | `domains/analysis/service.py` — 뒤 일(장면 채우기 · 인포그래픽 그리기) 태스크도 여기서 뜬다 | Control | [[VA-DOM-002#AnalysisService]] |
 | ChatService | CS | `domains/chat/service.py` | Control | [[VA-DOM-002#ChatService]] |
 | SettingsService | SS | `core/settings.py` | Control | [[VA-DOM-002#SettingsService]] |
 | youtube_info | YI | `video/adapters/youtube_info.py` → `infra/ytdlp` → YouTube | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
@@ -49,9 +50,12 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | stt_openai | ST | `job/adapters/stt_openai.py` → `infra/openai` → OpenAI whisper-1 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | summarizer_openai | SM | `analysis/adapters/summarizer_openai.py` → `infra/openai` → OpenAI 텍스트 모델 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | answerer_openai | AN | `chat/adapters/answerer_openai.py` → `infra/openai` → OpenAI 텍스트 모델 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
+| frames_storyboard | FB | `analysis/adapters/frames_storyboard.py` → `infra/ytdlp`(영상 정보) · `infra/ffmpeg`(칸 자르기) → YouTube 스토리보드 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
+| frames_local | FL | `analysis/adapters/frames_local.py` → `infra/ffmpeg`(프레임 한 장) | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
+| image_openai | IM | `analysis/adapters/image_openai.py` → `infra/openai` → OpenAI 이미지 모델 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | infra/openai | OA | `infra/openai.py` — 키 확인(모델 목록 조회). SettingsService만 직접 부른다 | 어댑터 | [[VA-DOM-002]] 4.7 |
 | DB | DB | PostgreSQL. 어느 묶음이든 자기 테이블 | 저장소 | [[VA-DOM-003]] |
-| 파일 | FS | `data/tmp/{video_id}/` · `data/export/` · `inbox/`(읽기만) · `.env`(키 · 모델 줄) | 저장소 | [[VA-INFRA-001]] 6절 |
+| 파일 | FS | `data/tmp/{video_id}/` · `data/uploads/` · `data/frames/{video_id}/` · `data/infographics/` · `data/export/` · `inbox/`(읽기만) · `.env`(키 · 모델 줄) | 저장소 | [[VA-INFRA-001]] 6절 |
 | 입구 (공통) | B | 라우터 하나 — [[#SEQ-C1]]의 표가 지정 | Boundary | [[VA-DOM-002]] 3.1 |
 | 서비스 (공통) | SV | 서비스 하나 — [[#SEQ-C1]]의 표가 지정 | Control | [[VA-DOM-002]] 4장 |
 | 닿는 곳 (공통) | X | DB 또는 파일 또는 어댑터 — [[#SEQ-C1]]의 표가 지정 | 저장소 | — |
@@ -66,7 +70,7 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | [[VA-API-001#POST/api/videos/{id}/job]] | [[#SEQ-2]] | ○ | |
 | 백그라운드 파이프라인 — 자막 있는 YouTube | [[#SEQ-3]] | ○ | YouTube · OpenAI |
 | 백그라운드 파이프라인 — 받아쓰기 | [[#SEQ-4]] | ○ | YouTube 또는 ffmpeg · OpenAI |
-| [[VA-API-001#GET/api/videos/{id}/job]] (1초 폴링) | [[#SEQ-5]] | | |
+| [[VA-API-001#GET/api/videos/{id}/job]] (1초 폴링) | [[#SEQ-5]] | ○ | |
 | [[VA-API-001#POST/api/videos/{id}/job/retry]] | [[#SEQ-6]] | ○ | |
 | [[VA-API-001#GET/api/videos]] | [[#SEQ-7]] | ○ | |
 | [[VA-API-001#GET/api/videos/{id}]] | [[#SEQ-7]] | ○ | |
@@ -81,14 +85,20 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | [[VA-API-001#PUT/api/settings/models]] | [[#SEQ-C1]] | | |
 | [[VA-API-001#GET/api/inbox]] | [[#SEQ-C1]] | | ffprobe |
 | [[VA-API-001#GET/api/videos/{id}/chat]] | [[#SEQ-8]] | ○ | |
+| [[VA-API-001#POST/api/uploads]] | [[#SEQ-15]] | ○ | 파일 · ffprobe · OpenAI(키 확인) |
+| 백그라운드 파이프라인 — 장면 단계와 끝 | [[#SEQ-16]] | ○ | YouTube(스토리보드) 또는 ffmpeg · 파일 |
+| [[VA-API-001#POST/api/videos/{id}/frames]] · [[VA-API-001#GET/api/videos/{id}/frames]] | [[#SEQ-17]] | ○ | YouTube(스토리보드) 또는 ffmpeg |
+| [[VA-API-001#POST/api/videos/{id}/infographic]] · [[VA-API-001#GET/api/videos/{id}/infographic]] | [[#SEQ-18]] | ○ | OpenAI(키 확인 · 이미지) · 파일 |
+| [[VA-API-001#GET/api/videos/{id}/frames/{seq}]] | [[#SEQ-C1]] | | 파일 |
+| [[VA-API-001#GET/api/videos/{id}/infographic/image]] | [[#SEQ-C1]] | | 파일 |
 
-19행 중 묶음을 넘는 것이 13행이다. 넘지 않는 것은 설정 셋 · inbox · 폴링 · 대기열 워커뿐이고, 대화 기록 조회도 영상이 있는지 보느라 `VideoService`를 한 번 부른다.
+25행 중 묶음을 넘는 것이 18행이다. 넘지 않는 것은 설정 셋 · inbox · 대기열 워커 · 그림 파일 둘뿐이다. 진행 폴링은 장면 칸 때문에 결과 묶음을 한 번 부르게 됐고(카드 D2), 대화 기록 조회도 영상이 있는지 보느라 `VideoService`를 한 번 부른다.
 
 ---
 
 ## SEQ-1 영상을 등록하고 사전 안내를 만든다
 
-[[VA-UC-001#UC-H1]] 1~2번, 확장 1a · 2a · 2b · [[VA-UC-001#UC-H2]] 1~2번, 확장 1a · 2a · [[VA-UC-001#UC-S1]] 전부 · [[VA-UC-001#UC-S5]] 1번. 입구 [[VA-API-001#POST/api/videos]]. 화면 [[VA-UI-002#UI-1]] [분석] · [선택한 파일 분석] → [[VA-UI-002#UI-2]].
+[[VA-UC-001#UC-H1]] 1~2번, 확장 1a · 2a · 2b · [[VA-UC-001#UC-H2]] 1~2번(inbox에서 고르기 — 끌어 놓기는 [[#SEQ-15]]), 확장 1a · 2a · [[VA-UC-001#UC-S1]] 전부 · [[VA-UC-001#UC-S5]] 1번. 입구 [[VA-API-001#POST/api/videos]]. 화면 [[VA-UI-002#UI-1]] [분석] · [선택한 파일 분석] → [[VA-UI-002#UI-2]].
 
 ```mermaid
 sequenceDiagram
@@ -248,7 +258,7 @@ sequenceDiagram
 ---
 ## SEQ-3 파이프라인 — 자막 있는 YouTube
 
-[[VA-UC-001#UC-S2]] 1~2번 · [[VA-UC-001#UC-S4]] 전부 · [[VA-UC-001#UC-S6]] 1 · 3번. 입구는 [[#SEQ-2]]가 띄운 백그라운드 태스크. 단계 download(자막) → summarize → chapter → suggest.
+[[VA-UC-001#UC-S2]] 1~2번 · [[VA-UC-001#UC-S4]] 전부 · [[VA-UC-001#UC-S6]] 1 · 3번. 입구는 [[#SEQ-2]]가 띄운 백그라운드 태스크. 단계 download(자막) → summarize → chapter → suggest, 이어서 frames(장면)와 끝은 [[#SEQ-16]].
 
 ```mermaid
 sequenceDiagram
@@ -299,10 +309,8 @@ sequenceDiagram
     SM-->>AS: 질문 3개
     AS->>DB: suggested_questions 교체
     AS-->>PL: 완료
-    PL->>JS: finish(job_id)
-    JS->>DB: status = done · progress_pct = 100 · finished_at
-    PL->>FS: data/tmp/{video_id} 삭제 (있으면)
-    Note over PL: 어느 단계든 예외 → SEQ-4의 실패 처리와 같다 (fail)
+    Note over PL: 이어서 frames(장면) → finish → 사본 놓기 · data/tmp 삭제 — SEQ-16
+    Note over PL: 어느 단계든(frames 빼고) 예외 → SEQ-4의 실패 처리와 같다 (fail)
 ```
 
 **읽을 때 볼 것**
@@ -310,13 +318,13 @@ sequenceDiagram
 - 요약이 챕터보다 먼저다. 긴 스크립트의 요약 재료는 챕터가 아니라 구간별 중간 요약이다([[VA-DOM-002]] 5장 10). 세 단계가 각각 `segments`를 다시 읽는 것은 서비스가 파이프라인의 메모리를 모르기 때문이다 — 3,000행을 세 번 읽는 비용은 OpenAI 호출에 비해 없는 것과 같다
 - `AnalysisService`의 세 `generate_*`는 자기 결과를 **교체**한다. 실패 후 재시도가 같은 단계를 다시 돌려도 중복이 생기지 않는다
 - 파이프라인은 `JobService`로만 작업 행을 만진다. 단계 전환 · 걸린 시간 · 진행률이 `mark_stage`에 들어 있다
-- `finish` 뒤에 `Video.status`가 `analyzed`가 되는 것은 계산이다. 영상 행은 건드리지 않는다([[VA-DOM-002]] 5장 4)
+- `finish`([[#SEQ-16]]) 뒤에 `Video.status`가 `analyzed`가 되는 것은 계산이다. 영상 행은 건드리지 않는다([[VA-DOM-002]] 5장 4)
 
 ---
 
 ## SEQ-4 파이프라인 — 받아쓰기
 
-[[VA-UC-001#UC-S2]] 확장 1a · 1b · 1c · [[VA-UC-001#UC-S3]] 전부 · [[VA-UC-001#UC-S6]] 2번, 확장 1a · [[VA-UC-001#UC-H0]] 확장 4a~6a. 단계 download(음성) 또는 extract → transcribe → summarize → chapter → suggest. 요약 이후는 [[#SEQ-3]]과 같아 생략한다.
+[[VA-UC-001#UC-S2]] 확장 1a · 1b · 1c · [[VA-UC-001#UC-S3]] 전부 · [[VA-UC-001#UC-S6]] 2번, 확장 1a · [[VA-UC-001#UC-H0]] 확장 4a~6a. 단계 download(음성) 또는 extract → transcribe → summarize → chapter → suggest → frames(로컬 음성은 없음). 요약 이후는 [[#SEQ-3]], 장면과 끝은 [[#SEQ-16]]과 같아 생략한다.
 
 ```mermaid
 sequenceDiagram
@@ -337,11 +345,11 @@ sequenceDiagram
         AU-->>PL: 경로
     else 로컬 영상 (S2 1b)
         PL->>JS: mark_stage(job_id, extract)
-        PL->>AU: extract_audio(inbox 파일, data/tmp/{video_id}/)
-        AU->>FS: mp3 64kbps 모노 쓰기 (inbox는 읽기만)
+        PL->>AU: extract_audio(sources.local_path(video) — inbox 파일 또는 올린 사본, data/tmp/{video_id}/)
+        AU->>FS: mp3 64kbps 모노 쓰기 (원본은 읽기만)
         AU-->>PL: 경로
     else 로컬 음성 (S2 1c)
-        Note over PL: 추출 단계는 없다. 받아쓰기 단계가 조각을 나누기 전에 extract_audio로 data/tmp/{video_id}/audio.mp3를 만든다. inbox는 읽기만
+        Note over PL: 추출 단계는 없다. 받아쓰기 단계가 조각을 나누기 전에 extract_audio로 data/tmp/{video_id}/audio.mp3를 만든다. 원본(inbox 파일 또는 올린 사본)은 읽기만
     end
     alt 내려받기·추출 실패 (S2 1d)
         PL->>FS: data/tmp/{video_id} 지우기
@@ -387,7 +395,7 @@ sequenceDiagram
         AS->>DB: transcripts 교체 · segments 일괄 insert
     end
     AS-->>PL: 완료
-    Note over PL: 이후 summarize → chapter → suggest → finish는 SEQ-3 9번부터와 같다
+    Note over PL: 이후 summarize → chapter → suggest는 SEQ-3 9번부터, frames → finish → 사본 놓기는 SEQ-16과 같다
 ```
 
 **읽을 때 볼 것**
@@ -396,25 +404,30 @@ sequenceDiagram
 - 조각 파일은 조각이 `done`이 될 때마다 지운다. 실패한 작업은 `waiting` · `failed` 조각 파일만 남는다 — 재개용이다([[VA-INFRA-001]] 6절)
 - 이어 붙이기는 메모리에서 한다. 조각의 결과 텍스트는 DB에 두지 않는다 — 재시도가 이미 `done`인 조각을 다시 보내지 않으려면 결과가 있어야 하는데, 지금 설계는 **조각 결과를 잃는다** → 되먹일 것 #1
 - `mark_chunk(in_flight)`가 `attempts`를 올리고 `mark_chunk(done)`이 `progress_pct`를 갱신한다. 클래스 명세의 시그니처는 그대로이고 규칙만 더한다 → 되먹일 것 #2
+- 로컬 원본은 `shared/sources.py`의 `local_path`가 푼다 — inbox 파일이거나 올린 사본이다([[VA-DOM-002]] 5장 12). 실패로 멈추면 사본이 남아 다시 시도([[#SEQ-6]])가 그것을 읽는다([[VA-UC-001#UC-H2]] 4a)
 
 ---
 
 ## SEQ-5 진행 상태를 폴링한다
 
-[[VA-UC-001#UC-S6]] 전부. 입구 [[VA-API-001#GET/api/videos/{id}/job]]. 화면 [[VA-UI-002#UI-3]]이 1초마다, [[VA-UI-002#UI-1]]이 진행 중 행을 갱신할 때.
+[[VA-UC-001#UC-S6]] 전부 · [[VA-UC-001#UC-S7]](장면 칸). 입구 [[VA-API-001#GET/api/videos/{id}/job]]. 화면 [[VA-UI-002#UI-3]]이 1초마다, [[VA-UI-002#UI-1]]이 진행 중 행을 갱신할 때.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant W as 화면
     participant RJ as job/router
+    participant AS as AnalysisService
     participant JS as JobService
     participant DB
 
     W->>RJ: GET /api/videos/{id} (UI-3 처음 열 때 한 번 — SEQ-7)
     loop 1초마다, status가 queued 또는 running인 동안
         W->>RJ: GET /api/videos/{id}/job
-        RJ->>JS: progress(video_id)
+        RJ->>AS: frame_progress(video_id)
+        AS->>DB: chapters · chapter_frames (video_id)
+        AS-->>RJ: FrameProgress (챕터마다 waiting · in_flight · done · missing)
+        RJ->>JS: progress(video_id, frames)
         JS->>DB: analysis_jobs where video_id order by started_at desc limit 1
         alt 작업 없음
             JS-->>RJ: NotFound(job)
@@ -425,7 +438,7 @@ sequenceDiagram
         opt status = queued
             JS->>DB: analysis_jobs where status = queued and queued_at < 내 것 (개수)
         end
-        JS->>JS: to_job — remaining_sec · chunks 집계 · next_seq · queue_position
+        JS->>JS: to_job — remaining_sec · chunks 집계 · next_seq · queue_position · 장면 단계가 있으면 frames
         JS-->>RJ: Job
         RJ-->>W: 200 Job
         alt status = done
@@ -435,17 +448,18 @@ sequenceDiagram
         else status = queued
             W->>W: 대기 상태 — '차례를 기다리는 중' · '앞 영상 {queue_position}개가 끝나면 시작해요'
         else running
-            W->>W: 헤드라인·부제·퍼센트·단계 목록·조각 격자·전송 표시 갱신
+            W->>W: 헤드라인·부제·퍼센트·단계 목록·조각 격자·전송 표시·장면 칸(frames 단계) 갱신
         end
     end
 ```
 
 **읽을 때 볼 것**
-- 읽기만 한다. 파이프라인이 쓴 행을 `JobService`가 응답 형태로 만든다. `remaining_sec`은 작업 전체가 끝날 때까지다 — 받아쓰기 단계면 미완료 조각 수 × `done_at` 간격의 평균에 요약 세 단계 몫을 더하고, 요약 세 단계면 그 몫 − 세 단계에 쓴 시간, 그 앞 단계면 예상 전체 시간 − 지난 시간이다(끝난 단계의 오차는 넘기지 않는다). 0이면 화면이 남은 시간을 비우고, `running`이 아니면 null이다([[VA-API-001#GET/api/videos/{id}/job]])
+- 읽기만 한다. 파이프라인이 쓴 행을 `JobService`가 응답 형태로 만든다. `remaining_sec`은 작업 전체가 끝날 때까지다 — 받아쓰기 단계면 미완료 조각 수 × `done_at` 간격의 평균에 뒤 단계(요약 세 단계 · 장면) 몫을 더하고, 그 뒤 단계면 그 몫 − 거기 쓴 시간, 그 앞 단계면 예상 전체 시간 − 지난 시간이다(끝난 단계의 오차는 넘기지 않는다). 0이면 화면이 남은 시간을 비우고, `running`이 아니면 null이다([[VA-API-001#GET/api/videos/{id}/job]])
 - 대기 중에도 같은 폴링이다. `queue_position`이 줄어들다가 `status`가 `running`으로 바뀌면 같은 화면이 진행 상태가 된다 — 화면을 새로 열지 않는다([[VA-UI-002#UI-3]] 규칙)
 - 화면은 계산하지 않는다. 표의 값을 그대로 쓴다([[VA-API-001#GET/api/videos/{id}/job]]의 요소 ↔ 필드 표)
 - 폴링이 `done`을 보면 UI-4로 넘긴다. 서버가 화면을 밀어 주는 길(SSE)은 없다([[VA-INFRA-001]] 3절)
 - 영상 머리(제목 · 출처 · 길이 · 자막)는 폴링 응답에 없다. UI-3이 열릴 때 [[#SEQ-7]]의 `GET /api/videos/{id}`로 한 번 받는다
+- 장면 칸(`Job.frames`)은 결과 묶음의 장면 행에서 온다. 라우터가 `AnalysisService.frame_progress`를 받아 넘기고, `JobService`는 장면 단계가 있는 작업에만 싣는다([[VA-DOM-002]] 5장 14). 그래서 이 폴링도 묶음을 넘는다. 칸의 그림은 `url`을 `<img>`가 부른다([[#SEQ-C1]])
 
 ---
 
@@ -497,12 +511,15 @@ sequenceDiagram
         Note over PL: 스크립트는 그대로. 그 단계부터 SEQ-3
     else download · extract
         Note over PL: 처음부터. SEQ-4 1번부터
+    else frames (서버가 장면 단계에서 죽었던 것)
+        Note over PL: 장면 행이 없는 챕터만. SEQ-16
     end
 ```
 
 **읽을 때 볼 것**
 - 새 작업을 만들지 않는다. `id` · `started_at` · `stages` · 모델이 그대로다([[VA-DOM-002#AnalysisJob]]). 목록 순서도 바뀌지 않는다. 바뀌는 것은 `queued_at`뿐이다 — 다른 영상이 돌고 있으면 대기열 **끝**에서 기다린다([[VA-DOM-003#analysis_jobs]])
 - `resume`은 행의 `stage`를 보고 그 단계부터 돈다. 받아쓰기면 `done`이 아닌 조각만 — 그런데 `done`인 조각의 결과 텍스트가 어디에도 없다. 이어 붙이려면 다시 보내야 한다 → 되먹일 것 #1 (조각 결과를 `audio_chunks`에 두거나 파일로 남긴다)
+- 올린 파일이면 실패한 동안 사본이 남아 있어 다시 시도가 그것을 읽는다([[VA-UC-001#UC-H2]] 4a). 사본은 이번에 `done`이 되면 지운다([[#SEQ-16]])
 - 키가 없는 동안 화면은 버튼을 막은 상태이지만 서버도 다시 검사한다. 화면 규칙과 서버 규칙이 같은 것을 두 번 지킨다. 마지막 확인이 연결 실패(`network`)였으면 화면은 막지 않고, `require_key`가 그 자리에서 한 번 다시 확인한다([[#SEQ-13]] 읽을 때 볼 것)
 
 ---
@@ -589,8 +606,8 @@ sequenceDiagram
             RA-->>W: 409 result-not-ready
             W->>W: in_progress·failed면 UI-3, registered면 UI-1로
         end
-        AS->>DB: transcripts+segments · summaries+insights · parts · chapters · suggested_questions (video_id)
-        AS->>AS: Part.end_sec · chapter_count 계산
+        AS->>DB: transcripts+segments · summaries+insights · parts · chapters · suggested_questions · chapter_frames · infographics (video_id)
+        AS->>AS: Part.end_sec · chapter_count · frames_state 계산 — 장면 채우기는 시작하지 않는다
         AS-->>RA: Result
         RA-->>W: 200 Result (구간 전부)
     and
@@ -602,7 +619,13 @@ sequenceDiagram
         CS-->>RC: list[ChatTurn]
         RC-->>W: 200
     end
-    W->>W: 본문(요약·인사이트·챕터·추천 질문) · 스크립트 탭 · 질문 수 배지 · 대화 목록
+    W->>W: 본문(요약·인사이트·한눈에 보기·챕터와 장면·인포그래픽 카드·추천 질문) · 스크립트 탭 · 질문 수 배지 · 대화 목록
+    opt frames_state = absent (H3 1a)
+        W->>RA: POST /api/videos/{id}/frames — SEQ-17
+    end
+    opt infographic.state = making (그리는 동안 떠났다 돌아왔다)
+        W->>RA: GET /api/videos/{id}/infographic 3초마다 — SEQ-18
+    end
 ```
 
 **읽을 때 볼 것**
@@ -610,6 +633,7 @@ sequenceDiagram
 - 구간 수천 개가 한 응답이다([[VA-API-001]] 5장 3). 화면이 시각 이동에 전부 필요로 한다
 - 대화 기록은 별도 요청이다. 결과는 분석이 끝나면 고정되고 대화는 계속 쌓인다 — 묶음이 다른 이유가 응답도 가른다([[VA-DOM-001]] 4장)
 - 주소로 바로 들어와 결과가 없으면 409의 `video_status`로 갈 곳을 정한다. 화면은 이 판정을 위해 따로 `GET /api/videos/{id}`를 부르지 않아도 된다
+- 한눈에 보기(막대 · 마인드맵)는 이 응답으로 화면이 그린다 — 따로 받는 것이 없다([[VA-API-001#GET/api/videos/{id}/result]] 표). 장면이 없는 옛 결과는 화면이 채우기를 시킨다([[#SEQ-17]]) — GET이 일을 벌이지 않는다([[VA-API-001]] 5장 14)
 
 ---
 ## SEQ-9 영상에 질문한다
@@ -684,7 +708,7 @@ sequenceDiagram
 
 ## SEQ-10 마크다운으로 내보낸다
 
-[[VA-UC-001#UC-H7]] 1~3번, 확장 2a · 2b. 입구 [[VA-API-001#GET/api/videos/{id}/export]] · [[VA-API-001#POST/api/videos/{id}/export]]. 화면 [[VA-UI-002#UI-7]].
+[[VA-UC-001#UC-H7]] 1~3번, 확장 2a · 2b · 2c · 2d. 입구 [[VA-API-001#GET/api/videos/{id}/export]] · [[VA-API-001#POST/api/videos/{id}/export]]. 화면 [[VA-UI-002#UI-7]].
 
 ```mermaid
 sequenceDiagram
@@ -698,24 +722,24 @@ sequenceDiagram
     participant DB
     participant FS as 파일
 
-    U->>W: UI-4 [내보내기] → 다이얼로그. 체크박스를 바꿀 때마다 다시
-    W->>RA: GET /api/videos/{id}/export?with_chat=
+    U->>W: UI-4 [내보내기] → 다이얼로그. 방법(파일 · 복사)이나 체크박스를 바꿀 때마다 다시
+    W->>RA: GET /api/videos/{id}/export?with_chat=&method=file 또는 clipboard
     RA->>VS: get(video_id)
     VS-->>RA: VideoDetail {video}
     opt with_chat
         RA->>CS: history(video_id)
         CS-->>RA: list[ChatTurn]
     end
-    RA->>AS: export_markdown(video, with_chat, turns)
+    RA->>AS: export_markdown(video, with_chat, turns, method)
     alt video.status != analyzed
         AS-->>RA: ResultNotReady
         RA-->>W: 409
     end
     AS->>DB: 결과 전부 (SEQ-8과 같은 읽기)
-    AS->>AS: export.py — 순서·시각 표기·YouTube 링크·파일 이름
-    AS-->>RA: ExportPreview {filename, path, markdown}
+    AS->>AS: export.py — 순서·시각 표기·YouTube 링크·Mermaid gantt · mindmap·파일 이름. file이면 그림 줄 · 스크립트 절
+    AS-->>RA: ExportPreview {filename, path, markdown, files}
     RA-->>W: 200
-    W-->>U: 미리 보기 (앞부분) · 저장 경로
+    W-->>U: 미리 보기 (앞부분) · 저장 경로 · 함께 쓸 파일 칩 (file)
     alt [파일로 저장]
         U->>W: 주 버튼
         W->>W: 다이얼로그 잠금
@@ -726,19 +750,19 @@ sequenceDiagram
         end
         RA->>AS: export_to_file(video, with_chat, turns)
         AS->>AS: 같은 마크다운을 다시 만든다
-        AS->>FS: data/export/{filename}.md 쓰기 (덮어쓰기)
+        AS->>FS: 노트 · 스크립트 쓰기, 장면 {filename} {시각}.jpg · 인포그래픽 {filename} 인포그래픽.png 복사 (있는 것만, 덮어쓰기)
         alt 쓰기 실패
             FS-->>AS: OSError
             AS-->>RA: ExportFailed {path, reason}
             RA-->>W: 500 export-failed
             W-->>U: 다이얼로그 열린 채 실패 한 줄 · 잠금 해제
         end
-        AS-->>RA: ExportResult {filename, path, bytes}
+        AS-->>RA: ExportResult {filename, path, bytes, images, files}
         RA-->>W: 201
-        W-->>U: 닫고 짧은 알림 '{path}에 저장했어요'
+        W-->>U: 닫고 짧은 알림 '{path}에 저장했어요 · 스크립트는 따로 · 그림 {n}장'
     else [복사하기]
         U->>W: 주 버튼
-        W->>W: 받아 둔 markdown 전체를 클립보드에 (브라우저 API)
+        W->>W: 받아 둔 method=clipboard의 markdown 전체를 클립보드에 (브라우저 API) — 그림 줄 · 스크립트 절 없음
         alt 클립보드 거부
             W-->>U: 열린 채 실패 한 줄
         end
@@ -751,12 +775,13 @@ sequenceDiagram
 - 파일로 저장은 서버가 같은 마크다운을 다시 만든다. GET의 결과를 POST로 보내지 않는다 — 본문이 커지고, 화면이 고친 본문이 저장될 길을 열지 않기 위해서다
 - `with_chat`이면 라우터가 `ChatService.history`를 불러 넘긴다. 결과 묶음은 대화 테이블을 모른다([[VA-DOM-002]] 3.1 표)
 - 저장된 결과는 바뀌지 않는다([[VA-UC-001#UC-H7]] 최소 보장). 쓰는 것은 `data/export/` 파일뿐이다
+- 복사한 노트에는 그림 줄이 없다 — 가리킬 파일이 없기 때문이다. 파일로 저장해야 옵시디언이 장면 · 인포그래픽을 노트 곁에서 찾는다([[VA-UI-002#UI-7]] 규칙)
 
 ---
 
 ## SEQ-11 영상을 삭제한다
 
-[[VA-UC-001#UC-H6]] 1~4번, 확장 3a. 입구 [[VA-API-001#DELETE/api/videos/{id}]]. 화면 [[VA-UI-002#UI-6]] [삭제].
+[[VA-UC-001#UC-H6]] 1~4번, 확장 3a · [[VA-UC-001#UC-H2]] 확장 3a(사전 안내에서 취소한 올린 영상). 입구 [[VA-API-001#DELETE/api/videos/{id}]]. 화면 [[VA-UI-002#UI-6]] [삭제] · [[VA-UI-002#UI-2]] 올린 파일 판의 [취소].
 
 ```mermaid
 sequenceDiagram
@@ -766,6 +791,7 @@ sequenceDiagram
     participant RV as video/router
     participant JS as JobService
     participant PL as pipeline
+    participant AS as AnalysisService
     participant VS as VideoService
     participant DB
     participant FS as 파일
@@ -782,6 +808,11 @@ sequenceDiagram
     end
     Note over JS: 대기 중이면 할 일이 없다 — 행이 지워지면 대기열에서 빠진 것이다
     JS-->>RV: 완료
+    RV->>AS: cancel_tasks(video_id)
+    opt 장면 채우기 · 인포그래픽 태스크가 있다
+        AS->>AS: task.cancel() — 끝나기를 기다린다
+    end
+    AS-->>RV: 완료
     RV->>VS: delete(video_id)
     VS->>DB: videos where id
     alt 없음
@@ -790,9 +821,9 @@ sequenceDiagram
     end
     rect rgb(240,244,240)
         Note over VS,DB: 한 트랜잭션
-        VS->>DB: delete videos where id — analysis_jobs·audio_chunks·transcripts·segments·summaries·insights·parts·chapters·suggested_questions·chat_turns cascade
+        VS->>DB: delete videos where id — analysis_jobs·audio_chunks·transcripts·segments·summaries·insights·parts·chapters·suggested_questions·chat_turns·chapter_frames·infographics cascade
     end
-    VS->>FS: data/tmp/{video_id} 삭제 (inbox 원본은 그대로)
+    VS->>FS: data/tmp/{id} · data/frames/{id} · data/infographics/{id}.png · 올린 사본 삭제 (inbox 원본 · PC의 원래 파일은 그대로)
     alt 디스크·DB 오류
         VS-->>RV: 예외
         RV-->>W: 500 internal {detail}
@@ -807,9 +838,10 @@ sequenceDiagram
 
 **읽을 때 볼 것**
 - 라우터가 `JobService.cancel`을 먼저, `VideoService.delete`를 다음에 부른다. 순서만 있고 판단이 없어 조율 모듈을 두지 않았다([[VA-DOM-002]] 5장 3). 진행 중이 아니면(대기 중 · 실패 · 완료) `cancel`은 아무것도 안 한다. 워커를 깨우는 것은 행이 지워진 **뒤**다 — 먼저 깨우면 워커가 지워질 행을 꺼낼 수 있다 → 되먹일 것 #8
-- 앱이 지우는 행은 `videos` 하나다. 나머지 열 종류는 FK cascade가 지운다([[VA-DOM-003]] 4장 5). 빠뜨릴 것이 없다
+- 앱이 지우는 행은 `videos` 하나다. 나머지 열두 종류는 FK cascade가 지운다([[VA-DOM-003]] 4장 5). 빠뜨릴 것이 없다
 - 취소된 파이프라인은 `await` 지점에서 멈춘다. 열린 DB 세션은 롤백되고, 진행 중이던 OpenAI 요청의 응답은 버려진다. 이미 보낸 요청의 비용은 든다
-- 남는 것은 inbox 원본(로컬)뿐이다([[VA-INFRA-001#C4]]). 다시 넣으면 처음부터 분석한다
+- 남는 것은 PC에 있는 원본 — inbox 파일이나 올린 파일의 원래 파일 — 과 내보낸 노트 · 그림이다([[VA-INFRA-001#C4]]). 다시 넣으면 처음부터 분석한다
+- UI-2 올린 파일 판의 [취소]도 이 요청이다. 작업이 없어 `cancel`은 할 일이 없고 사본을 지운다([[VA-UC-001#UC-H2]] 3a). 그리는 중인 인포그래픽을 멈춰도 이미 보낸 요청의 비용은 든다
 
 ---
 
@@ -865,7 +897,7 @@ sequenceDiagram
 
 ## SEQ-13 서버가 시작한다
 
-[[VA-UC-001#UC-H8]] 확장 1a(`.env`에 직접 적은 키) · [[VA-DOM-002]] 5장 8(죽은 작업 · 대기열 워커). 입구는 `main.py` lifespan. 화면 없음.
+[[VA-UC-001#UC-H8]] 확장 1a(`.env`에 직접 적은 키) · [[VA-DOM-002]] 5장 8(죽은 작업 · 대기열 워커) · 5장 13(그리던 인포그래픽) · [[VA-UC-001#UC-H2]] 최소 보장(남은 사본 청소). 입구는 `main.py` lifespan. 화면 없음.
 
 ```mermaid
 sequenceDiagram
@@ -874,7 +906,10 @@ sequenceDiagram
     participant SS as SettingsService
     participant OA as infra/openai
     participant JS as JobService
+    participant AS as AnalysisService
+    participant VS as VideoService
     participant DB
+    participant FS as 파일
     participant PL as pipeline
 
     MN->>MN: Config 읽기 (환경 변수) · DB 엔진
@@ -893,7 +928,17 @@ sequenceDiagram
         JS->>DB: status = failed · error_kind = unknown · error_reason = '서버가 다시 시작됨' · in_flight 조각 → waiting
     end
     JS-->>MN: 건수
-    MN->>PL: create_task(worker(load_video)) — 하나. 서버를 끌 때 취소한다
+    MN->>AS: fail_orphans()
+    AS->>DB: infographics where state = making → failed · '서버가 다시 시작됨'
+    AS-->>MN: 건수
+    MN->>VS: sweep_uploads()
+    VS->>FS: data/uploads의 .part-* 지우기 (올리다 만 것)
+    VS->>DB: 사본마다 source_id의 영상
+    VS->>JS: latest_by_videos(영상 id들)
+    JS-->>VS: dict[video_id, JobSummary]
+    VS->>FS: 영상이 없거나 · 올린 영상이 아니거나 · 작업이 없거나 done인 사본 지우기 (failed · queued는 남김)
+    VS-->>MN: 지운 수
+    MN->>PL: create_task(worker(load_video, release_upload)) — 하나. 서버를 끌 때 취소한다
     Note over PL: queued로 남아 있던 작업이 있으면 이어서 돈다 — SEQ-14
     MN->>MN: 라우터 등록 · 127.0.0.1에 바인딩
 ```
@@ -901,7 +946,8 @@ sequenceDiagram
 **읽을 때 볼 것**
 - 시작 때 키 확인이 세 확인 시점 중 첫째다(시작 · 분석 버튼 · 키 저장). 실패해도 서버는 뜬다 — 읽기는 키 없이도 되고 배너가 알린다([[VA-API-001]] 1장)
 - `running`인 채 남은 작업은 핸들이 없어 영원히 돈다고 보인다. `failed`로 돌려야 재시도가 된다. `JobService.fail_orphans`는 클래스 명세에 없다 → 되먹일 것 #3. `queued`는 건드리지 않는다 — 돌던 것이 아니라 기다리던 것이라 워커가 뜨면 이어서 돈다
-- 순서가 있다. `fail_orphans`가 **먼저**, 워커가 **다음**이다. 거꾸로면 `running`인 채 남은 행 때문에 워커가 아무것도 꺼내지 못한다
+- 순서가 있다. `fail_orphans`가 **먼저**, 워커가 **다음**이다. 거꾸로면 `running`인 채 남은 행 때문에 워커가 아무것도 꺼내지 못한다. `sweep_uploads`도 `JobService.fail_orphans` **뒤**다 — 죽은 `running`이 `failed`가 된 뒤라야 다시 시도할 사본이 남는다([[VA-DOM-002#VideoService]])
+- 그리던 인포그래픽(`making`)도 핸들이 없어 영영 그리는 중으로 보이므로 `failed`로 되돌린다. 장면은 「도는 중」이 메모리에만 있어 되돌릴 것이 없다 — 다 못 채운 옛 결과는 화면이 다시 시킨다([[#SEQ-17]])
 - 네트워크가 없어 확인이 `network`로 실패한 키는 `invalid`로 본다. 분석 버튼을 누르면 다시 확인하고([[#SEQ-1]]), 다시 시도와 질문도 마지막 결과가 `network`면 `require_key`가 그 자리에서 한 번 다시 확인하므로([[VA-DOM-002#SettingsService]]) 네트워크가 돌아오면 저절로 풀린다. 그동안 배너 문구는 '연결을 확인하지 못했어요 — …'이고 버튼은 막지 않는다([[VA-UI-002]] 1.4)
 
 ---
@@ -957,7 +1003,314 @@ sequenceDiagram
 - 대기열은 메모리에 없다. `queued` 행이 곧 대기열이라 서버가 다시 떠도 기다리던 작업이 남고([[#SEQ-13]]), 워커가 뜨면 이어서 돈다. 메모리에 있는 것은 깨우는 신호 하나뿐이다
 - 앞 작업이 **실패해도** 다음 작업은 시작된다. 실패한 작업은 `failed`로 남을 뿐 대기열을 막지 않는다([[VA-UI-002#UI-3]] 규칙)
 - 워커는 태스크의 예외로 죽지 않는다. 파이프라인 안의 실패는 `fail`로 접히고([[#SEQ-4]]), 취소는 [[#SEQ-11]]이 한다
-- 워커는 `Video`를 `main.py`가 넘긴 `load_video`로 얻는다 — `VideoService.get`을 감싼 함수다. 작업 묶음은 영상 묶음을 import하지 않고, 둘을 아는 곳은 조립 지점뿐이다(되먹일 것 #7의 결론, [[VA-DOM-002]] 3.2 규칙)
+- 워커는 `Video`를 `main.py`가 넘긴 `load_video`로 얻는다 — `VideoService.get`을 감싼 함수다. 끝난 작업의 사본을 놓는 `release_upload`도 같은 길로 받는다([[#SEQ-16]]). 작업 묶음은 영상 묶음을 import하지 않고, 둘을 아는 곳은 조립 지점뿐이다(되먹일 것 #7의 결론, [[VA-DOM-002]] 3.2 규칙)
+
+---
+
+## SEQ-15 파일을 끌어 놓아 올린다
+
+[[VA-UC-001#UC-H2]] 1~2번(끌어 놓기 · 파일 고르기), 확장 1a · 1b · 1c · 1d · 2a · 2c · [[VA-UC-001#UC-S1]] · [[VA-UC-001#UC-S5]] 1b. 입구 [[VA-API-001#POST/api/uploads]]. 화면 [[VA-UI-002#UI-1]] 끌어 놓기 칸 · [파일 고르기] → [[VA-UI-002#UI-2]] 올린 파일 판.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as 사람
+    participant W as 화면
+    participant UR as uploads route
+    participant RV as video/router
+    participant VS as VideoService
+    participant SS as SettingsService
+    participant MP as media_probe
+    participant JS as JobService
+    participant DB
+    participant FS as 파일
+
+    U->>W: 파일을 끌어 놓거나 [파일 고르기]
+    alt 여러 파일 · 받지 않는 확장자 · 키 없음 (H2 1a · 1b)
+        W-->>U: 칸 아래 한 줄 또는 키 없음 판. 요청 없음
+    end
+    W->>UR: POST /api/uploads — XHR, 본문 = 파일, X-File-Name, Content-Length
+    UR->>UR: Host 확인 (host.ts)
+    alt 허용하지 않는 Host
+        UR-->>W: 400 (평문)
+    end
+    UR->>RV: 같은 경로로 본문을 스트림 그대로 (fetch, duplex half)
+    Note over W,RV: api의 응답은 성공이든 오류든 UR가 그대로 돌려준다
+    RV->>VS: upload(name, size, request.stream())
+    VS->>SS: check_stored_key() · require_key()
+    alt 키 없음 또는 확인 실패
+        VS-->>RV: KeyMissing 또는 KeyInvalid
+        RV-->>W: 503
+    end
+    alt 이름 · 크기가 없다, 받지 않는 확장자
+        VS-->>RV: Validation 또는 UnsupportedFile
+        RV-->>W: 422
+    end
+    VS->>FS: data/uploads 디스크 여유
+    alt Content-Length + 여유분보다 작다 (H2 1d)
+        VS-->>RV: NoSpace {needed_bytes, free_bytes}
+        RV-->>W: 507 no-space
+        W-->>U: '올릴 자리가 모자라요' 한 줄
+    end
+    loop 본문이 끝날 때까지 1MB씩
+        VS->>FS: data/uploads/.part-{무작위}에 쓰기
+        VS->>VS: SHA-256 갱신
+        W-->>U: upload.onprogress — 진행 막대 · 올린 양 (4.11)
+    end
+    alt 받은 크기가 다르다 · 끊김 · [멈추기] (H2 1c)
+        VS->>FS: .part 지우기
+        VS-->>RV: UploadIncomplete {received_bytes, expected_bytes}
+        RV-->>W: 400 upload-incomplete (연결이 살아 있으면)
+        W-->>U: '올라간 부분은 지웠어요' 한 줄
+    end
+    W-->>U: 다 올렸어요 — 파일 확인 중
+    VS->>MP: probe(.part 경로)
+    MP-->>VS: (duration_sec, has_audio)
+    alt 열 수 없음 · 음성 없음 · 3시간 초과 (H2 1a · 2a · 2c)
+        VS->>FS: .part 지우기
+        VS-->>RV: UnsupportedFile 또는 NoAudioTrack 또는 VideoTooLong
+        RV-->>W: 422
+        W-->>U: 시작 불가 판
+    end
+    VS->>DB: videos where source_id = SHA-256 (S5 1b)
+    alt 있음, 작업도 있음 (H2 2c)
+        VS->>FS: .part 지우기
+    else 있음, 작업 없음 (사전 안내에서 취소했던 것)
+        VS->>FS: .part → data/uploads/{SHA-256}.{확장자}
+        VS->>DB: 올린 정보로 덮어쓰기 (uploaded = true)
+    else 없음
+        VS->>FS: .part → data/uploads/{SHA-256}.{확장자}
+        VS->>DB: videos insert (local · uploaded = true · title · origin = 원래 이름)
+    end
+    VS->>JS: latest(video_id)
+    JS-->>VS: JobSummary 또는 null
+    VS-->>RV: Video
+    RV->>JS: estimate(video)
+    JS-->>RV: Estimate 또는 null
+    RV-->>UR: 200 RegisterResponse
+    UR-->>W: 200 그대로
+    alt status = registered
+        W-->>U: UI-2 올린 파일 판 — 취소하면 사본을 지운다 (SEQ-11)
+    else analyzed
+        W-->>U: UI-4 결과 + '이미 분석한 영상입니다'
+    else in_progress 또는 failed
+        W-->>U: UI-3 분석 진행
+    end
+```
+
+**읽을 때 볼 것**
+- web은 본문을 쌓지 않는다. 이 한 경로만 proxy를 거치지 않고 라우트 핸들러가 스트림으로 넘긴다 — proxy가 도는 요청은 본문이 메모리에 쌓이고 10MB에서 잘린다([[VA-INFRA-001#C4]], [[VA-DOM-002]] 1장)
+- 키 · 이름 · 디스크는 본문을 읽기 전에 판정한다. 수 GB를 받은 뒤에 거절하지 않으려는 것이다([[VA-API-001]] 5장 12). 다만 거절한 응답이 브라우저에 닿는지는 3장 미결이다
+- SHA-256은 쓰면서 잰다 — 같은 파일을 두 번 읽지 않는다. inbox 등록([[#SEQ-1]])과 같은 해시라, 같은 내용이면 어느 길로 넣어도 같은 영상이다
+- 어느 판정에서 멈추든 `.part`는 남지 않는다. 서버가 올리는 도중에 죽어 남은 것은 시작 때 지운다([[#SEQ-13]])
+- 작업이 없는(등록만 된) 영상과 같으면 사본을 지우지 않고 덮어쓴다 — 지우면 그 영상의 원본이 없어진다 → 되먹일 것 #9
+- 이 요청까지 OpenAI로 나가는 것은 키 확인뿐이다. 파일은 같은 PC 안에서 web → api로만 간다([[VA-INFRA-001#C9]])
+
+---
+
+## SEQ-16 파이프라인 — 장면 단계와 끝
+
+[[VA-UC-001#UC-S7]] 전부 · [[VA-UC-001#UC-S6]] 확장 1b · [[VA-UC-001#UC-H2]] 4번. 입구는 [[#SEQ-3]] · [[#SEQ-4]]의 suggest 뒤. 단계 frames(자막 있는 YouTube · 자막 없는 YouTube · 로컬 영상 — 로컬 음성은 없다), 그리고 모든 파이프라인의 끝.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant PL as pipeline
+    participant JS as JobService
+    participant AS as AnalysisService
+    participant FB as frames_storyboard
+    participant FL as frames_local
+    participant VS as VideoService
+    participant DB
+    participant FS as 파일
+
+    Note over PL: suggest가 끝난 뒤. 로컬 음성은 이 단계가 없다 (S7 1a)
+    PL->>JS: mark_stage(job_id, frames)
+    JS->>DB: stage = frames · stage_durations_sec[suggest] · progress_pct
+    PL->>AS: make_frames(video)
+    AS->>AS: 도는 중에 video_id (frames_state = making)
+    AS->>DB: chapters where video_id — 장면 행이 없는 챕터만
+    alt YouTube
+        AS->>FB: frames(영상 ID, 챕터 시작 시각들, data/frames/{video_id}/)
+        FB->>FB: 영상 정보를 한 번 받는다 (yt-dlp) — 스토리보드 sb0 격자 · 장 주소
+        loop 시각마다
+            FB->>FS: 장 주소를 입력으로 ffmpeg crop — 칸 하나를 JPEG로
+            FB-->>AS: FrameShot 또는 None
+            AS->>DB: chapter_frames insert (못 얻으면 그림 컬럼이 null인 행)
+        end
+    else 로컬 영상
+        AS->>FL: frames(sources.local_path(video), 챕터 시작 시각들, data/frames/{video_id}/)
+        loop 시각마다
+            FL->>FS: ffmpeg -ss 프레임 한 장, 폭 640 JPEG (원본은 읽기만)
+            FL-->>AS: FrameShot 또는 None
+            AS->>DB: chapter_frames insert
+        end
+    end
+    opt 포트가 통째로 실패 — 스토리보드 없음 · 원본 없음 (S7 2a · 3a)
+        AS->>DB: 남은 챕터에 그림 컬럼이 null인 행
+    end
+    AS->>AS: 도는 중에서 뺀다
+    AS-->>PL: 완료
+    Note over PL: make_frames의 예외는 삼킨다 — 장면은 작업을 실패로 만들지 않는다 (S6 1b). 취소만 올려 보낸다
+    PL->>JS: finish(job_id)
+    JS->>DB: status = done · progress_pct = 100 · finished_at
+    PL->>VS: release_upload(video) — main.py가 감싸 넘긴 함수
+    opt video.uploaded (H2 4)
+        VS->>FS: data/uploads/{SHA-256}.{확장자} 지우기
+    end
+    PL->>FS: data/tmp/{video_id} 삭제 (있으면)
+```
+
+**읽을 때 볼 것**
+- 장면은 실패해도 작업을 실패로 만들지 않는다. `make_frames`의 예외는 파이프라인이 삼키고 `finish`로 간다 — 얻지 못한 챕터는 장면이 없을 뿐이다([[VA-UC-001#UC-S6]] 1b). OpenAI를 부르지 않아 비용도 없다
+- 한 장마다 행을 쓴다. [[#SEQ-5]] 폴링의 장면 칸이 한 장씩 찬다. 못 얻은 챕터도 행을 남겨 「해 봤다」를 기록한다([[VA-DOM-002]] 5장 11)
+- 스토리보드 장 주소에는 서명이 있어 오래 두면 만료된다. 그래서 이 단계에서 영상 정보를 새로 받는다 — 등록 때 받은 정보를 쓰지 않는다([[VA-INFRA-001#C12]])
+- 올린 사본은 장면을 뽑은 **뒤에** 지운다 — 로컬 영상의 장면이 사본을 읽기 때문이다. 앞 단계에서 실패로 멈추면 이 줄에 오지 않아 사본이 남는다([[VA-UC-001#UC-H2]] 4a). `finish`와 사본 지우기 사이에 서버가 죽으면 시작 청소가 지운다([[#SEQ-13]])
+- 작업 묶음은 사본이 어디 있는지 스스로 지우지 않는다 — 끝났다는 것만 `release_upload`로 알리고, 지우는 것은 영상 묶음이다([[VA-DOM-002]] 5장 12)
+
+---
+
+## SEQ-17 옛 결과에 장면을 채운다
+
+[[VA-UC-001#UC-H3]] 확장 1a · 1b · [[VA-UC-001#UC-S7]]. 입구 [[VA-API-001#POST/api/videos/{id}/frames]] · [[VA-API-001#GET/api/videos/{id}/frames]]. 화면 [[VA-UI-002#UI-4]] 챕터 카드의 장면(6.7) · '장면 가져오는 중'(6.8).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as 화면
+    participant RA as analysis/router
+    participant VS as VideoService
+    participant AS as AnalysisService
+    participant DB
+
+    W->>RA: GET /api/videos/{id}/result (SEQ-8)
+    RA-->>W: 200 Result — frames_state = absent · chapters[].frame = null
+    W->>RA: POST /api/videos/{id}/frames (한 번)
+    RA->>VS: get(video_id)
+    VS-->>RA: VideoDetail {video}
+    RA->>AS: fill_frames(video)
+    AS->>DB: chapters · chapter_frames (video_id)
+    AS->>AS: frames_state — 도는 중 · 행 · 원본 자리
+    alt unavailable — 음성 파일 · 원본 없음 (H3 1b · S7 2a)
+        AS-->>RA: FramesUnavailable {reason}
+        RA-->>W: 409 frames-unavailable
+        W->>W: 챕터를 장면 없이 그린다
+    else making 또는 done
+        AS-->>RA: FrameSet (지금 상태)
+        RA-->>W: 202
+    else absent
+        AS->>AS: 도는 중에 넣고 create_task(make_frames(video)) — 핸들 보관, 자기 세션
+        Note over AS: 태스크 안은 SEQ-16의 make_frames와 같다. 대기열을 거치지 않는다
+        AS-->>RA: FrameSet (making)
+        RA-->>W: 202
+    end
+    loop 3초마다, state = making인 동안
+        W->>RA: GET /api/videos/{id}/frames
+        RA->>VS: get(video_id)
+        RA->>AS: frames_of(video)
+        AS->>DB: chapters · chapter_frames (그림이 있는 행)
+        AS-->>RA: FrameSet
+        RA-->>W: 200
+        W->>W: 받은 장면을 챕터 카드에 (6.7). 아직 없는 챕터는 '장면 가져오는 중' (6.8)
+    end
+    W->>W: done — 장면을 얻지 못한 챕터의 6.8을 거둔다
+```
+
+**읽을 때 볼 것**
+- 결과 조회는 채우기를 시작하지 않는다. 화면이 `absent`를 보고 한 번 시킨다 — GET이 일을 벌이면 읽기가 저장된 것을 바꾼다([[VA-API-001]] 5장 14). 두 번 시켜도 같다
+- 대기열을 거치지 않는다. 다른 영상의 긴 받아쓰기가 돌고 있어도 채우기는 곧바로 돈다([[VA-DOM-002]] 5장 13). 키를 보지 않고 비용도 없다
+- 화면을 떠나도 태스크는 이어진다. 다시 열었을 때 `making`이면 폴링을 잇고, `done`이면 장면이 이미 있다
+- 서버가 채우다 죽으면 「도는 중」은 사라지고 행이 일부만 있다 — 다시 열면 `absent`로 보여 화면이 다시 시키고, 해 본 챕터는 건너뛴다([[VA-DOM-002]] 5장 11)
+
+---
+
+## SEQ-18 인포그래픽을 맡기고 기다린다
+
+[[VA-UC-001#UC-H9]] 1~5번, 확장 2a · 3a · 4a · 5a. 입구 [[VA-API-001#POST/api/videos/{id}/infographic]] · [[VA-API-001#GET/api/videos/{id}/infographic]]. 화면 [[VA-UI-002#UI-4]] 인포그래픽 카드(15) · [[VA-UI-002#UI-8]].
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as 사람
+    participant W as 화면
+    participant RA as analysis/router
+    participant VS as VideoService
+    participant AS as AnalysisService
+    participant SS as SettingsService
+    participant IM as image_openai
+    participant DB
+    participant FS as 파일
+
+    U->>W: 카드 [인포그래픽 만들기] 또는 [다시 만들기]
+    W-->>U: UI-8 — 예상 비용(Settings.image의 한 장 값) · 보낼 내용 (H9 2)
+    alt [취소] (H9 3a)
+        W-->>U: 닫는다. 요청 없음
+    end
+    U->>W: [만들기]
+    W->>RA: POST /api/videos/{id}/infographic
+    RA->>VS: get(video_id)
+    VS-->>RA: VideoDetail {video}
+    RA->>AS: start_infographic(video)
+    alt video.status != analyzed
+        AS-->>RA: ResultNotReady
+        RA-->>W: 409 result-not-ready
+    end
+    AS->>DB: infographics where video_id
+    alt state = making
+        AS-->>RA: InfographicBusy
+        RA-->>W: 409 infographic-busy
+    end
+    AS->>SS: check_stored_key() · require_key()
+    alt 키 없음 또는 확인 실패 (H9 2a)
+        AS-->>RA: KeyMissing 또는 KeyInvalid
+        RA-->>W: 503
+        W-->>U: 카드 키 없음 판 [키 넣으러 가기] (15.12)
+    end
+    rect rgb(240,244,240)
+        Note over AS,DB: 한 문장 — 그리는 중이 아닐 때만 making으로 (조건부 upsert). 0행이면 겹친 요청이라 409 infographic-busy
+        AS->>DB: infographics upsert state = making · error_reason = null (이전 그림 컬럼은 그대로)
+    end
+    AS->>SS: current_models()
+    SS-->>AS: 이미지 모델 · 품질 · 한 장 값
+    AS->>AS: create_task(draw_infographic(video_id, 모델 · 품질)) — 핸들 보관
+    AS-->>RA: Infographic (making)
+    RA-->>W: 202
+    W-->>U: UI-8 닫힘 · 카드 '그리는 중이에요' (15.4)
+    par 뒤에서 — 태스크, 자기 세션
+        AS->>DB: summaries · insights · chapters (한 줄 요약 · 인사이트 · 챕터 제목만)
+        AS->>IM: infographic(InfographicBrief, 모델, 품질, 임시 경로)
+        IM->>IM: prompts/infographic.md를 채워 OpenAI 이미지 — 세로 1024×1536
+        alt 성공
+            IM->>FS: 임시 경로에 PNG
+            IM-->>AS: ImageShot
+            AS->>FS: 임시 → data/infographics/{video_id}.png 바꿔 놓기
+            AS->>DB: state = done · 그림 컬럼 · created_at = 지금 · cost_usd
+        else 실패 (H9 4a)
+            IM-->>AS: 예외 — 한국어 이유 한 줄
+            AS->>DB: state = failed · error_reason (그림 컬럼은 그대로)
+        end
+    and 3초마다, state = making인 동안
+        W->>RA: GET /api/videos/{id}/infographic
+        RA->>VS: get(video_id)
+        RA->>AS: infographic_of(video)
+        AS->>DB: infographics where video_id
+        AS-->>RA: Infographic
+        RA-->>W: 200
+    end
+    alt done
+        W->>RA: GET /api/videos/{id}/infographic/image?v= (SEQ-C1)
+        W-->>U: 카드 그림 · '{모델} · {품질} · {시각} 만듦' · AI 그림 안내 (15.5 ~ 15.7)
+    else failed
+        W-->>U: 카드 실패 줄 '인포그래픽을 만들지 못했어요 — {이유}' (15.11). 이전 그림이 있으면 그대로
+    end
+```
+
+**읽을 때 볼 것**
+- 맡기고 바로 202를 돌려준다. 그림 한 장이 web 넘기기의 60초 제한에 걸릴 수 있고, 사용자가 그리는 동안 결과를 읽거나 떠나도 그림은 이어져야 한다([[VA-API-001]] 5장 13). 떠났다 돌아오면 [[#SEQ-8]]이 `making`을 보고 폴링을 잇는다
+- 보내는 것은 한 줄 요약 · 인사이트 · 챕터 제목뿐이다. 스크립트 전체는 보내지 않는다([[VA-UC-001#UC-H9]] 4번, [[VA-PRD-001#N3]])
+- 「그리는 중」 판정과 `making`으로 바꾸기는 한 문장이다 — 같은 영상의 [만들기]가 겹쳐도(탭 둘) 하나만 맡는다 → 되먹일 것 #11
+- 이전 그림은 새 그림을 다 그렸을 때 한 번에 바뀐다. 다시 그리기가 실패해도 이전 그림이 그대로다([[VA-UC-001#UC-H9]] 4a · 5a)
+- 비용은 맡길 때 든다. 영상을 지우면 [[#SEQ-11]]이 태스크를 멈추지만 이미 보낸 요청의 비용은 든다. 서버가 그리는 중에 죽으면 시작 때 `failed`로 되돌린다([[#SEQ-13]])
 
 ---
 
@@ -988,11 +1341,14 @@ sequenceDiagram
 | 입구 | 서비스.메서드 | 닿는 곳 | 비고 |
 |---|---|---|---|
 | [[VA-API-001#GET/api/settings]] | SettingsService.get | 메모리(`last_check`) · 설정 | 재확인 없음. 페이지마다 배너를 그리려고 부른다 |
-| [[VA-API-001#PUT/api/settings/models]] | SettingsService.set_models | 파일(설정) | `model_options`에 없는 id면 422 |
+| [[VA-API-001#PUT/api/settings/models]] | SettingsService.set_models | 파일(설정) | `model_options` · 이미지 목록에 없는 값이면 422. 이미지 모델 · 품질도 같은 `.env`의 줄 |
 | [[VA-API-001#GET/api/inbox]] | VideoService.list_inbox | inbox 폴더 · media_probe ×N | 파일마다 ffprobe. 캐시는 미결 |
+| [[VA-API-001#GET/api/videos/{id}/frames/{seq}]] | AnalysisService.frame_file | DB · 파일(`data/frames`) | JPEG. 장면이 없으면 404(frame). `Cache-Control: no-cache` |
+| [[VA-API-001#GET/api/videos/{id}/infographic/image]] | AnalysisService.infographic_file | DB · 파일(`data/infographics`) | PNG. 없으면 404(infographic). 주소의 `?v=`가 바뀌면 새 그림 |
 
 **읽을 때 볼 것**
 - 여기 있는 것은 전부 서비스 하나만 부른다. 두 번째 서비스가 필요해지는 순간 고유 시퀀스로 옮긴다
+- 그림 둘은 `Video` DTO가 필요 없어 `VideoService.get`을 부르지 않는다 — 영상이 없으면 행도 없어 같은 404다. 화면의 `<img>`가 응답의 `url`을 그대로 부른다([[VA-API-001]] 5장 15)
 - `GET /api/videos/{id}`는 처음엔 여기 넣으려 했으나 작업 요약과 대화 수 때문에 [[#SEQ-7]]로. `GET /api/videos/{id}/chat`도 영상 존재 확인 때문에 [[#SEQ-8]]로
 - `list_inbox`는 DB에 닿지 않는다. 파일 수만큼 ffprobe를 띄우므로 첫 응답이 느릴 수 있다 — [[VA-DOM-002]] 7장 미결
 
@@ -1012,6 +1368,9 @@ sequenceDiagram
 | 6 | 서버 시작 때 네트워크 실패로 키 확인이 안 되면 `invalid`로 남고 배너가 뜬다. 분석 버튼이 다시 확인하므로 풀리지만, 화면 문구 '키를 확인하지 못했어요 — {이유}'가 네트워크 이유를 보이게 된다 | MINISPEC(SettingsService) | `reason_kind = network`면 배너 문구를 '연결을 확인하지 못했어요'로 가를지 — 미결로 넘긴다 |
 | 7 | 워커([[#SEQ-14]])가 `run` · `resume`에 넘길 `Video`를 얻는 길이 없다. 작업 묶음은 영상 테이블을 모르고, `job → video` 호출은 허용된 방향이 아니다([[VA-DOM-002]] 3.2) | [[VA-DOM-002#JobService]] 파이프라인 · MINISPEC(작업 서비스) | 파이프라인이 `Video` 전체가 아니라 필요한 값만 쓰게 한다 — `video_id` · 출처 종류 · 출처 ID · 파일 경로 · 길이 · 자막 유무. `start`가 받은 `Video`에서 뽑아 작업 행에 두거나(컬럼 추가), `run(job_id)`가 `AnalysisService` 쪽으로 `video_id`만 넘기게 시그니처를 고친다 |
 | 8 | 삭제([[#SEQ-11]])에서 워커를 깨우는 때 — `cancel` 안에서 깨우면 워커가 곧 지워질 `queued` 행을 꺼낼 수 있다 | [[VA-DOM-002#JobService]] 규칙 · MINISPEC(작업 서비스) | `cancel`은 깨우지 않고, 라우터가 `VideoService.delete` 뒤에 `JobService.wake`(공개 메서드 추가)를 부른다 |
+| 9 | 올린 파일이 등록만 된(사전 안내에서 취소한) 영상과 내용이 같을 때 사본을 지우면, 그 영상의 원본이 없어 [분석 시작]이 실패한다([[#SEQ-15]]) | [[VA-API-001#POST/api/uploads]] 6번 · [[VA-UC-001#UC-H2]] 2c1 | 「작업이 있는 영상이면 사본을 지우고, 없으면 올린 정보로 덮어쓰고 사본을 남긴다」로. 클래스 명세 v25 4.1 · 7장에 먼저 적었다 |
+| 10 | API 0장이 엔드포인트를 22개 · 「여섯을 더했다」로 적었는데 더한 것은 일곱(올리기 하나 · 장면 셋 · 인포그래픽 셋)이고 전부 23개다(1장 대응표) | [[VA-API-001]] 0장 | 숫자만 고친다 |
+| 11 | 인포그래픽의 「그리는 중」 판정과 `making`으로 바꾸기 사이에 같은 영상의 [만들기]가 겹치면 둘 다 맡을 수 있다([[#SEQ-18]]) | MINISPEC(결과 서비스 `start_infographic`) | 조건부 upsert 한 문장(그리는 중이 아닐 때만). 0행이면 `infographic-busy` |
 
 **1번이 핵심이다.** 조각 상태 넷은 DB에 뒀지만 결과는 안 뒀다. 그러면 「이어서 다시 시도」가 이어지지 않는다. 클래스 명세와 ERD·DD를 고친 뒤에 MINISPEC으로 간다.
 
@@ -1024,3 +1383,5 @@ sequenceDiagram
 - [x] (반영: 클래스 명세 v12 · 작업 서비스 MINISPEC v2) 되먹일 것 #7 · #8 — 워커는 `load_video`로 영상을 얻고, 삭제 라우터가 삭제 뒤에 `wake`를 부른다
 - [x] UI-1이 열려 있는 동안 진행 중 행을 갱신하는 주기([[#SEQ-7]]) — 결정(카드 B1): 진행 중 · 대기 중 행이 있는 동안 3초마다 목록 전체를 다시 부른다([[VA-UI-002#UI-1]] 규칙 · MINISPEC 영상 서비스 3장)
 - [ ] 취소된 파이프라인이 OpenAI에 이미 보낸 조각([[#SEQ-11]]) — 응답을 버리므로 비용만 든다. 삭제 다이얼로그에 알릴지 사용자 확인
+- [ ] 본문을 읽기 전에 거절한 응답(키 · 형식 · 디스크, [[#SEQ-15]])이 브라우저에 닿는지 — 서버가 본문을 다 읽지 않고 답하면 연결을 끊을 수 있어 XHR이 네트워크 오류로 볼 수 있다. 화면이 키 · 형식을 먼저 거르므로 남는 것은 디스크 부족이 대부분이다. 카드 D4에서 실제로 재고, 안 닿으면 MINISPEC에서 정한다(거절 뒤 본문을 읽어 버리기, 또는 화면이 연결 오류를 '올리지 못했어요'로)
+- [ ] 되먹일 것 #9 · #10을 [[VA-API-001]] · [[VA-UC-001]]에, #11을 MINISPEC(결과 서비스)에 반영한다
