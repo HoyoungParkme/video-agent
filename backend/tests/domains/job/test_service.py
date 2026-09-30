@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.core.config import config
 from app.core.errors import JobExists, JobNotFailed, KeyMissing, NotFound
 from app.domains.analysis.models import TranscriptRow
+from app.domains.analysis.schemas import FrameProgress, FrameProgressItem
 from app.domains.job import crud, pipeline
 from app.domains.job.models import (
     AnalysisJobRow,
@@ -118,6 +119,31 @@ def test_remaining_sec_without_chunks() -> None:
     assert JobService.remaining_sec(late, []) == 0  # 예상보다 오래 걸리면 0 — 화면이 비운다
     for status in (JobStatus.queued, JobStatus.failed, JobStatus.done):
         assert JobService.remaining_sec(_row(status=status), []) is None
+
+
+FRAME_JOB = ["download", "summarize", "chapter", "suggest", "frames"]
+
+
+def _cells(done: int, total: int) -> FrameProgress:
+    items = [
+        FrameProgressItem(chapter_seq=i + 1, state="done" if i < done else "waiting", url=None)
+        for i in range(total)
+    ]
+    return FrameProgress(done=done, total=total, items=items)
+
+
+def test_remaining_sec_adds_frames_share() -> None:
+    # 장면 단계가 있는 작업 — 요약 단계 값에 장면 몫 30초. 요약이 늦어도 장면 몫은 줄지 않는다
+    assert JobService.remaining_sec(_row(stages=FRAME_JOB), []) in (79, 80)
+    late = _row(stages=FRAME_JOB, stage_started_at=datetime.now(UTC) - timedelta(seconds=300))
+    assert JobService.remaining_sec(late, []) == 30
+
+
+def test_remaining_sec_in_frames_stage() -> None:
+    row = _row(stage=JobStage.frames, stages=FRAME_JOB)
+    assert JobService.remaining_sec(row, [], _cells(5, 8)) == 3 * 2  # 남은 칸 × 한 장 2초
+    assert JobService.remaining_sec(row, [], _cells(0, 0)) in (19, 20)  # 칸이 아직 없다 — 30 − 10
+    assert JobService.remaining_sec(row, []) in (19, 20)
 
 
 def test_remaining_sec_text_stages_do_not_take_leftover_time() -> None:

@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import config
 from app.core.errors import JobExists, JobNotFailed, NotFound
 from app.core.settings import Models, settings
+from app.domains.analysis.schemas import FrameProgress
 from app.domains.job import crud
 from app.domains.job.models import (
     AnalysisJobRow,
@@ -126,7 +127,9 @@ class JobService:
         return [JobStage.extract, JobStage.transcribe, *text, JobStage.frames]
 
     @staticmethod
-    def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None:
+    def remaining_sec(
+        row: AnalysisJobRow, chunks: list[AudioChunkRow], frames: FrameProgress | None = None
+    ) -> int | None:
         """VA-MS-002#JobService.remaining_sec
 
         남은 시간 — 작업 전체가 끝날 때까지. 끝난 단계가 예상보다 빨랐거나 늦었던 차이는 뒤로
@@ -135,11 +138,14 @@ class JobService:
         끝난 조각(단계 시작 뒤에 끝난 것)만 센다. 다시 시도 뒤 이전 실행의 조각까지 세면 속도가
         부푼다. 아직 끝난 조각이 없으면 조각당 예상 시간으로. 요약 세 단계는 그 몫에서 세 단계에
         쓴 시간을 빼고, 그 앞 단계(와 조각을 나누는 중)는 예상 전체에서 지난 시간을 뺀다.
-        0 아래로 가지 않는다.
+        장면 단계가 있는 작업은 받아쓰기 · 요약 단계의 값에 장면 몫을 더하고(요약이 늦어도 줄이지
+        않는다), 장면 단계 안에서는 남은 칸 × 한 장 예상 — 칸이 아직 없으면 장면 몫에서 지난 시간을
+        뺀다. 0 아래로 가지 않는다.
 
         Args:
             row: 작업 행
             chunks: 작업의 조각들
+            frames: 장면 칸(라우터가 AnalysisService.frame_progress로 받아 넘긴다)
 
         Returns:
             초. 돌고 있지 않으면 None, 0이면 화면이 비운다
@@ -147,6 +153,7 @@ class JobService:
         if row.status != JobStatus.running:
             return None
         text = config.TEXT_EST_SEC
+        pics = config.FRAMES_EST_SEC if JobStage.frames in row.stages else 0
         if row.stage == JobStage.transcribe and chunks:
             left = sum(1 for c in chunks if c.state != ChunkState.done)
             now_done = sum(
@@ -155,12 +162,17 @@ class JobService:
                 if c.state == ChunkState.done and c.done_at and c.done_at >= row.stage_started_at
             )
             if not now_done:
-                return math.ceil(left / row.concurrency) * config.CHUNK_EST_SEC + text
+                return math.ceil(left / row.concurrency) * config.CHUNK_EST_SEC + text + pics
             rate = now_done / max(_elapsed(row.stage_started_at), 1.0)  # 초당 조각
-            return math.ceil(left / rate) + text
+            return math.ceil(left / rate) + text + pics
         if row.stage in TEXT_STAGES:
             spent = sum(row.stage_durations_sec.get(s.value, 0) for s in TEXT_STAGES)
-            return max(round(text - spent - _elapsed(row.stage_started_at)), 0)
+            return max(round(text - spent - _elapsed(row.stage_started_at)), 0) + pics
+        if row.stage == JobStage.frames:
+            if frames is not None and frames.items:
+                left = sum(1 for i in frames.items if i.state in ("waiting", "in_flight"))
+                return left * config.FRAME_EST_SEC
+            return max(round(pics - _elapsed(row.stage_started_at)), 0)
         spent = sum(row.stage_durations_sec.values()) + _elapsed(row.stage_started_at)
         return max(round(row.est_seconds - spent), 0)
 
