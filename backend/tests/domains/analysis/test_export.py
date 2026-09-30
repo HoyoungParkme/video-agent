@@ -7,9 +7,10 @@ from pathlib import Path
 
 from app.core.settings import Models
 from app.domains.analysis import export
-from app.domains.analysis.models import TranscriptSource
+from app.domains.analysis.models import FrameSource, TranscriptSource
 from app.domains.analysis.schemas import (
     Chapter,
+    Frame,
     FramesState,
     Insight,
     Part,
@@ -327,6 +328,19 @@ def turn(i: int, question: str, answer: str, cited: list[float]) -> ChatTurn:
 def test_frame_name_colons_become_hyphens() -> None:
     assert export.frame_name("RAG 운영기", 591.0, 3012) == "RAG 운영기 09-51.jpg"
     assert export.frame_name("워크숍", 3926.0, 9000) == "워크숍 1-05-26.jpg"  # 1시간 이상은 h:mm:ss
+
+
+def test_build_frame_line_only_with_file_name_and_frame() -> None:
+    result = youtube_50m()
+    frame = Frame(
+        chapter_seq=2, sec=600, source=FrameSource.storyboard, width=320, height=180, url="/x"
+    )
+    result.chapters[1].frame = frame  # 둘째 챕터(10:00)에만 장면
+    note = export.build(result, None, "RAG 운영기")
+    # 장면 줄은 그 챕터의 제목 줄 바로 다음, 요점 앞
+    assert "청킹 다시 보기\n![[RAG 운영기 10-00.jpg]]\n- 256 토큰으로\n" in note
+    assert note.count("![[") == 1  # 장면이 없는 챕터에는 없다
+    assert "![[" not in export.build(result, None, None)  # 복사 — 가리킬 파일이 없다
 
 
 def test_build_youtube_50m_snapshot() -> None:
