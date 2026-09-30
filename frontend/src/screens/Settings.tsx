@@ -18,6 +18,7 @@ import {
   type ModelOption,
 } from "@/api/client";
 import { Button } from "@/components/buttons";
+import { usd } from "@/labels";
 
 const OUTGOING = [
   ["OpenAI", "음성 조각", "자막 없는 영상을 받아쓸 때"],
@@ -26,13 +27,6 @@ const OUTGOING = [
   ["OpenAI", "한 줄 요약 · 인사이트 · 챕터 제목", "인포그래픽을 만들 때"],
   ["YouTube", "영상 주소", "정보 · 자막 · 음성 · 미리 보기 썸네일을 받을 때"],
 ];
-
-/** '$0.006' · '$0.25' · '$15.00' — 소수 둘째 자리까지는 늘 쓰고, 더 있으면 그대로 */
-function usd(value: number | undefined): string {
-  if (value === undefined) return "—";
-  const digits = Math.max(2, (String(value).split(".")[1] ?? "").length);
-  return `$${value.toFixed(digits)}`;
-}
 
 /** '오늘 14:02' 또는 '9월 12일'(VA-UI-002 UI-5 규칙, UI-1 목록 행과 같다) */
 function when(iso: string): string {

@@ -31,6 +31,9 @@
   --c-shadow-color: rgba(27, 26, 23, 0.32);
   --c-bar-2: #CFE6E1;
   --c-band-2: #E6E1D6;
+  --c-picture: #F2EFE8;
+  --c-picture-fail-line: #E8C7C0;
+  --c-overlay-dark: rgba(27, 26, 23, 0.72);
 
   /* 3.2 글꼴 — 파일은 layout.tsx의 next/font가 --font-hahmlet 등으로 준다 */
   --font-serif: var(--font-hahmlet), 'Noto Serif KR', serif;
@@ -238,6 +241,19 @@ h1, h2, p { margin: 0; }
   width: 100%; padding: var(--space-32); border-radius: var(--radius-18);
   background: var(--c-card); box-shadow: var(--shadow-dialog);
 }
+.dialog-overlay.is-dark { background: var(--c-overlay-dark); }
+
+/* UI-9 인포그래픽 크게 보기 — 그림 폭 432px, 창이 낮으면 창 높이에 맞춰 줄인다(다이얼로그가 넘치지 않게) */
+.iv { display: flex; flex-direction: column; gap: var(--space-16); }
+.iv-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-16); }
+.iv-head-text { display: flex; flex-direction: column; gap: var(--space-2); }
+.iv-title { font-size: var(--text-18); font-weight: 600; }
+.iv-made { font-size: var(--text-13); color: var(--c-ink-3); }
+.iv-picture {
+  width: min(432px, calc((100vh - 240px) * 2 / 3)); align-self: center; display: block;
+  border-radius: var(--radius-10); border: 1px solid var(--c-line); background: var(--c-picture) center / contain no-repeat;
+}
+.iv-note { font-size: var(--text-13); line-height: 1.55; color: var(--c-ink-2); }
 
 /* 공통 1.5 짧은 알림 — 모양은 UI-4 「짧은 알림」 보드(11). 위치는 미결(VA-UI-002 2장) — 아래 가운데 */
 .toast {
