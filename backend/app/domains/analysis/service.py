@@ -659,6 +659,26 @@ class AnalysisService:
         )
         return await self.infographic_of(video)
 
+    async def infographic_file(self, video_id: int) -> str:
+        """VA-MS-003#AnalysisService.infographic_file
+
+        지금 쓰는 인포그래픽 그림 파일 경로 — 라우터가 image/png로 준다. 다시 그리는 중이면
+        이전 그림이다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            파일 경로
+
+        Raises:
+            NotFound: 행이 없거나 그림이 없는 행이거나 파일이 없다(resource=infographic)
+        """
+        row = await crud.infographic(self.session, video_id)
+        if row is None or row.path is None or not os.path.isfile(row.path):
+            raise NotFound(resource="infographic", id=video_id)
+        return row.path
+
     async def draw_infographic(self, video_id: int, choice: ChosenModels) -> None:
         """VA-MS-003#AnalysisService.draw_infographic
 

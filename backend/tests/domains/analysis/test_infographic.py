@@ -10,7 +10,13 @@ import pytest
 
 from app.core.config import ImageQuality, config
 from app.core.db import SessionLocal
-from app.core.errors import InfographicBusy, KeyMissing, LlmUnavailable, ResultNotReady
+from app.core.errors import (
+    InfographicBusy,
+    KeyMissing,
+    LlmUnavailable,
+    NotFound,
+    ResultNotReady,
+)
 from app.core.settings import settings
 from app.domains.analysis import crud
 from app.domains.analysis.models import InfographicRow, InfographicState, SummaryRow
@@ -255,3 +261,28 @@ async def test_start_before_result_is_not_ready(db, make, image_maker, key) -> N
     video = await _video(db, make, status=JobStatus.running)
     with pytest.raises(ResultNotReady):
         await AnalysisService(db, image_maker=image_maker).start_infographic(video)
+
+
+# --- infographic_file
+
+
+async def test_infographic_file(db, make, image_maker, key, data_dir) -> None:
+    video = await _analyzed(db, make)
+    svc = AnalysisService(db, image_maker=image_maker)
+    with pytest.raises(NotFound) as e:  # 만든 적 없음
+        await svc.infographic_file(video.id)
+    assert e.value.extra == {"resource": "infographic", "id": video.id}
+    image_maker.gate = asyncio.Event()
+    await svc.start_infographic(video)
+    with pytest.raises(NotFound):  # 처음 그리는 중 — 그림이 없다
+        await svc.infographic_file(video.id)
+    image_maker.gate.set()
+    await AnalysisService._image_tasks[video.id]
+    path = await svc.infographic_file(video.id)
+    assert path == str(data_dir / "infographics" / f"{video.id}.png")
+    image_maker.gate = asyncio.Event()
+    await svc.start_infographic(video)  # 다시 그리는 중 — 이전 그림
+    assert await svc.infographic_file(video.id) == path
+    image_maker.gate.set()
+    await AnalysisService._image_tasks[video.id]
+
