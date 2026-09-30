@@ -4,7 +4,8 @@
  * 틀릴 수 있다는 안내 · 15.8 내보내기 안내 · 15.9 크게 보기 · 15.10 다시 만들기) · 실패(15.11 · 15.10) · 키
  * 없음(15.1 · 키 없음 설명 · 15.12 키 넣으러 가기). 상태는 서버의 인포그래픽 상태를 그대로 따르고, 다시
  * 만들기가 실패해도 이전 그림이 그대로면 다 됨 카드 위에 실패 한 줄을 붙인다(UC-H9 4a). 맡기기가 서버에서
- * 거절된 이유(키 확인 실패 등)는 행이 없어 이 화면이 들고 있다가 실패 모양으로 보인다(UI-8 규칙).
+ * 거절된 이유(키 확인 실패 등)는 행이 없어 이 화면이 들고 있다가 실패 모양으로 보인다 — 서버의 이전
+ * 실패 이유보다 먼저다(UI-4 · UI-8 규칙).
  * 폴링 · 다이얼로그는 Result.tsx가 한다 — 여기는 그리기만 한다.
  */
 "use client";
@@ -44,7 +45,8 @@ export default function InfographicCard({
   onView,
 }: Props) {
   const { state, image } = infographic;
-  const failure = state === "failed" ? infographic.error_reason : rejected;
+  // 방금 맡기기가 거절된 이유가 서버의 이전 실패 이유보다 먼저다(UI-4 규칙)
+  const failure = rejected ?? (state === "failed" ? infographic.error_reason : null);
   const blocked = settings ? keyBlocks(settings.key) : false;
   const quality = settings?.image.qualities.find((q) => q.id === settings.image.quality);
   const failLine = failure && (

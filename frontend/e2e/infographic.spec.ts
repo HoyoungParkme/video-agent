@@ -146,6 +146,33 @@ test("키 확인이 실패하면 — 확인 창이 닫히고 카드가 키 넣�
   }
 });
 
+test("실패한 카드에서 맡기기가 거절되면 — 거절 이유가 먼저, 다음에 받아들여지면 거둔다", async ({
+  page,
+  request,
+}) => {
+  await openResult(page, "https://youtu.be/e2eInfogr06");
+  await fakeOpenAI(request, { image_fail: "server" });
+  await make(page);
+  await expect(el(page, "15.11")).toHaveText("인포그래픽을 만들지 못했어요 — OpenAI 서버 오류", {
+    timeout: 10_000,
+  });
+  // 인터넷이 끊겨 맡길 때 키를 확인하지 못한다 — 창이 닫히고 방금 거절된 이유가 보인다
+  await fakeOpenAI(request, { models: "drop" });
+  try {
+    await make(page, "15.10");
+    await expect(el(page, "15.11")).toHaveText(
+      "인포그래픽을 만들지 못했어요 — 연결하지 못했습니다",
+    );
+    expect((await fakeOpenAI(request)).images).toHaveLength(1); // 그리지 않았다
+  } finally {
+    await fakeOpenAI(request, { models: null });
+  }
+  // 다시 맡기면 받아들여진다 — 거절 줄을 거두고 그린다
+  await make(page, "15.10");
+  await expect(el(page, "15.5")).toBeVisible({ timeout: 10_000 });
+  await expect(el(page, "15.11")).toHaveCount(0);
+});
+
 test("설정에서 품질을 바꾸면 카드 · 확인 창의 한 장 값이 바뀐다", async ({ page }) => {
   const url = await openResult(page, "https://youtu.be/e2eInfogr05");
   await expect(el(page, "15.2")).toContainText("한 장 약 $0.01");

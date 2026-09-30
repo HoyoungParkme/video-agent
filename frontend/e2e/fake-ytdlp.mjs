@@ -71,6 +71,7 @@ const VIDEOS = {
   e2eInfogr03: { title: "그리기가 실패하는 발표", duration: 3012, subtitles: { ko: [] } },
   e2eInfogr04: { title: "키 없이 그리려는 발표", duration: 3012, subtitles: { ko: [] } },
   e2eInfogr05: { title: "품질을 바꾸는 발표", duration: 3012, subtitles: { ko: [] } },
+  e2eInfogr06: { title: "실패 뒤에 거절되는 발표", duration: 3012, subtitles: { ko: [] } },
 };
 
 // 스토리보드 — 칸 320×180, 장마다 3 × 3칸, 칸 하나가 600 / 9초(장 하나가 10분)
