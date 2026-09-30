@@ -28,8 +28,8 @@ from app.infra.openai import KeyCheck, KeyState, ReasonKind
 
 log = logging.getLogger(__name__)
 
-# 이 서비스가 읽고 쓰는 줄은 셋뿐이다. DB 비밀번호 같은 다른 줄은 건드리지 않는다
-NAMES = ("OPENAI_API_KEY", "STT_MODEL", "TEXT_MODEL")
+# 이 서비스가 읽고 쓰는 줄은 다섯뿐이다. DB 비밀번호 같은 다른 줄은 건드리지 않는다
+NAMES = ("OPENAI_API_KEY", "STT_MODEL", "TEXT_MODEL", "IMAGE_MODEL", "IMAGE_QUALITY")
 STORED_IN = ".env에 저장됨"
 
 
@@ -113,7 +113,8 @@ class SettingsService:
     def read_env(self) -> dict[str, str]:
         """VA-MS-005#SettingsService.read_env
 
-        `.env`에서 세 값(키 · 받아쓰기 모델 · 텍스트 모델)만 읽는다. 같은 이름이 두 번이면 뒤의 것.
+        `.env`에서 다섯 값(키 · 받아쓰기 모델 · 텍스트 모델 · 이미지 모델 · 이미지 품질)만 읽는다.
+        같은 이름이 두 번이면 뒤의 것.
         던지지 않는다 — 파일을 읽을 수 없으면 경고 로그를 남기고 빈 dict다.
 
         Returns:
@@ -126,7 +127,7 @@ class SettingsService:
         except OSError as e:  # 권한 · 디렉터리 등 — 서버 시작과 GET이 멈추면 안 된다
             log.warning(".env를 읽지 못했다: %s", type(e).__name__)
             return {}
-        # 세 줄은 ASCII라 주석이 다른 인코딩이어도 읽힌다
+        # 다섯 줄은 ASCII라 주석이 다른 인코딩이어도 읽힌다
         out: dict[str, str] = {}
         for line in data.decode("utf-8", errors="replace").splitlines():
             parsed = _parse(line)

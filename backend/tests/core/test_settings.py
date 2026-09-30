@@ -64,6 +64,11 @@ def test_read_env_rules(svc, env_file) -> None:
     }
 
 
+def test_read_env_image_lines(svc, env_file) -> None:
+    env_file.write_text("IMAGE_MODEL=gpt-image-2\nIMAGE_QUALITY=medium\n")
+    assert svc.read_env() == {"IMAGE_MODEL": "gpt-image-2", "IMAGE_QUALITY": "medium"}
+
+
 def test_read_env_inline_comments_and_quotes(svc, env_file) -> None:
     env_file.write_text(
         "TEXT_MODEL=gpt-5.4 # 비싸다\nSTT_MODEL=whisper-1#붙은 건 값\n"
