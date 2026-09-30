@@ -29,7 +29,9 @@ router = APIRouter(prefix="/api/videos/{video_id}", tags=["결과"])
 
 def analysis_service(request: Request, session: Session) -> AnalysisService:
     state = request.app.state
-    return AnalysisService(session, state.summarizer, state.storyboard, state.local_frames)
+    return AnalysisService(
+        session, state.summarizer, state.storyboard, state.local_frames, state.image_maker
+    )
 
 
 Analysis = Annotated[AnalysisService, Depends(analysis_service)]
