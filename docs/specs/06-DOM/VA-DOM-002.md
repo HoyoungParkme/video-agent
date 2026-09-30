@@ -467,7 +467,7 @@ classDiagram
 
 #### ChapterFrame 대표 장면
 
-테이블: [[VA-DOM-003]]의 `chapter_frames`(다음 판에서 더한다) · 도메인: [[VA-DOM-001#ChapterFrame]]
+테이블: [[VA-DOM-003#chapter_frames]] · 도메인: [[VA-DOM-001#ChapterFrame]]
 
 ```mermaid
 classDiagram
@@ -491,7 +491,7 @@ classDiagram
 
 #### Infographic 인포그래픽
 
-테이블: [[VA-DOM-003]]의 `infographics`(다음 판에서 더한다) · 도메인: [[VA-DOM-001#Infographic]]
+테이블: [[VA-DOM-003#infographics]] · 도메인: [[VA-DOM-001#Infographic]]
 
 ```mermaid
 classDiagram
@@ -1308,5 +1308,5 @@ class VideoRow(Base):
 - [x] 프롬프트 파일의 자리 표시 이름과 출력 형식 — 반영: MINISPEC 어댑터 0장 「프롬프트 파일」
 - [ ] 관련 챕터 고르기(`ChatService.context_for`) — 첫 버전은 제목 · 요점 낱말 일치(MINISPEC 대화 서비스 `ChatService.context_for`). 품질이 모자라면 간단 임베딩으로 — 사용자가 결과를 보고 정한다([[VA-INFRA-001]] 9절)
 - [x] `shared/` — 결정: 시각 표기가 두 묶음에서 쓰여 `shared/timecode.py`를 만들었다(1장, MINISPEC 어댑터 되먹임). 프런트는 `components/TimeChip`이 따로 가진다. 카드 B1에서 자막 고르기(`shared/captions.py`)를 더했다 — 실제 yt-dlp 목록에 기계 번역 자막이 섞여 규칙이 길어졌고, video와 job이 같은 규칙을 써야 한다. 카드 C에서 토큰 어림(`shared/tokens.py`)을 더했다 — analysis와 chat이 따로 가졌던 「글자 ÷ 2」가 실제의 절반 이하였다. 카드 D4 명세에서 원본 경로(`shared/sources.py`)를 더했다 — 영상 · 작업 · 결과 셋이 같은 규칙으로 inbox 파일과 올린 사본을 가른다(5장 12)
-- [ ] 2장 `ChapterFrame` · `Infographic`의 테이블 참조 — ERD에 `chapter_frames` · `infographics`가 생기면 항목 링크로 바꾼다(다음 판)
-- [ ] **되먹임** 올리기의 중복 판정 — 작업이 없는(등록만 된) 영상과 내용이 같으면 사본을 지우지 않고 그 영상을 올린 정보로 덮어쓴다(4.1). [[VA-API-001#POST/api/uploads]] 6번과 [[VA-UC-001#UC-H2]] 2c1의 「사본을 지운다」는 작업이 있는 영상일 때만 맞다 — 사전 안내에서 취소한 올린 영상을 다시 올리면 읽을 원본이 없어진다
+- [x] (반영: ERD v7) 2장 `ChapterFrame` · `Infographic`의 테이블 참조 — 항목 링크로 바꿨다
+- [x] (반영: API v12 · 유스케이스 v6) **되먹임** 올리기의 중복 판정 — 작업이 없는(등록만 된) 영상과 내용이 같으면 사본을 지우지 않고 그 영상을 올린 정보로 덮어쓴다(4.1). [[VA-API-001#POST/api/uploads]] 6번과 [[VA-UC-001#UC-H2]] 2c1의 「사본을 지운다」는 작업이 있는 영상일 때만 맞다 — 사전 안내에서 취소한 올린 영상을 다시 올리면 읽을 원본이 없어진다
