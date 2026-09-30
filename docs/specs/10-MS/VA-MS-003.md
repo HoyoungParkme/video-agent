@@ -363,7 +363,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 3. `shot = ImageMakerPort.infographic(brief, choice.image_model, choice.image_quality.id, str(tmp))`
 4. `FS: os.replace(tmp, config.INFOGRAPHICS_DIR / f"{video_id}.png")` — 다 그린 뒤 한 번에 바꾼다
 5. `DB: update infographics set state=done, model, quality, width, height, cost_usd=choice.image_quality.price_usd, path, created_at=지금, error_reason=null`
-6. 실패하면 — `llm-unavailable`(어댑터가 OpenAI 실패를 바꾼 것, [[VA-MS-006#answerer_openai.answer]]와 같은 방식) → `reason = e.reason` · `OSError` → '그림 파일을 저장하지 못함' · 그 밖 → '알 수 없는 오류'(원인은 로그) · `DB: update set state=failed, error_reason=reason` · 그림 컬럼은 그대로 · `tmp`를 지운다
+6. 1 ~ 5번 어디서든 실패하면 — `llm-unavailable`(어댑터가 OpenAI 실패를 바꾼 것, [[VA-MS-006#answerer_openai.answer]]와 같은 방식) → `reason = e.reason` · `key-missing`(그리는 사이 `.env`에서 키가 빠져 어댑터가 클라이언트를 만들지 못했다) → 'OpenAI API 키 없음' · `OSError` → '그림 파일을 저장하지 못함' · 그 밖(DB 오류 포함) → '알 수 없는 오류'(원인은 로그) · 세션을 되돌린 뒤(1 · 5번의 DB 오류로 트랜잭션이 깨졌을 수 있다) `DB: update set state=failed, error_reason=reason` · 그림 컬럼은 그대로 · `tmp`를 지운다. 4번 뒤에 5번이 실패했다면 파일은 새 그림이고 행의 그림 값은 이전 것이다 — 다음 그리기가 맞춘다. 실패마저 적지 못하면(DB가 없다) 로그만 남긴다 — 행은 `making`으로 남고 다음 시작의 [[#AnalysisService.fail_orphans]]가 되돌린다(카드 D3 코드 리뷰 — 5번이 실패 처리 밖이면 행이 영영 `making`이라 [만들기]가 모두 `infographic-busy`였다)
 7. 취소(`CancelledError`) → `tmp`를 지우고 올린다 — 행은 둔다(영상 삭제면 cascade가, 서버 종료면 다음 시작의 [[#AnalysisService.fail_orphans]]가 정리한다)
 8. 어떻게 끝나든 `_image_tasks`에서 뺀다
 
@@ -373,7 +373,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** `ImageMakerPort.infographic`
 
-**테스트 관점** 가짜 포트로: 성공 → `done`, 그림 컬럼, `cost_usd`가 그 품질의 한 장 값, 파일 `data/infographics/{id}.png` · `llm-unavailable('OpenAI 연결 시간 초과')` → `failed`, `error_reason` 그 문장, 이전 그림 파일과 컬럼 그대로 · 이전 그림이 있을 때 성공 → 새 그림으로 바뀌고 `created_at`이 바뀐다 · `brief`에 스크립트 줄이 없다 · 임시 파일이 남지 않는다
+**테스트 관점** 가짜 포트로: 성공 → `done`, 그림 컬럼, `cost_usd`가 그 품질의 한 장 값, 파일 `data/infographics/{id}.png` · `llm-unavailable('OpenAI 연결 시간 초과')` → `failed`, `error_reason` 그 문장, 이전 그림 파일과 컬럼 그대로 · 이전 그림이 있을 때 성공 → 새 그림으로 바뀌고 `created_at`이 바뀐다 · `brief`에 스크립트 줄이 없다 · 임시 파일이 남지 않는다 · 5번 DB 쓰기가 실패 → `failed`('알 수 없는 오류') · 1번에서 DB 오류가 나 트랜잭션이 깨져도 `failed`로 적힌다 · 그리는 사이 키가 빠짐 → `failed`('OpenAI API 키 없음')
 
 ---
 
