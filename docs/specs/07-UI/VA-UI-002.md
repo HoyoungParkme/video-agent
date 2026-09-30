@@ -175,7 +175,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 와이어프레임 단계에서 정해야 하지만 배치만으로는 정할 수 없는 것들이다. 제품 수준의 미결(상위 문서 갱신 요청·사용자 결정·디자인 보강)은 [[VA-UI-001]] 8장에 있다.
 
 - [ ] 시각을 눌렀을 때의 스크롤 위치: 고른 스크립트 구간을 패널 맨 위에 둘지 가운데에 둘지, 이미 보이는 구간이면 스크롤하지 않을지(1.3)
-- [ ] 챕터 강조 기준: 인사이트·근거 시각이 어느 챕터의 시작 시각과도 같지 않으면, 지금 규칙으로는 어떤 챕터도 강조되지 않는다. 그 시각이 들어 있는 챕터를 강조할지, 그 챕터가 접힌 파트 안에 있으면 파트를 펼칠지(1.3). 정할 때까지는 UI-4 규칙대로 강조하지 않고 파트도 펴지 않는다
+- [ ] 챕터 강조 기준: 인사이트·근거 시각이 어느 챕터의 시작 시각과도 같지 않으면, 지금 규칙으로는 어떤 챕터도 강조되지 않는다. 그 시각이 들어 있는 챕터를 강조할지, 그 챕터가 접힌 파트 안에 있으면 파트를 펼칠지(1.3). 정할 때까지는 UI-4 규칙대로 강조하지 않고 파트도 펴지 않는다. 한눈에 보기의 막대 칸(13.3) · 마인드맵 노드(14.2 · 14.5)는 그 시각이 든 챕터를 강조한다(VA-UI-001 4.4) — 이 항목은 챕터 카드(6.3 · 6.6) 몫만 남는다(카드 D1)
 - [ ] 시각 선택을 주소에 남길지: 새로 고치거나 다른 화면에 다녀오면 선택이 풀리는지, 남긴다면 주소 형식은 무엇인지
 - [ ] 탭을 오갈 때의 스크롤 위치: 근거 칩을 눌러 [스크립트]로 갔다가 [질문하기]로 돌아왔을 때 읽던 대화 위치를 유지할지
 - [ ] 초점을 돌려줄 버튼이 없어지는 경우: UI-2 [분석 시작]으로 UI-3이 열릴 때 초점을 어디에 둘지(1.2). UI-1에서 연 UI-6 [삭제]는 UI-1 규칙으로, UI-4에서 연 UI-6 [삭제]는 UI-1 「분석한 영상」 섹션 제목(5.1)으로 정했다(사용자 결정 2026-09-28, UI-6 규칙)
@@ -3275,7 +3275,7 @@ button, input, select, textarea { font-family: inherit; }
 ### 규칙
 
 - **한눈에 보기(12)** — 모양과 값은 VA-UI-001 UI-4 규칙이다. 이미 만든 결과(한 줄 요약 · 인사이트 · 파트 · 챕터 · 요점)만으로 그리고 서버에 따로 묻지 않는다. 이미 분석한 영상도 그대로 보인다([[VA-PRD-001#R11]]).
-- 13.1 · 13.2 · 13.3 · 14.2 · 14.5는 시각 선택(공통 1.3)이다 — 누르면 7.1 탭 · 8.3 강조와 스크롤 · 8.2 바뀜이 인사이트 시각 칩(4.3)과 같다. 선택된 시각이 든 챕터는 13.3 · 14.2(또는 14.5) · 6.3(또는 6.6)이 함께 강조되고, 그 시각이 근거인 13.2가 채워지며, 그 시각이 든 13.1이 진해진다.
+- 13.1 · 13.2 · 13.3 · 14.2 · 14.5는 시각 선택(공통 1.3)이다 — 누르면 7.1 탭 · 8.3 강조와 스크롤 · 8.2 바뀜이 인사이트 시각 칩(4.3)과 같다. 선택된 시각이 든 챕터의 13.3 · 14.2(또는 14.5)가 강조되고, 그 시각이 근거인 13.2가 채워지며, 그 시각이 든 13.1이 진해진다. 챕터 카드(6.3 · 6.6)는 시각 누르기 3대로 시작 시각이 같을 때만 선택 모양이다 — 챕터를 누르면(13.3 · 14.2 · 14.5 · 6.3 · 6.6) 막대 · 노드 · 카드 세 곳이 함께 강조되고, 인사이트 점처럼 챕터 중간의 시각이면 막대 · 노드만 강조된다(VA-UI-001 4.4, 카드 D1).
 - 13.3 칸의 글자는 칸 폭으로 정한다 — 110px 넘으면 '{번호} {제목}'(말줄임), 22px 넘으면 번호, 그보다 좁으면 없다. 칸 사이 틈은 2px, 폭은 챕터 길이 비례다(`flex-grow`에 초).
 - 13.2는 첫 근거 시각 자리에 가운데를 맞춘다. 이미 놓인 점과 30px 안이면 한 줄 아래(최대 세 줄)로 내린다. 점 줄 높이는 줄 수로 정한다.
 - 13.4 눈금은 0에서 시작해 1시간 미만 영상은 10분, 이상은 30분 간격이고 끝에 영상 길이를 둔다. 끝 눈금과 간격의 35% 안으로 붙는 눈금은 뺀다. 형식은 VA-UI-001 4.4.
@@ -4402,8 +4402,8 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 </div>
-<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 960px; box-sizing: border-box; padding-top: 80px; display: flex; justify-content: center; align-items: flex-start; background: rgba(27, 26, 23, 0.52);">
-<div role="dialog" aria-modal="true" aria-labelledby="exp-title" data-el="1" style="width: 660px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 20px;">
+<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 960px; box-sizing: border-box; padding-top: 48px; display: flex; justify-content: center; align-items: flex-start; background: rgba(27, 26, 23, 0.52);">
+<div role="dialog" aria-modal="true" aria-labelledby="exp-title" data-el="1" style="width: 660px; box-sizing: border-box; padding: 28px 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 18px;">
 <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
 <div style="display: flex; flex-direction: column; gap: 6px;">
 <h2 id="exp-title" data-el="1.1" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">마크다운으로 내보내기</h2>
@@ -4457,7 +4457,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div class="var"><b>저장하지 못함</b> — 파일 쓰기나 클립보드 복사가 실패했을 때 버튼 줄 왼쪽에 실패 한 줄(5.1) · 캔버스에 없음</div>
 <div class="crop dim">
-<div role="dialog" aria-modal="true" aria-labelledby="exp-title" style="width: 660px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 20px;">
+<div role="dialog" aria-modal="true" aria-labelledby="exp-title" style="width: 660px; box-sizing: border-box; padding: 28px 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 18px;">
 <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
 <div style="display: flex; flex-direction: column; gap: 6px;">
 <h2 id="exp-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em;">마크다운으로 내보내기</h2>
@@ -4640,11 +4640,11 @@ mindmap
 | 2 | 내보내는 방법 | 영역 | 2.1과 2.2를 나란히 둔 묶음. role group · aria-label '내보내는 방법' | — |
 | 2.1 | 파일로 저장 칸 | 버튼 | 내려받기 아이콘 + '파일로 저장', 아래 줄에 저장 경로 `data/export/{파일 이름}.md`(고정폭 글자). aria-pressed. 열 때 눌린 상태 | 방법 = 파일. 2.1 눌림 · 2.2 풀림, 5.3 글자 '파일로 저장'. 방법이 바뀌면 5.1이 떠 있을 때 지움 |
 | 2.2 | 클립보드에 복사 칸 | 버튼 | 복사 아이콘 + '클립보드에 복사', 아래 줄에 '노트 앱에 바로 붙여 넣기'. aria-pressed | 방법 = 클립보드. 2.2 눌림 · 2.1 풀림, 5.3 글자 '복사하기'. 방법이 바뀌면 5.1이 떠 있을 때 지움 |
-| 2.3 | 함께 저장되는 파일 | 목록 | 2.1을 골랐을 때만 2 아래. 라벨 '함께 저장되는 파일', 파일 칩(노트 .md · 스크립트 .md · 장면 {n}장 .jpg · 인포그래픽 1장 .png — 있는 것만), 캡션 '그림은 노트 곁에 저장되고 노트가 가리켜요 — 옵시디언에서 열면 바로 보여요.' | — |
+| 2.3 | 함께 저장되는 파일 | 목록 | 2.1을 골랐을 때만 2 아래. 라벨 '함께 저장되는 파일', 파일 칩(노트 .md · 스크립트 .md · 장면 {n}장 .jpg · 인포그래픽 1장 .png — 있는 것만), 캡션 '그림은 노트 곁에 저장되고 노트가 가리켜요 — 옵시디언에서 열면 바로 보여요.'는 그림 칩(장면 · 인포그래픽)이 있을 때만(VA-UI-001 UI-7 「그림이 든 노트」) | — |
 | 2.4 | 복사 안내 | 텍스트 | 2.2를 골랐을 때만 2.3 자리. 정보 아이콘 + '복사에는 그림 파일이 빠져요 — 장면 · 인포그래픽 줄도 넣지 않아요. 한눈에 보기는 Mermaid 코드라 노트 앱이 그대로 그려요.' role note | — |
 | 3 | 질문 기록 넣기 | 체크박스 | '질문 기록 {n}개도 넣기'. n은 UI-4 [질문하기] 배지 수. 기본 꺼짐. 라벨 줄 전체가 누르는 곳. 질문 기록이 0개면 없음 | 켬 / 끔. 4.1이 따라 바뀜 |
 | 4 | 미리 보기 | 영역 | 작은 라벨 '미리 보기'와 4.1 | — |
-| 4.1 | 마크다운 상자 | 상자 | 내보낼 마크다운의 앞부분 그대로. 고정폭 글자, 어두운 바탕. 최대 높이를 넘는 뒷부분은 잘리고 스크롤 없음. 읽기 전용 | — |
+| 4.1 | 마크다운 상자 | 상자 | 고른 방법으로 내보낼 노트의 앞부분 그대로. 고정폭 글자, 어두운 바탕. 높이 280px이고 안에서 스크롤된다(두 번째 캔버스 — 첫 캔버스는 잘리고 스크롤 없음). 읽기 전용 | — |
 | 5 | 버튼 줄 | 영역 | 오른쪽 정렬. 5.2 취소, 오른쪽 끝에 5.3 주 버튼. 실패했을 때만 왼쪽 끝에 5.1 | — |
 | 5.1 | 실패 한 줄 | 텍스트 | 저장이나 복사에 실패했을 때만. '파일을 저장하지 못했어요 — {이유}' 또는 '클립보드에 복사하지 못했어요 — {이유}'. role alert | — |
 | 5.2 | 취소 | 버튼 | '취소'. 공통 1.8의 보조 버튼 | 아무것도 쓰거나 복사하지 않고 닫힘 → UI-4 |
