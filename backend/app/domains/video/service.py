@@ -273,9 +273,10 @@ class VideoService:
         """VA-MS-001#VideoService.register
 
         영상을 등록한다 — 사전 안내 전까지. 걸리는 곳에서 멈추고, 순서가 규칙이다.
-        같은 영상(출처 식별자)이 있으면 그것을 돌려주고, 작업이 없던 것이면 새 정보로 덮어쓴다.
-        로컬 파일은 작업이 있어도 이름(origin)만 지금 것으로 고친다 — 이름을 바꾼 뒤 다시 시도해도
-        파이프라인이 파일을 찾게.
+        같은 영상(출처 식별자)이 있으면 그것을 돌려주고, 작업이 없던 것이면 새 정보로 덮어쓴다(작업
+        없는 올린 영상이면 inbox 영상이 된다). inbox 영상은 작업이 있어도 이름(origin)만 지금 것으로
+        고친다 — 이름을 바꾼 뒤 다시 시도해도 파이프라인이 파일을 찾게. 올린 영상은 고치지 않는다 —
+        다시 시도는 사본을 읽고, 사본 이름은 원래 이름의 확장자를 따른다.
 
         Args:
             req: YouTube 주소 또는 inbox 파일 이름
@@ -303,7 +304,11 @@ class VideoService:
             if job is None:  # 사전 안내에서 취소했던 영상 — 처음 넣은 것과 같게
                 crud.overwrite(row, info)
                 await self.session.commit()
-            elif info.source_kind == SourceKind.local and row.origin != info.origin:
+            elif (
+                info.source_kind == SourceKind.local
+                and not row.uploaded
+                and row.origin != info.origin
+            ):
                 crud.rename(row, info.origin)  # 제목은 그대로
                 await self.session.commit()
         else:

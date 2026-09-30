@@ -380,6 +380,47 @@ async def test_register_local_renamed_after_failure_updates_origin(
     assert (await db.get(VideoRow, first.id)).origin == "talk2.mp4"
 
 
+async def _uploaded(make, content: bytes, origin: str = "Talk.MOV") -> VideoRow:
+    # 올린 영상의 행 — 같은 내용의 파일을 inbox에서 고르는 경우
+    sha = hashlib.sha256(content).hexdigest()
+    return await make.video(
+        source_kind="local", source_id=sha, title=origin, origin=origin, uploaded=True
+    )
+
+
+async def test_register_same_as_uploaded_with_job_keeps_row(
+    db, youtube, probe, key, make, tmp_path, monkeypatch
+) -> None:
+    # 작업이 있는 올린 영상과 같은 내용을 inbox에서 고른다 — 행이 안 바뀐다(origin도)
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "talk.mp4").write_bytes(b"recording")
+    row = await _uploaded(make, b"recording")
+    await make.job(row.id, JobStatus.failed)
+    again = await VideoService(db, youtube, probe).register(local("talk.mp4"))
+    assert (again.id, again.origin, again.uploaded, again.status) == (
+        row.id,
+        "Talk.MOV",
+        True,
+        "failed",
+    )
+
+
+async def test_register_same_as_uploaded_without_job_becomes_inbox(
+    db, youtube, probe, key, make, tmp_path, monkeypatch
+) -> None:
+    # 작업이 없는 올린 영상(사본은 취소 때 지웠다)과 같은 내용을 inbox에서 — inbox 영상으로 덮어쓴다
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "talk.mp4").write_bytes(b"recording")
+    row = await _uploaded(make, b"recording")
+    again = await VideoService(db, youtube, probe).register(local("talk.mp4"))
+    assert (again.id, again.origin, again.uploaded, again.status) == (
+        row.id,
+        "talk.mp4",
+        False,
+        "registered",
+    )
+
+
 async def test_register_local_too_long(db, youtube, probe, key, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
     (tmp_path / "all_day.mp4").write_bytes(b"x")
