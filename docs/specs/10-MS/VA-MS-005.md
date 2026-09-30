@@ -12,15 +12,15 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 `core/settings.py`의 함수 9개. 클래스 명세 [[VA-DOM-002#SettingsService]]의 시그니처를 함수 내부까지 내린 것. `infra/openai.verify_key`는 4.7의 MS 문서에서.
 
-형식은 명세 작성 규약 2.10. 내부 타입(`KeyCheck` `ChosenModels`)은 [[VA-DOM-002]] 2.6, 응답 형태(`Settings` `KeyStatus` `Models` `ModelOption`)는 [[VA-API-001]] 4장.
+형식은 명세 작성 규약 2.10. 내부 타입(`KeyCheck` `ChosenModels`)은 [[VA-DOM-002]] 2.6, 응답 형태(`Settings` `KeyStatus` `Models` `ModelOption` `ImageSettings` `ImageQualityOption`)는 [[VA-API-001]] 4장.
 
 **표기** — `→` 반환 · 결과, `!` 예외(이름은 [[VA-API-001]] 2장의 `urn:va:` 뒤 부분), `FS:` 파일 접근.
 
 **이 서비스가 아는 것** — DB가 없다. 키와 모델 선택은 `.env` 파일에, 마지막 키 확인 결과는 프로세스 메모리(`last_check`)에 산다. 어느 묶음이든 부를 수 있고 이 서비스는 아무 묶음도 부르지 않는다([[VA-DOM-002]] 3.2).
 
-**저장 위치 — `.env` 파일 하나**(사용자 결정 2026-09-21, [[VA-INFRA-001#C6]]). 처음 설치 때 사용자가 직접 적은 키도, 화면에서 넣은 키도 같은 파일의 같은 줄이다. 그래서 「어느 쪽이 우선인가」가 없다. compose가 호스트의 `.env`를 api 컨테이너에 읽기·쓰기로 마운트하고, 이 서비스가 그 파일에서 세 줄만 읽고 쓴다 — `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL`. 앞 판의 `data/settings.json`은 쓰지 않는다.
+**저장 위치 — `.env` 파일 하나**(사용자 결정 2026-09-21, [[VA-INFRA-001#C6]]). 처음 설치 때 사용자가 직접 적은 키도, 화면에서 넣은 키도 같은 파일의 같은 줄이다. 그래서 「어느 쪽이 우선인가」가 없다. compose가 호스트의 `.env`를 api 컨테이너에 읽기·쓰기로 마운트하고, 이 서비스가 그 파일에서 다섯 줄만 읽고 쓴다 — `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL` · `IMAGE_MODEL` · `IMAGE_QUALITY`(인포그래픽, 카드 D3). 앞 판의 `data/settings.json`은 쓰지 않는다.
 
-**환경 변수를 읽지 않는다.** 같은 이름의 환경 변수(`os.environ`)는 컨테이너가 뜰 때의 값이라, 화면에서 키를 바꾼 뒤에는 옛 값이다. 이 세 값은 **늘 파일에서** 읽는다 — 서버를 다시 띄우지 않아도 다음 요청부터 새 값을 쓴다. `core/config.py`가 이 세 값을 갖지 않는 이유다([[VA-DOM-002]] 1장).
+**환경 변수를 읽지 않는다.** 같은 이름의 환경 변수(`os.environ`)는 컨테이너가 뜰 때의 값이라, 화면에서 키를 바꾼 뒤에는 옛 값이다. 이 값들은 **늘 파일에서** 읽는다 — 서버를 다시 띄우지 않아도 다음 요청부터 새 값을 쓴다. `core/config.py`가 이 값들을 갖지 않는 이유다([[VA-DOM-002]] 1장).
 
 **파일을 제자리에서 고친다.** 클래스 명세는 「임시 파일 → rename」이라고 썼는데, 파일 하나를 바인드 마운트하면 그 파일 자체가 마운트 지점이라 rename으로 바꿔치기할 수 없다(`EBUSY`). 그래서 새 내용을 메모리에서 다 만든 뒤 같은 파일을 열어 한 번에 쓰고(`write` 한 번 · `truncate` · `fsync`) 닫는다. 파일이 수백 바이트라 반쯤 쓰인 채 남을 틈이 사실상 없고, 쓰기는 프로세스 안 잠금 하나로 줄 세운다. 클래스 명세 · 시퀀스의 문장은 되먹임으로 고친다(3장).
 
@@ -31,6 +31,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 | `config.ENV_PATH` | `/app/.env` | compose가 호스트 `.env`를 마운트하는 컨테이너 안 경로. 환경 변수 `ENV_PATH`로 바꿀 수 있다(테스트) |
 | `config.MODEL_OPTIONS` | 받아쓰기 `whisper-1`(분당 $0.006) · 텍스트 `gpt-5-mini`(입력 $0.25 · 출력 $2.00), `gpt-5.4-mini`(입력 $0.75 · 출력 $4.50), `gpt-5.4`(입력 $2.50 · 출력 $15.00) — 텍스트는 100만 토큰당, 표준 요금. 2026-09-23 OpenAI 가격표 값 | [[VA-INFRA-001]] 3절, [[VA-UI-002#UI-5]] 3.1 · 3.3. 받아쓰기 목록은 구간 시각을 주는 모델만([[VA-INFRA-001#C3]]) |
 | `config.DEFAULT_MODELS` | `whisper-1` · `gpt-5-mini` | 파일에 선택이 없을 때 |
+| `config.IMAGE_OPTIONS` | 모델 `gpt-image-2` · 품질 `low`('낮음', 한 장 $0.006) · `medium`('중간', 한 장 $0.05) | 인포그래픽([[VA-INFRA-001#C11]], [[VA-PRD-001#R13]]). 값은 외부 가격 정리의 1024×1024 기준 첫 값이다 — 세로 1024×1536은 조금 더 들 수 있어 카드 D3에서 실제 한 장의 사용량으로 고친다([[VA-API-001]] 6장 미결). UI-4 카드 · UI-5 · UI-8이 같은 값을 쓴다 |
+| `config.DEFAULT_IMAGE` | `gpt-image-2` · `low` | 파일에 선택이 없을 때(사용자 결정 2026-09-29 — 「좀 비싸다, 싼 걸로」) |
 | `config.KEY_CHECK_TIMEOUT_SEC` | 10 | 키 확인 요청 시간 제한 |
 
 ---
@@ -41,12 +43,12 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 |---|---|
 | [[#SettingsService.get]] | 설정 전부 — 재확인 없음 |
 | [[#SettingsService.set_key]] | 새 키 확인 → `.env`에 저장 |
-| [[#SettingsService.set_models]] | 모델 선택을 `.env`에 저장 |
-| [[#SettingsService.check_stored_key]] | 저장된 키 확인 (시작 · 분석 버튼 · 연결 실패 뒤) |
+| [[#SettingsService.set_models]] | 모델 선택(받아쓰기 · 텍스트 · 이미지 모델과 품질)을 `.env`에 저장 |
+| [[#SettingsService.check_stored_key]] | 저장된 키 확인 (시작 · 분석 버튼 · 파일 올리기 · 인포그래픽 · 연결 실패 뒤) |
 | [[#SettingsService.require_key]] | 마지막 결과로 막기 — 연결 실패였으면 한 번 다시 확인 |
-| [[#SettingsService.current_models]] | 지금 모델과 단가 |
+| [[#SettingsService.current_models]] | 지금 모델과 단가 · 이미지 모델과 품질의 한 장 값 |
 | [[#SettingsService.api_key]] | 지금 키 — 어댑터의 클라이언트를 만들 때만 |
-| [[#SettingsService.read_env]] | `.env`에서 세 값을 읽는다 |
+| [[#SettingsService.read_env]] | `.env`에서 다섯 값을 읽는다 |
 | [[#SettingsService.write_env]] | `.env`의 그 줄만 고친다 |
 
 ---
@@ -63,13 +65,13 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 1. `key = read_env().get("OPENAI_API_KEY")` · 빈 문자열은 없는 것으로 본다(`.env.example`을 복사한 직후)
 2. `masked` = if `key` → 앞 3자 + `…` + 끝 4자(12자보다 짧은 값 — 손으로 잘못 적은 것 — 은 끝을 보이지 않고 앞 3자 + `…`) · else → `None` · `stored_in` = if `key` → `'.env에 저장됨'` · else → `None`
 3. `status = KeyStatus(state=last_check.state, masked, stored_in, checked_at=last_check.checked_at, reason_kind=last_check.reason_kind, reason=last_check.reason)` — **OpenAI에 아무것도 보내지 않는다.** 다만 파일에 키가 없으면 `last_check`와 상관없이 `state=missing` · `reason_kind=None` · `reason=None`이다(앱이 도는 동안 손으로 지운 경우 — 키가 사는 곳은 파일이다)
-4. `m = current_models()` · `→ Settings(key=status, models=Models(stt=m.stt.id, text=m.text.id), model_options=config.MODEL_OPTIONS, inbox_path=config.INBOX_DISPLAY_PATH)` — 응답의 `Models`는 id 둘이다
+4. `m = current_models()` · `→ Settings(key=status, models=Models(stt=m.stt.id, text=m.text.id), model_options=config.MODEL_OPTIONS, image=ImageSettings(model=m.image_model, quality=m.image_quality.id, models=config.IMAGE_OPTIONS.models, qualities=config.IMAGE_OPTIONS.qualities), inbox_path=config.INBOX_DISPLAY_PATH)` — 응답의 `Models`는 id 둘이다. `image.qualities`의 한 장 값이 UI-4 카드 '한 장 약 ${값}' · UI-5 · UI-8 예상 비용이다([[VA-API-001#GET/api/settings]])
 
 **출력** `Settings`. 페이지 넷이 배너를 그리려고 부른다 — 값싸야 한다(작은 파일 읽기 한 번)
 
 **호출하는 것** [[#SettingsService.read_env]] · [[#SettingsService.current_models]]
 
-**테스트 관점** 가짜 OpenAI 클라이언트의 호출 수가 0 · 키 `sk-abcdefghijklmnop1234` → `masked='sk-…1234'`, `stored_in='.env에 저장됨'` · `OPENAI_API_KEY=`(빈 값) → `masked=None`, `stored_in=None`, `state=missing` · `last_check`가 `ok`인데 파일에서 키를 지웠다 → `missing` · `last_check`가 `invalid`면 `reason`이 그대로 나온다 · 환경 변수에 다른 키가 있어도 파일 것
+**테스트 관점** 가짜 OpenAI 클라이언트의 호출 수가 0 · 키 `sk-abcdefghijklmnop1234` → `masked='sk-…1234'`, `stored_in='.env에 저장됨'` · `OPENAI_API_KEY=`(빈 값) → `masked=None`, `stored_in=None`, `state=missing` · `last_check`가 `ok`인데 파일에서 키를 지웠다 → `missing` · `last_check`가 `invalid`면 `reason`이 그대로 나온다 · 환경 변수에 다른 키가 있어도 파일 것 · 이미지 줄이 없으면 `image.model=gpt-image-2` · `image.quality=low` · `qualities`에 한 장 값 둘
 
 ---
 
@@ -109,20 +111,20 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 #### SettingsService.set_models 모델 선택 저장
 
-**시그니처** `def set_models(stt_model: str, text_model: str) -> Settings`
+**시그니처** `def set_models(stt_model: str, text_model: str, image_model: str | None = None, image_quality: ImageQuality | None = None) -> Settings`
 
 근거: [[VA-SEQ-001#SEQ-C1]] · [[VA-API-001#PUT/api/settings/models]] · [[VA-UC-001#UC-H8]] 5번 · [[VA-UI-002#UI-5]] 3.1 · 3.3 · 6.2 규칙
 
 **처리**
-1. if `stt_model ∉ {o.id for o in MODEL_OPTIONS.stt}` 또는 `text_model ∉ {… .text}` → `! validation {errors: [{field, message: 목록에 없음}]}`
-2. `write_env({"STT_MODEL": stt_model, "TEXT_MODEL": text_model})`(키 줄은 그대로) · if `OSError` · `UnicodeError` → `! internal`(원인은 로그에만)
+1. if `stt_model ∉ {o.id for o in MODEL_OPTIONS.stt}` 또는 `text_model ∉ {… .text}` → `! validation {errors: [{field, message: 목록에 없음}]}` · 이미지도 — if `image_model`이 왔고 `∉ IMAGE_OPTIONS.models` 또는 `image_quality`가 왔고 `∉ IMAGE_OPTIONS.qualities의 id` → `! validation`
+2. `values = {"STT_MODEL": stt_model, "TEXT_MODEL": text_model}` · 온 것만 `IMAGE_MODEL` · `IMAGE_QUALITY`를 더한다 — 안 오면 그 줄을 그대로 둔다(첫 화면은 두 값만 보냈다, [[VA-API-001#PUT/api/settings/models]]) · `write_env(values)`(키 줄은 그대로) · if `OSError` · `UnicodeError` → `! internal`(원인은 로그에만)
 3. `→ get()`
 
-**출력** `Settings`. 돌고 있는 작업은 시작할 때 복사한 모델을 끝까지 쓴다([[VA-DOM-002#AnalysisJob]]) — 여기서 바꾼 값은 다음 작업 · 질문부터. 대기 중인 작업도 [분석 시작] 때의 모델이다
+**출력** `Settings`. 돌고 있는 작업은 시작할 때 복사한 모델을 끝까지 쓴다([[VA-DOM-002#AnalysisJob]]) — 여기서 바꾼 값은 다음 작업 · 질문부터. 대기 중인 작업도 [분석 시작] 때의 모델이다. 바꾼 이미지 품질은 다음 인포그래픽부터다 — 그리는 중인 것은 맡긴 때의 품질이다([[VA-MS-003#AnalysisService.start_infographic]])
 
 **호출하는 것** [[#SettingsService.write_env]] · [[#SettingsService.get]]
 
-**테스트 관점** 모르는 id → `validation`, 파일 안 바뀜 · 저장 뒤 `current_models()`가 새 값 · `OPENAI_API_KEY` 줄이 그대로 남아 있다
+**테스트 관점** 모르는 id → `validation`, 파일 안 바뀜 · 저장 뒤 `current_models()`가 새 값 · `OPENAI_API_KEY` 줄이 그대로 남아 있다 · `image_quality=medium` → `IMAGE_QUALITY=medium` 줄 · 이미지 값을 안 보내면 이미지 줄이 그대로 · `image_quality=high` → `validation`
 
 ---
 
@@ -138,7 +140,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 3. `last_check = check`
 4. `→ get().key`
 
-**출력** `KeyStatus`. 부르는 곳은 셋 — 서버 시작(`main.py`), 분석 버튼(`VideoService.register`), 그리고 마지막 결과가 연결 실패일 때의 [[#SettingsService.require_key]]. 화면 열기 · 폴링은 부르지 않는다
+**출력** `KeyStatus`. 부르는 곳은 다섯 — 서버 시작(`main.py`), 분석 버튼(`VideoService.register`), 파일 올리기(`VideoService.upload`, 본문을 읽기 전), 인포그래픽 만들기(`AnalysisService.start_infographic`), 그리고 마지막 결과가 연결 실패일 때의 [[#SettingsService.require_key]]([[VA-API-001]] 1장 키를 확인하는 때). 화면 열기 · 폴링은 부르지 않는다
 
 **호출하는 것** [[#SettingsService.read_env]] · `openai.verify_key` · [[#SettingsService.get]]
 
@@ -157,7 +159,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 1. if `last_check.state == invalid and last_check.reason_kind == network` → `check_stored_key()` — **한 번만** 다시 확인한다. 키가 틀린 것이 아니라 인터넷이 없었던 것이라 화면이 버튼을 막지 않았고, 이 요청이 「누를 때 다시 확인」이다
 2. if `last_check.state == missing` → `! key-missing` · elif `invalid` → `! key-invalid {reason_kind, reason, checked_at}` · else → `→ None`
 
-**출력** 없음. 다른 실패(`format` · `auth` · `quota`)는 다시 확인해도 같으므로 **OpenAI에 보내지 않는다** — 마지막 결과만 본다. 부르는 곳은 넷: `VideoService.register` · `JobService.start` · `JobService.retry` · `ChatService.ask`
+**출력** 없음. 다른 실패(`format` · `auth` · `quota`)는 다시 확인해도 같으므로 **OpenAI에 보내지 않는다** — 마지막 결과만 본다. 부르는 곳은 여섯: `VideoService.register` · `VideoService.upload` · `JobService.start` · `JobService.retry` · `ChatService.ask` · `AnalysisService.start_infographic`
 
 **호출하는 것** [[#SettingsService.check_stored_key]]
 
@@ -171,13 +173,13 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 근거: [[VA-API-001]] 4장 `ModelOption` · [[VA-DOM-002]] 2.6 `ChosenModels` · [[VA-DOM-002]] 4.2 `estimate` 규칙(단가는 `current_models`의 값)
 
-**처리** `env = read_env()` · `stt = env.get("STT_MODEL")` · `text = env.get("TEXT_MODEL")` · 없거나 빈 값이면 `config.DEFAULT_MODELS` · `MODEL_OPTIONS`에서 그 id의 `ModelOption`을 찾아 `→ ChosenModels(stt=…, text=…)` — 이름과 단가를 같이 돌려준다. 응답의 `Models`(id 둘)는 [[#SettingsService.get]]이 이것으로 만든다. 파일의 값이 목록에 없으면(옵션이 바뀐 뒤 · 손으로 잘못 적음) 기본값으로
+**처리** `env = read_env()` · `stt = env.get("STT_MODEL")` · `text = env.get("TEXT_MODEL")` · 없거나 빈 값이면 `config.DEFAULT_MODELS` · `MODEL_OPTIONS`에서 그 id의 `ModelOption`을 찾는다 · 이미지 — `IMAGE_MODEL` · `IMAGE_QUALITY` 줄, 없거나 목록에 없으면 `config.DEFAULT_IMAGE` · 품질은 `IMAGE_OPTIONS.qualities`에서 그 id의 `ImageQualityOption`(한 장 값 포함) · `→ ChosenModels(stt=…, text=…, image_model=…, image_quality=…)` — 이름과 단가를 같이 돌려준다. 응답의 `Models`(id 둘)는 [[#SettingsService.get]]이 이것으로 만든다. 파일의 값이 목록에 없으면(옵션이 바뀐 뒤 · 손으로 잘못 적음) 기본값으로
 
-**출력** `ChosenModels`. `JobService.estimate` · `start`, `AnalysisService.generate_*`, `ChatService.ask`가 이름과 단가를 여기서 받는다(`.stt.price` · `.text.id`)
+**출력** `ChosenModels`. `JobService.estimate` · `start`, `AnalysisService.generate_*` · `start_infographic`, `ChatService.ask`가 이름과 단가를 여기서 받는다(`.stt.price` · `.text.id` · `.image_quality.price_usd`)
 
 **호출하는 것** [[#SettingsService.read_env]]
 
-**테스트 관점** 줄 없음 → 기본값 · 목록에 없는 id → 기본값 · 단가가 `MODEL_OPTIONS`의 값
+**테스트 관점** 줄 없음 → 기본값 · 목록에 없는 id → 기본값 · 단가가 `MODEL_OPTIONS`의 값 · 이미지 줄 없음 → `gpt-image-2` · `low`($0.006) · `IMAGE_QUALITY=medium` → 한 장 값 $0.05
 
 ---
 
@@ -195,21 +197,21 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 ---
 
-#### SettingsService.read_env .env에서 세 값을 읽는다
+#### SettingsService.read_env .env에서 다섯 값을 읽는다
 
 **시그니처** `def read_env() -> dict[str, str]`
 
 근거: [[VA-INFRA-001#C6]] · [[VA-DOM-002#SettingsService]] 규칙(읽을 때마다 파일에서)
 
 **처리**
-1. `FS: config.ENV_PATH` 읽기 — UTF-8로 읽되 깨진 바이트는 바꿔 읽는다(세 줄은 ASCII라 주석이 다른 인코딩이어도 읽힌다) · if 파일 없음 → `→ {}` · if 읽을 수 없음(권한 · 디렉터리 등) → 경고 로그 한 줄(내용은 쓰지 않는다) 뒤 `→ {}` — 던지지 않는다. 서버 시작(`check_stored_key`)과 `GET /api/settings`가 멈추면 안 된다
+1. `FS: config.ENV_PATH` 읽기 — UTF-8로 읽되 깨진 바이트는 바꿔 읽는다(다섯 줄은 ASCII라 주석이 다른 인코딩이어도 읽힌다) · if 파일 없음 → `→ {}` · if 읽을 수 없음(권한 · 디렉터리 등) → 경고 로그 한 줄(내용은 쓰지 않는다) 뒤 `→ {}` — 던지지 않는다. 서버 시작(`check_stored_key`)과 `GET /api/settings`가 멈추면 안 된다
 2. 줄마다 — 빈 줄 · `#`으로 시작하는 줄은 건너뛴다 · 앞의 `export `는 뗀다 · 첫 `=`에서 나눠 이름과 값 · 값이 따옴표로 시작하면 짝이 되는 따옴표까지가 값(`"…"` 또는 `'…'`), 아니면 공백 뒤 `#`부터는 주석이라 뗀다 · 양끝 공백을 뗀다 — compose와 셸이 읽는 대로
-3. 이름이 `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL`인 것만 담는다. 같은 이름이 두 번이면 **뒤의 것** — 셸과 compose가 그렇게 읽는다
+3. 이름이 `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL` · `IMAGE_MODEL` · `IMAGE_QUALITY`인 것만 담는다. 같은 이름이 두 번이면 **뒤의 것** — 셸과 compose가 그렇게 읽는다
 4. `→ dict`
 
 **출력** 있는 것만 담긴 dict. 다른 줄(DB 비밀번호 등)은 읽지 않는다
 
-**테스트 관점** 파일 없음 → `{}` · `OPENAI_API_KEY="sk-abc"` → `sk-abc` · `export STT_MODEL=whisper-1` · `TEXT_MODEL=gpt-5.4 # 비싸다` → `gpt-5.4` · `OPENAI_API_KEY="sk-a#b"` → `sk-a#b` · 주석 줄 속의 `OPENAI_API_KEY`는 무시 · 같은 이름 두 줄이면 뒤의 값 · `POSTGRES_PASSWORD`가 결과에 없다 · CP949 주석이 섞여도 세 값을 읽는다 · 읽을 수 없는 파일 → `{}`, 던지지 않는다
+**테스트 관점** 파일 없음 → `{}` · `OPENAI_API_KEY="sk-abc"` → `sk-abc` · `export STT_MODEL=whisper-1` · `TEXT_MODEL=gpt-5.4 # 비싸다` → `gpt-5.4` · `OPENAI_API_KEY="sk-a#b"` → `sk-a#b` · 주석 줄 속의 `OPENAI_API_KEY`는 무시 · 같은 이름 두 줄이면 뒤의 값 · `POSTGRES_PASSWORD`가 결과에 없다 · CP949 주석이 섞여도 다섯 값을 읽는다 · `IMAGE_QUALITY=medium`을 읽는다 · 읽을 수 없는 파일 → `{}`, 던지지 않는다
 
 ---
 
@@ -217,13 +219,13 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 **시그니처** `def write_env(values: dict[str, str]) -> None`
 
-근거: [[VA-INFRA-001#C6]](앱이 같은 파일에 쓴다) · [[VA-DOM-002#SettingsService]] 규칙(세 줄만, 다른 줄 · 주석 · 순서는 그대로) · 0장 「파일을 제자리에서 고친다」
+근거: [[VA-INFRA-001#C6]](앱이 같은 파일에 쓴다) · [[VA-DOM-002#SettingsService]] 규칙(다섯 줄만, 다른 줄 · 주석 · 순서는 그대로) · 0장 「파일을 제자리에서 고친다」
 
-**입력** `values` — 이름은 `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL` 중에서만. 다른 이름이면 `ValueError`(코드 실수)
+**입력** `values` — 이름은 `OPENAI_API_KEY` · `STT_MODEL` · `TEXT_MODEL` · `IMAGE_MODEL` · `IMAGE_QUALITY` 중에서만. 다른 이름이면 `ValueError`(코드 실수)
 
 **처리** — 프로세스 안 잠금(`threading.Lock`) 안에서
 1. `lines = FS: config.ENV_PATH`의 줄 목록(UTF-8로만 — 다른 인코딩이면 `UnicodeDecodeError`를 올리고 쓰지 않는다. 사용자의 주석을 깨뜨리지 않게) · 파일이 없으면 빈 목록
-2. 이름마다 — 그 이름의 줄(주석이 아닌 것, `export ` 허용) 중 **마지막** 줄을 `이름=값`으로 바꾼다(`read_env`가 읽는 바로 그 줄). 없으면 끝에 `이름=값` 줄을 더한다. 값은 따옴표 없이 쓴다 — 키와 모델 id에는 공백 · `#` · 따옴표가 없다(`set_key` 1번 · `set_models` 1번이 거른다)
+2. 이름마다 — 그 이름의 줄(주석이 아닌 것, `export ` 허용) 중 **마지막** 줄을 `이름=값`으로 바꾼다(`read_env`가 읽는 바로 그 줄). 없으면 끝에 `이름=값` 줄을 더한다. 값은 따옴표 없이 쓴다 — 키와 모델 id · 품질에는 공백 · `#` · 따옴표가 없다(`set_key` 1번 · `set_models` 1번이 거른다)
 3. `text = "\n".join(lines) + "\n"` · `FS: open(config.ENV_PATH, "r+" 또는 없으면 "w")` · `write(text)` · `truncate()` · `flush` · `fsync` — **제자리 쓰기.** rename으로 바꿔치기하지 않는다(바인드 마운트한 파일은 `EBUSY`)
 4. `OSError` · `UnicodeError`는 그대로 올린다(부르는 쪽이 `internal`로 접는다)
 
@@ -239,6 +241,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 - [x] 키 확인이 네트워크로 실패했을 때의 배너 문구 — 결정: 문구를 가르고 버튼을 막지 않는다. 그래서 `require_key`가 마지막 결과가 `network`면 한 번 다시 확인한다([[VA-API-001]] 5장 11 · [[VA-UI-002]] 2장 되먹임 반영)
 - [x] 화면에서 모델을 바꾸는 유스케이스 — 반영: [[VA-UC-001#UC-H8]] 5번
 - [x] 텍스트 모델 `gpt-5.4-mini` · `gpt-5.4`의 단가 — 채움: 0장 설정값(2026-09-23 가격표)
+- [ ] 인포그래픽 한 장 값(`IMAGE_OPTIONS`) — 첫 값 low $0.006 · medium $0.05는 1024×1024 기준 외부 가격 정리다. 세로 1024×1536 한 장을 카드 D3에서 실제로 만들어 사용량(출력 이미지 토큰 × 단가)으로 고친다([[VA-API-001]] 6장 · [[VA-INFRA-001]] 9절과 같은 항목)
 - [ ] 새 모델 `gpt-5.6-sol` · `gpt-5.6-terra` · `gpt-5.6-luna`가 가격표에 있다. 선택지에 더할지 사용자 결정 — 더하려면 [[VA-UI-002#UI-5]] 3.3 선택지부터
 - [x] (반영: 클래스 명세 v12 · 시퀀스 v3 SEQ-12) **되먹임** — `.env`를 rename으로 바꿔치기할 수 없다(0장). [[VA-DOM-002#SettingsService]] 규칙과 [[VA-SEQ-001#SEQ-12]]의 「임시 파일 → rename」을 「제자리 쓰기」로 고친다. 폴더를 마운트하면 rename이 되지만 저장소 뿌리 전체를 api 컨테이너에 쓰기로 여는 것이라 택하지 않았다
 - [x] (반영: 클래스 명세 v12) **되먹임** — `require_key`가 `async`가 됐다(OpenAI를 부를 수 있다). 부르는 네 곳(`VideoService.register` · `JobService.start` · `retry` · `ChatService.ask`)은 이미 `async`라 `await`만 붙는다. `read_env` · `write_env` 둘을 [[VA-DOM-002#SettingsService]]에 private 메서드로 더한다
