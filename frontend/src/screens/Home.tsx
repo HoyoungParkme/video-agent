@@ -1,7 +1,11 @@
 /**
  * VA-UI-002#UI-1 홈 — 2 제목 영역 · 3 YouTube 링크 카드(3.1 · 3.2 · 3.3 분석 · 3.4 · 3.5) · 4 내 파일 카드
- * (4.1 · 4.2 inbox 목록 · 4.3 파일 행 · 4.4 빈 안내 · 4.5 · 4.6 선택한 파일 분석) · 5 목록 머리(5.1 · 5.2 · 5.3) ·
- * 6 분석한 영상 목록(6.1 ~ 6.8) · 7 빈 상태 상자. 키 없음 배너(1)는 layout의 공통 1.4다.
+ * (4.1 · 4.7 끌어 놓기 칸 · 4.10 파일 고르기 · 4.11 올리는 중 · 4.17 한 줄 · 4.19 구분선 · 4.2 inbox 목록 ·
+ * 4.3 파일 행 · 4.4 빈 안내 · 4.5 · 4.6 선택한 파일 분석) · 5 목록 머리(5.1 · 5.2 · 5.3) · 6 분석한 영상 목록
+ * (6.1 ~ 6.8) · 7 빈 상태 상자 · 8 끌어 오는 중 덮개. 키 없음 배너(1)는 layout의 공통 1.4다.
+ * 로컬 파일은 둘로 넣는다 — 끌어 놓기(창 어디에 놓아도) · 파일 고르기로 올리기, inbox에서 고르기. 여러 파일 ·
+ * 받지 않는 형식은 보내기 전에 거른다. 올리는 동안은 진행과 멈추기, 다 보내면 파일 확인 중이고, 응답은
+ * 등록 응답과 같이 다룬다. 올리다 끊기면 한 줄과 다시 올리기, 떠나면 멈춘다.
  * 분석(3.3) · 선택한 파일 분석(4.6)은 등록 응답의 status로 갈 곳을 정한다 — registered면 UI-2, analyzed면
  * UI-4와 짧은 알림, 그 밖은 UI-3. 대기 표시는 누른 버튼에, 그동안은 어느 쪽도 새 요청을 보내지 않는다.
  * 행 휴지통(6.8)은 모든 상태의 행에 있고 UI-6을 연다. 지우면 목록을 다시 받고, 초점은 바로 아래 행 →
@@ -13,7 +17,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import {
   api,
@@ -21,6 +25,7 @@ import {
   keyBlocks,
   loadSettings,
   useSettings,
+  UploadAborted,
   type Estimate as EstimateData,
   type InboxListing,
   type RegisterResponse,
@@ -38,10 +43,29 @@ import Estimate, { Blocked, blockedOf, type BlockedInfo } from "@/screens/Estima
 /** 입력 오류(3.4) — 받는 주소 형태를 알린다. 형식이 틀렸거나 비었을 때만(UI-1 규칙) */
 const URL_HINT = "YouTube 주소를 넣어 주세요 — watch · youtu.be · shorts 주소를 받아요";
 const EMPTY_TITLE = "아직 분석한 영상이 없어요";
-const EMPTY_BODY = "위에 링크를 붙여 넣거나 inbox 폴더에 파일을 넣어 보세요.";
+const EMPTY_BODY = "위에 링크를 붙여 넣거나 파일을 끌어 놓아 보세요.";
 const EMPTY_BODY_NO_KEY = `설정에서 OpenAI API 키를 넣은 뒤, ${EMPTY_BODY}`;
 // 진행 중 · 대기 중 행이 있는 동안만 목록을 다시 받는다(UI-1 규칙)
 const REFRESH_MS = 3000;
+// 받는 형식 — 서버의 ACCEPTED와 같다(VA-MS-001). 여러 파일 · 다른 형식은 보내기 전에 거른다
+const ACCEPTED = ["mp4", "mkv", "mov", "webm", "mp3", "m4a", "wav"];
+const KINDS = "영상 mp4 · mkv · mov · webm, 음성 mp3 · m4a · wav";
+// 서버가 올린 뒤에야 아는 것 — UI-2 시작 불가 판으로 알린다(UI-1 규칙)
+const CANNOT = ["unsupported-file", "no-audio-track", "video-too-long"];
+
+/** 4.17 한 줄 — 오류(빨강 · alert) 또는 알림(status). retry가 있으면 4.18 */
+interface Line {
+  text: string;
+  alert: boolean;
+  retry?: File;
+}
+
+/** 올리는 중(4.11) — 보낸 바이트가 크기에 닿으면 파일 확인 중 */
+interface Sending {
+  file: File;
+  sent: number;
+  abort: () => void;
+}
 
 function inProgress(v: VideoSummary): boolean {
   return v.job.status === "queued" || v.job.status === "running";
@@ -106,6 +130,83 @@ function useInbox(): [InboxListing | null, () => void] {
   }, [round]);
   const reload = useCallback(() => setRound((n) => n + 1), []);
   return [listing, reload];
+}
+
+/** 올리기 크기(4.13 · 4.17) — 1 GB 이상이면 GB 소수 한 자리, 아래면 MB 정수(UI-1 규칙). unit으로 단위를 맞춘다 */
+function bigSize(bytes: number, unit = bytes): string {
+  return unit >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+}
+
+/** 서버가 준 한 줄 — 닿지 못했으면 '서버에 연결할 수 없음'(UI-1 규칙) */
+function reasonOf(e: unknown): string {
+  if (e instanceof ApiError && e.kind !== "unknown") return e.reason.replace(/[.。]\s*$/, "");
+  return "서버에 연결할 수 없음";
+}
+
+function UploadIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m17 8-5-5-5 5" />
+      <path d="M12 3v12" />
+    </svg>
+  );
+}
+
+function LineIcon({ alert }: { alert: boolean }) {
+  return (
+    <svg className="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      {alert ? <path d="M12 8v4" /> : <path d="M12 16v-4" />}
+      {alert ? <path d="M12 16h.01" /> : <path d="M12 8h.01" />}
+    </svg>
+  );
+}
+
+/** 올리는 중(4.11) — 보낸 만큼 막대와 퍼센트. 다 보내면 파일 확인 중(4.14 · 4.16이 빠지고 깜빡이는 막대) */
+function SendingBox({ sending, onStop }: { sending: Sending; onStop: () => void }) {
+  const { file, sent } = sending;
+  const checking = sent >= file.size;
+  const pct = file.size > 0 ? Math.floor((sent / file.size) * 100) : 0;
+  return (
+    <div className="upload-box" role="status" aria-live="polite" data-el="4.11">
+      <div className="upload-head">
+        <span className="icon-tile icon-tile-teal">
+          {checking ? <SourceIcon local /> : <UploadIcon size={18} />}
+        </span>
+        <span className="upload-text">
+          <span className="upload-name" data-el="4.12">
+            {file.name}
+          </span>
+          <span className="upload-state" data-el="4.13">
+            {checking
+              ? "다 올렸어요. 길이와 음성 트랙을 확인하는 중이에요"
+              : `올리는 중 · ${bigSize(sent, file.size)} / ${bigSize(file.size)}`}
+          </span>
+        </span>
+        {!checking && (
+          <span className="upload-pct mono" data-el="4.14">
+            {pct}%
+          </span>
+        )}
+      </div>
+      {checking ? (
+        <div className="upload-bar is-checking va-pulse" data-el="4.15" />
+      ) : (
+        <div className="upload-bar" data-el="4.15">
+          <div className="upload-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {!checking && (
+        <div className="upload-foot">
+          <span className="caption">이 화면을 떠나면 올리기가 멈춰요</span>
+          <Button kind="secondary" className="btn-small" el="4.16" onClick={onStop}>
+            멈추기
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** 파일 크기(4.3) — '1.8 GB' · '640 MB' · '12 KB'. */
@@ -192,7 +293,11 @@ function VideoRow({
             {v.title}
           </span>
           <span className="video-row-sub" data-el={el("6.4")}>
-            {v.source_kind === "youtube" ? `YouTube · ${v.channel ?? ""}` : "로컬 파일"}
+            {v.source_kind === "youtube"
+              ? `YouTube · ${v.channel ?? ""}`
+              : v.uploaded
+                ? "올린 파일"
+                : "로컬 파일"}
           </span>
         </span>
         <span className="video-row-length mono" data-el={el("6.5")}>
@@ -244,6 +349,12 @@ export default function Home() {
     othersRunning: boolean;
   } | null>(null);
   const [cannot, setCannot] = useState<BlockedInfo | null>(null);
+  // 올리기 — 올리는 중(4.11) · 한 줄(4.17) · 창에 파일을 끌고 들어왔다(덮개 8)
+  const [sending, setSending] = useState<Sending | null>(null);
+  const [line, setLine] = useState<Line | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const stopSending = useRef<(() => void) | null>(null);
   // 처음 열면 맨 위 파일이 골라져 있다(UI-1 규칙)
   const chosen = picked ?? inbox?.files[0]?.name ?? null;
   const inboxEmpty = inbox !== null && inbox.files.length === 0;
@@ -307,9 +418,110 @@ export default function Home() {
     return failed;
   }
 
+  /** 놓거나 고른 파일 — 보내기 전에 거르고, 한 파일이면 올린다(UI-1 규칙). */
+  async function send(files: File[]) {
+    // 막혔으면 올리지 않는다 · 올리는 동안은 새 요청이 없다 · 다이얼로그가 떠 있으면 뒤 화면은 받지 않는다
+    if (blocked || busy || sending || opened || deleting || cannot) return;
+    setLine(null);
+    if (files.length === 0) return;
+    if (files.length > 1) {
+      return setLine({
+        text: `한 번에 한 파일씩 올려 주세요 — 파일 ${files.length}개를 놓았어요`,
+        alert: true,
+      });
+    }
+    const file = files[0];
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!file.name.includes(".") || !ACCEPTED.includes(ext)) {
+      return setLine({
+        text: `${ACCEPTED.join(" · ")} 파일만 받아요 — ${file.name}는 올리지 않았어요`,
+        alert: true,
+      });
+    }
+    const { done, abort } = api.upload(file, (sent) => setSending((s) => s && { ...s, sent }));
+    stopSending.current = abort;
+    setSending({ file, sent: 0, abort });
+    try {
+      route(await done);
+    } catch (e) {
+      if (e instanceof UploadAborted) {
+        setLine({ text: "올리기를 멈췄어요 — 올라간 부분은 지웠어요", alert: false });
+      } else if (keyFailed(e)) {
+        // 배너가 뜨고 4.7이 막힌 모양이 된다
+      } else if (e instanceof ApiError && e.kind === "no-space") {
+        const needed = Number(e.body.needed_bytes);
+        const free = Number(e.body.free_bytes);
+        setLine({
+          text: `올릴 자리가 모자라요 — ${bigSize(needed)}가 필요한데 앱 폴더에 ${bigSize(free)} 남았어요`,
+          alert: true,
+        });
+      } else if (e instanceof ApiError && CANNOT.includes(e.kind)) {
+        setCannot(blockedOf(e, "file")); // 올린 뒤에야 안 것 — 사본은 서버가 이미 지웠다
+      } else {
+        setLine({
+          text: `올리지 못했어요 — ${reasonOf(e)}. 올라간 부분은 지웠어요`,
+          alert: true,
+          retry: file,
+        });
+      }
+    } finally {
+      stopSending.current = null;
+      setSending(null);
+    }
+  }
+
+  // 다른 화면으로 가면 올리기를 멈춘다 — 떠나기 전에 묻지 않는다(UI-1 규칙)
+  useEffect(() => () => stopSending.current?.(), []);
+
+  // 끌어 놓기 — 창 어디에 놓아도 같다. 파일을 끌 때만 덮개(8)를 띄우고, 브라우저가 파일을 열어
+  // 버리지 않게 페이지 전체에서 놓기를 받는다(UI-1 규칙)
+  const dropped = useEffectEvent((files: File[]) => void send(files));
+  useEffect(() => {
+    let depth = 0; // 창 안 요소를 오갈 때마다 들어옴 · 나감이 온다 — 0이면 창 밖으로 나갔다
+    const isFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
+    const enter = (e: DragEvent) => {
+      if (!isFiles(e)) return;
+      e.preventDefault();
+      depth += 1;
+      setDragging(true);
+    };
+    const over = (e: DragEvent) => {
+      if (isFiles(e)) e.preventDefault();
+    };
+    const leave = (e: DragEvent) => {
+      if (!isFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragging(false);
+    };
+    const drop = (e: DragEvent) => {
+      if (!isFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      dropped([...(e.dataTransfer?.files ?? [])]);
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
+
+  /** 4.10 — 막혔으면 설정으로, 아니면 브라우저의 파일 고르기 창(받는 확장자만) */
+  function pick() {
+    if (blocked) return toSettingsIfBlocked();
+    picker.current?.click();
+  }
+
   async function analyze() {
     if (blocked) return toSettingsIfBlocked();
-    if (busy) return; // 대기 표시 중에는 새 요청을 보내지 않는다
+    if (busy || sending) return; // 대기 표시 · 올리는 중에는 새 요청을 보내지 않는다
+    setLine(null);
     if (!url.trim()) return setUrlError(URL_HINT); // 빈 칸은 서버에 묻지 않는다 — 키 확인도 없이
     // 입력칸에서 Enter로 눌렀어도 연 버튼은 3.3 — 다이얼로그가 닫히면 초점이 여기로 돌아온다(공통 1.2)
     analyzeButton.current?.focus();
@@ -328,7 +540,8 @@ export default function Home() {
 
   async function analyzeFile() {
     if (blocked) return toSettingsIfBlocked();
-    if (busy || !chosen) return; // 빈 inbox — 요청을 보내지 않고 화면도 그대로
+    if (busy || sending || !chosen) return; // 빈 inbox — 요청을 보내지 않고 화면도 그대로
+    setLine(null);
     setBusy("file");
     try {
       route(await api.registerLocal(chosen));
@@ -354,8 +567,8 @@ export default function Home() {
             어떤 영상을 읽어 볼까요?
           </h1>
           <p className="page-lead" data-el="2.2">
-            YouTube 링크를 붙여 넣거나 inbox 폴더의 파일을 고르세요. 분석 결과는 이 PC에만
-            저장됩니다.
+            YouTube 링크를 붙여 넣거나, 영상 파일을 끌어 놓거나 inbox 폴더에서 고르세요. 분석 결과는
+            이 PC에만 저장됩니다.
           </p>
         </div>
         <div className="home-cards">
@@ -430,8 +643,80 @@ export default function Home() {
               </span>
               <div className="card-head-text">
                 <span className="card-head-title">내 파일</span>
-                <span className="card-head-path">{settings?.inbox_path}</span>
+                <span className="card-head-sub">끌어 놓거나 inbox 폴더에서 골라요</span>
               </div>
+            </div>
+            {sending ? (
+              <SendingBox sending={sending} onStop={() => sending.abort()} />
+            ) : (
+              <div
+                className={`drop-zone${blocked ? " is-blocked" : dragging ? " is-over" : ""}`}
+                data-el="4.7"
+              >
+                <span className="drop-icon">
+                  <UploadIcon />
+                </span>
+                <span className="drop-text">
+                  <span className="drop-title" data-el="4.8">
+                    {blocked
+                      ? "OpenAI API 키를 넣은 뒤 올릴 수 있어요"
+                      : "파일을 여기로 끌어 놓으세요"}
+                  </span>
+                  <span className="drop-help" data-el="4.9">
+                    {KINDS} · 한 번에 한 파일 · 3시간까지
+                  </span>
+                </span>
+                <Button kind="secondary" blocked={blocked} el="4.10" onClick={pick}>
+                  <svg
+                    className="icon"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <path d="M14 2v6h6" />
+                  </svg>
+                  파일 고르기
+                </Button>
+                <input
+                  ref={picker}
+                  type="file"
+                  hidden
+                  accept={ACCEPTED.map((x) => `.${x}`).join(",")}
+                  onChange={(e) => {
+                    const files = [...(e.target.files ?? [])];
+                    e.target.value = ""; // 같은 파일을 다시 골라도 알게
+                    void send(files);
+                  }}
+                />
+              </div>
+            )}
+            {line && (
+              <div
+                className={`upload-line${line.alert ? " is-error" : ""}`}
+                role={line.alert ? "alert" : "status"}
+                data-el="4.17"
+              >
+                <LineIcon alert={line.alert} />
+                <span className="upload-line-text">{line.text}</span>
+                {line.retry && (
+                  <Button
+                    kind="secondary"
+                    className="btn-small"
+                    el="4.18"
+                    onClick={() => line.retry && void send([line.retry])}
+                  >
+                    다시 올리기
+                  </Button>
+                )}
+              </div>
+            )}
+            <div className="inbox-divider" data-el="4.19">
+              <span className="inbox-divider-line" />
+              <span className="caption">또는 inbox 폴더에서 고르기</span>
+              <span className="inbox-divider-path mono">{settings?.inbox_path}</span>
+              <span className="inbox-divider-line" />
             </div>
             <div role="group" aria-label="inbox 파일" className="home-files" data-el="4.2">
               {inbox?.files.map((f, i) => {
@@ -464,7 +749,7 @@ export default function Home() {
             </div>
             <div className="home-files-foot">
               <span className="caption" data-el="4.5">
-                mp4 · mkv · mov · webm · mp3 · m4a · wav
+                inbox 파일은 복사하지 않고 읽기만 해요
               </span>
               <Button
                 ref={fileButton}
@@ -543,6 +828,24 @@ export default function Home() {
           durationSec={cannot.durationSec}
           onClose={() => setCannot(null)}
         />
+      )}
+      {dragging && !blocked && !sending && !opened && !deleting && !cannot && (
+        <div className="drop-overlay" data-el="8">
+          <div className="drop-overlay-box" data-el="8.1">
+            <span className="drop-overlay-icon">
+              <UploadIcon size={28} />
+            </span>
+            <span className="drop-overlay-title" data-el="8.2">
+              놓으면 이 파일을 올려 분석해요
+            </span>
+            <span className="drop-overlay-sub" data-el="8.3">
+              한 번에 한 파일 · {KINDS}
+            </span>
+            <span className="drop-overlay-note" data-el="8.4">
+              파일은 이 PC 안의 앱 폴더로 복사될 뿐 밖으로 나가지 않아요
+            </span>
+          </div>
+        </div>
       )}
     </main>
   );
