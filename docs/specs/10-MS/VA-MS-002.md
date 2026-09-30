@@ -16,7 +16,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **표기** — `→` 반환 · 결과, `!` 예외(이름은 [[VA-API-001]] 2장의 `urn:va:` 뒤 부분), `DB:` 테이블 접근(`crud`를 거친다), `FS:` 파일 접근, `now` 현재 시각(UTC).
 
-**이 묶음이 아는 것** — `analysis_jobs` · `audio_chunks` 테이블, `data/tmp/{video_id}/`. 영상은 `Video` DTO로 받고 영상 테이블을 읽지 않는다. 결과 저장은 `AnalysisService`에 넘긴다([[VA-DOM-002]] 3.2).
+**이 묶음이 아는 것** — `analysis_jobs` · `audio_chunks` 테이블, `data/tmp/{video_id}/`. 영상은 `Video` DTO로 받고 영상 테이블을 읽지 않는다. 결과 저장 · 장면은 `AnalysisService`에 넘긴다([[VA-DOM-002]] 3.2). 로컬 원본은 `sources.local_path`(shared)로 읽고 — inbox 파일이거나 올린 사본이다 — 사본을 지우는 일은 `main.py`가 넘긴 `release_upload`에 맡긴다([[VA-DOM-002]] 5장 12). 장면 칸(`Job.frames`)은 결과 묶음의 것이라 라우터가 받아 넘긴다([[VA-DOM-002]] 5장 14).
 
 **세션** — 서비스 함수는 호출자의 세션 안에서 돈다. 라우터는 요청마다 하나. **파이프라인은 서비스를 부를 때마다 짧은 세션을 열고 닫는다**([[VA-DOM-002]] 6장) — 십여 분 도는 태스크가 세션 하나를 잡지 않게. 아래 `DB:`가 붙은 서비스 함수 하나가 트랜잭션 하나다.
 
@@ -30,10 +30,12 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 | `config.CHUNK_RETRY_WAIT_SEC` | 2 | 조각을 다시 보내기 전에 기다리는 첫 시간. 다음은 두 배(2초 · 4초). SDK 재시도를 꺼서([[VA-MS-007]] `OPENAI_MAX_RETRIES`) 요청 한도 · 일시 오류에 바로 다시 보내면 세 번이 1초 안에 끝난다 |
 | `config.CHUNK_EST_SEC` | 45 | 조각 하나(10분)의 받아쓰기 예상 시간. 예상치 계산용. 측정 뒤 조정 |
 | `config.TEXT_EST_SEC` | 60 | 요약 · 챕터 · 추천 질문 세 단계 합. 자막 있음의 '약 1분' |
+| `config.FRAMES_EST_SEC` | 30 | 장면 단계 전체의 예상 시간(사전 안내 · 남은 시간). 한 장 1~2초에 챕터 8개 안팎이면 10~20초, YouTube는 영상 정보를 한 번 받는 몫이 더 든다(카드 D 조사). 3시간 영상은 챕터가 30개라 1분 안팎 — 카드 D2에서 재어 고친다 |
+| `config.FRAME_EST_SEC` | 2 | 장면 단계 안에서 남은 장면 한 장의 예상 시간(남은 시간 계산) |
 | `config.TOKENS_PER_MIN` | 450 | 스크립트를 한 번 보낼 때 영상 1분당 입력 토큰. 텍스트 비용 계산용. 실측(카드 C, gpt-5-mini): 자막 404 · 받아쓰기 323 · 497(줄 앞 시각 표기까지) — 첫 값 200은 비용을 절반쯤으로 예상했다 |
 | `config.WORKER_IDLE_SEC` | 5 | 워커가 신호 없이도 대기열을 다시 보는 간격. 깨우는 신호를 놓쳤을 때의 안전망이라 짧을 필요가 없다 |
 
-**진행률 가중치** — `stages`에 `transcribe`가 있으면 받아쓰기 70, 나머지 단계가 30을 똑같이 나눈다. 없으면 단계들이 100을 똑같이 나눈다. 받아쓰기 안에서는 완료 조각 비율로 채운다. 단계가 끝나면 그 가중치만큼 더한다.
+**진행률 가중치** — `stages`에 `transcribe`가 있으면 받아쓰기 70, 나머지 단계가 30을 똑같이 나눈다. 없으면 단계들이 100을 똑같이 나눈다. 받아쓰기 안에서는 완료 조각 비율로 채운다. 단계가 끝나면 그 가중치만큼 더한다. 장면 단계(`frames`)도 한 단계로 나눈다 — 자막 있는 YouTube는 다섯 단계라 20씩, 받아쓰기 있는 작업은 나머지 다섯이 6씩, 로컬 음성은 세 단계가 10씩이다(장면 단계가 없다). 장면 단계 안의 진행은 퍼센트가 아니라 장면 칸(`Job.frames`)이 보인다.
 
 ---
 
@@ -43,7 +45,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 |---|---|
 | [[#JobService.estimate]] | 사전 안내 예상치 (작업 있으면 null) |
 | [[#JobService.start]] | 작업 행을 `queued`로 넣고 워커를 깨운다 |
-| [[#JobService.progress]] | 폴링 응답 `Job` |
+| [[#JobService.progress]] | 폴링 응답 `Job` (라우터가 넘긴 장면 칸을 싣는다) |
 | [[#JobService.retry]] | 실패 작업을 같은 행으로 대기열 끝에 |
 | [[#JobService.cancel]] | 태스크 취소 (삭제 전) |
 | [[#JobService.latest]] | 영상의 최근 작업 요약 |
@@ -62,7 +64,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 | [[#JobService.remaining_sec]] | 남은 시간 계산 |
 | [[#JobService.to_job]] | 행 + 조각 → `Job` |
 | [[#pipeline.worker]] | 대기열 워커 — 하나씩 차례로 돌린다 |
-| [[#pipeline.run]] | 첫 단계부터 |
+| [[#pipeline.run]] | 첫 단계부터 — 장면 단계 · 끝나면 사본 놓기까지 |
 | [[#pipeline.resume]] | 행의 단계부터 |
 | [[#pipeline.transcribe_stage]] | 조각 병렬 받아쓰기 |
 | [[#pipeline.error_kind]] | 예외 → `ErrorKind` |
@@ -85,7 +87,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 2. `models = SettingsService.current_models()` — 모델 이름과 단가
 3. `needs_stt = not video.has_captions`
 4. if `not needs_stt` → `chunks = None` · `concurrency = None` · `stt_minutes = None` · `stt_price_per_min = None` · `stt_cost = 0` · `seconds = config.TEXT_EST_SEC`
-   else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기, 로컬 음성이면 mp3 변환 몫으로 `duration_sec / 60`초를 더한다 — 로컬 음성도 받아쓰기 단계가 조각을 나누기 전에 바꾼다, [[#pipeline.run]])
+   else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기, 로컬 음성이면 mp3 변환 몫으로 `duration_sec / 60`초를 더한다 — 로컬 음성도 받아쓰기 단계가 조각을 나누기 전에 바꾼다, [[#pipeline.run]]) · 어느 쪽이든 장면 단계가 있으면(로컬 음성이 아니면, [[#JobService.stages_for]]) `seconds += config.FRAMES_EST_SEC`
 5. `in_tokens = duration_sec / 60 × config.TOKENS_PER_MIN` · `text_cost = (in_tokens × 3 × models.text.price.input_per_mtok_usd + 3000 × models.text.price.output_per_mtok_usd) / 1_000_000` — 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 3천 토큰으로 본다. 추론 모델은 생각한 토큰도 출력으로 센다 — 실측(카드 C, gpt-5-mini): 추론 강도 기본(medium)은 6.8천~10.6천, `low`([[VA-MS-007]] `TEXT_REASONING_EFFORT`)는 42분 영상에서 2.5천
 6. `→ Estimate(needs_stt, seconds, chunks, concurrency, stt_minutes, stt_price_per_min, stt_cost_usd=round(stt_cost, 4), text_cost_usd=round(text_cost, 4), total_cost_usd=round(stt_cost + text_cost, 2), stt_model=models.stt.id, text_model=models.text.id)`
 
@@ -93,7 +95,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** `SettingsService.current_models`
 
-**테스트 관점** 자막 있음 50분 → `chunks=None`, `stt_cost=0`, `seconds=60`, `text_cost>0` · 로컬 150분 → `chunks=15`, `concurrency=3`, `stt_minutes=150`, `stt_cost=0.9`(단가 0.006) · 상태가 `in_progress`면 `None` · 단가를 바꾸면 값이 따라 바뀐다(설정에서 읽는다)
+**테스트 관점** 자막 있음 50분 → `chunks=None`, `stt_cost=0`, `seconds=90`(텍스트 60 + 장면 30), `text_cost>0` · 로컬 음성 → 장면 몫이 없다 · 로컬 150분 → `chunks=15`, `concurrency=3`, `stt_minutes=150`, `stt_cost=0.9`(단가 0.006) · 상태가 `in_progress`면 `None` · 단가를 바꾸면 값이 따라 바뀐다(설정에서 읽는다)
 
 ---
 
@@ -119,20 +121,22 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** `SettingsService.require_key` · `SettingsService.current_models` · [[#JobService.stages_for]] · [[#JobService.estimate]] · [[#JobService.wake]] · [[#JobService.queue_position]] · [[#JobService.to_job]]
 
-**테스트 관점** 응답이 파이프라인을 기다리지 않는다(깨우기만 한다) · 같은 영상 두 번 → 둘째는 `job-exists` · 2에서 못 본 같은 영상의 작업이 커밋 때 부분 unique에 걸리면 `job-exists`이고 행은 하나 · 다른 영상이 `running`이어도 **거절하지 않고** `queued` · `queue_position=1` · 대기 작업이 하나 더 있으면 2 · 자막 있는 YouTube → `stt_model=None`, `stages` 4개 · 행에 그때의 모델 이름 · 동시 수 · 예상치가 남는다 · 키가 없으면 행이 안 생긴다
+**테스트 관점** 응답이 파이프라인을 기다리지 않는다(깨우기만 한다) · 같은 영상 두 번 → 둘째는 `job-exists` · 2에서 못 본 같은 영상의 작업이 커밋 때 부분 unique에 걸리면 `job-exists`이고 행은 하나 · 다른 영상이 `running`이어도 **거절하지 않고** `queued` · `queue_position=1` · 대기 작업이 하나 더 있으면 2 · 자막 있는 YouTube → `stt_model=None`, `stages` 5개(끝이 `frames`) · 응답의 `frames`가 빈 칸 `FrameProgress(0, 0, [])` · 행에 그때의 모델 이름 · 동시 수 · 예상치가 남는다 · 키가 없으면 행이 안 생긴다
 
 ---
 
 #### JobService.progress 폴링 응답
 
-**시그니처** `async def progress(video_id: int) -> Job`
+**시그니처** `async def progress(video_id: int, frames: FrameProgress | None) -> Job`
 
-근거: [[VA-SEQ-001#SEQ-5]] · [[VA-API-001#GET/api/videos/{id}/job]] · [[VA-UC-001#UC-S6]]
+근거: [[VA-SEQ-001#SEQ-5]] · [[VA-API-001#GET/api/videos/{id}/job]] · [[VA-UC-001#UC-S6]] · [[VA-UC-001#UC-S7]]
+
+**입력** `frames` — 라우터가 `AnalysisService.frame_progress(video_id)`로 받아 넘긴 장면 칸([[VA-MS-003#AnalysisService.frame_progress]]). 작업 묶음은 장면 테이블을 모른다([[VA-DOM-002]] 5장 14)
 
 **처리**
 1. `row = DB: analysis_jobs where video_id order by started_at desc limit 1` · if 없음 → `! not-found {resource: job, id: video_id}`
 2. `chunks = DB: audio_chunks where job_id order by seq` (`result` 컬럼은 읽지 않는다 — 폴링 응답에 안 나간다)
-3. `→ to_job(row, chunks, queue_position(row))`
+3. `→ to_job(row, chunks, queue_position(row), frames)` — 싣는지는 `to_job`이 단계 목록으로 정한다
 
 **출력** `Job`. 1초마다 불리므로 쿼리 둘로 끝난다(대기 중일 때만 차례를 세는 쿼리 하나가 더 있다)
 
@@ -140,7 +144,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **호출하는 것** [[#JobService.to_job]] · [[#JobService.queue_position]]
 
-**테스트 관점** 작업 없는 영상 → `not-found`에 `resource=job` · 대기 중이면 `status=queued` · `queue_position` · `remaining_sec=None` · `chunks=None` · 조각 30개 중 12 완료 · 3 진행 중이면 `chunks.done=12` `in_flight=3` `waiting=15` `next_seq=13` · `result`를 select하지 않는다(쿼리 로그)
+**테스트 관점** 작업 없는 영상 → `not-found`에 `resource=job` · 대기 중이면 `status=queued` · `queue_position` · `remaining_sec=None` · `chunks=None` · 조각 30개 중 12 완료 · 3 진행 중이면 `chunks.done=12` `in_flight=3` `waiting=15` `next_seq=13` · `result`를 select하지 않는다(쿼리 로그) · 장면 단계가 있는 작업은 넘긴 `frames`가 그대로 · 로컬 음성 작업은 `frames=None`
 
 ---
 
@@ -156,7 +160,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 3. if `row.status != failed` → `! job-not-failed {job_status}`
 4. **트랜잭션**: `DB: analysis_jobs update status=queued · queued_at=now · error_kind=error_reason=error_chunk_seq=error_attempts=null` (같은 행. `stage` · `stages` · `started_at` · 모델은 그대로. `stage`가 `pending`이 아니라서 워커가 `resume`으로 돌린다) · `DB: audio_chunks where job_id and state = failed → state = waiting` (실패 조각도 다시 보낸다. `attempts`는 누적 이력이라 그대로 두고, 상한은 다음 실행에서 새로 센다 — [[#pipeline.transcribe_stage]] 3번)
 5. 커밋 뒤 `wake()` · `await asyncio.sleep(0)` — `start` 5번과 같다
-6. 행을 다시 읽어 `→ to_job(row, chunks, queue_position(row))`
+6. 행을 다시 읽어 `→ to_job(row, chunks, queue_position(row))` — 장면 칸은 넘기지 않는다. 장면 단계가 있는 작업이면 빈 칸이 나가고 첫 폴링이 채운다([[#JobService.to_job]])
 
 **출력** `Job`(`status=running` 또는 `queued`, 실패 알림이 사라질 값). 다른 영상이 돌고 있으면 대기열 **끝**에서 기다린다 — `queued_at`을 지금으로 적기 때문이다
 
@@ -224,7 +228,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **출력** 없음
 
-**테스트 관점** 자막 있는 YouTube에서 `summarize`로 바꾸면 `stage_durations_sec[download]`가 생기고 `progress_pct=25` · 받아쓰기 있는 작업에서 `summarize`로 바꾸면 `progress_pct=70+7`(download 7.5 → 반올림 규칙 한 가지로) · `pending`에서 첫 단계로 갈 때는 duration이 안 생긴다 · 30개 중 15 완료에서 받아쓰기로 다시 들어가면 진행률이 받아쓰기 몫의 절반부터 · 같은 단계를 두 번 돌면 걸린 시간이 더해진다
+**테스트 관점** 자막 있는 YouTube(단계 다섯)에서 `summarize`로 바꾸면 `stage_durations_sec[download]`가 생기고 `progress_pct=20` · 받아쓰기 있는 작업에서 `summarize`로 바꾸면 `progress_pct=70+6` · `frames`로 바꾸면 자막 있는 YouTube는 80 · `pending`에서 첫 단계로 갈 때는 duration이 안 생긴다 · 30개 중 15 완료에서 받아쓰기로 다시 들어가면 진행률이 받아쓰기 몫의 절반부터 · 같은 단계를 두 번 돌면 걸린 시간이 더해진다
 
 ---
 
@@ -355,32 +359,33 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 근거: [[VA-UC-001#UC-S2]] · [[VA-UC-001#UC-H2]] 2b · [[VA-UI-002#UI-3]] 규칙(출처마다 필요한 단계만)
 
-**처리** if `youtube and has_captions` → `[download, summarize, chapter, suggest]` · elif `youtube` → `[download, transcribe, summarize, chapter, suggest]` · elif `local and 확장자 ∈ {mp3, m4a, wav}` → `[transcribe, summarize, chapter, suggest]` · else → `[extract, transcribe, summarize, chapter, suggest]`
+**처리** if `youtube and has_captions` → `[download, summarize, chapter, suggest, frames]` · elif `youtube` → `[download, transcribe, summarize, chapter, suggest, frames]` · elif `local and 확장자 ∈ {mp3, m4a, wav}` → `[transcribe, summarize, chapter, suggest]`(장면이 없다, [[VA-UC-001#UC-S7]] 1a) · else → `[extract, transcribe, summarize, chapter, suggest, frames]` — inbox 파일이든 올린 사본이든 같다
 
-**테스트 관점** 네 출처 각각 · 로컬 음성 판정은 `origin`의 확장자
+**테스트 관점** 네 출처 각각 · 로컬 음성 판정은 `origin`의 확장자 · 올린 영상도 로컬 영상과 같은 목록 · 장면 단계는 늘 맨 끝
 
 ---
 
 #### JobService.remaining_sec 남은 시간
 
-**시그니처** `def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None`
+**시그니처** `def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow], frames: FrameProgress | None = None) -> int | None`
 
 근거: [[VA-UC-001#UC-S6]] 2번 · [[VA-UI-002#UI-3]] 3.2 · [[VA-UI-001]] 8장(조각이 없는 단계)
 
 **처리**
 - if `row.status != running` → `→ None`
-- 남은 시간은 **작업 전체**가 끝날 때까지다. 끝난 단계가 예상보다 빨랐거나 늦었던 차이는 뒤 단계로 넘기지 않는다 — 넘기면 받아쓰기가 예상보다 빨리 끝났을 때 쓰지 않은 시간이 요약 단계로 넘어와 남은 시간이 거꾸로 는다(사용자 결정 2026-09-23, [[VA-UI-001]] 8장). `text = config.TEXT_EST_SEC` — 요약 세 단계(`summarize` · `chapter` · `suggest`)의 예상 몫([[#JobService.estimate]])
-- elif `row.stage == transcribe`이고 조각 행이 있음 → `left = done이 아닌 조각 수` · `now_done = [c for c in chunks if c.state == done and c.done_at ≥ row.stage_started_at]` — **이번 실행에서 끝난 조각만**(다시 시도 뒤 이전 실행의 조각까지 세면 속도가 부푼다) · if `now_done` 비어 있음 → `stt = ceil(left / row.concurrency) × config.CHUNK_EST_SEC` · else → `rate = len(now_done) / (now − row.stage_started_at)`(초당 조각) · `stt = ceil(left / rate)` · `→ stt + text`
-- elif `row.stage`가 요약 세 단계 중 하나 → `spent = Σ row.stage_durations_sec[세 단계] + (now − row.stage_started_at)` · `→ max(text − spent, 0)`
+- 남은 시간은 **작업 전체**가 끝날 때까지다. 끝난 단계가 예상보다 빨랐거나 늦었던 차이는 뒤 단계로 넘기지 않는다 — 넘기면 받아쓰기가 예상보다 빨리 끝났을 때 쓰지 않은 시간이 요약 단계로 넘어와 남은 시간이 거꾸로 는다(사용자 결정 2026-09-23, [[VA-UI-001]] 8장). `text = config.TEXT_EST_SEC` — 요약 세 단계(`summarize` · `chapter` · `suggest`)의 예상 몫, `pics = config.FRAMES_EST_SEC if frames in row.stages else 0` — 장면 단계의 예상 몫([[#JobService.estimate]])
+- elif `row.stage == transcribe`이고 조각 행이 있음 → `left = done이 아닌 조각 수` · `now_done = [c for c in chunks if c.state == done and c.done_at ≥ row.stage_started_at]` — **이번 실행에서 끝난 조각만**(다시 시도 뒤 이전 실행의 조각까지 세면 속도가 부푼다) · if `now_done` 비어 있음 → `stt = ceil(left / row.concurrency) × config.CHUNK_EST_SEC` · else → `rate = len(now_done) / (now − row.stage_started_at)`(초당 조각) · `stt = ceil(left / rate)` · `→ stt + text + pics`
+- elif `row.stage`가 요약 세 단계 중 하나 → `spent = Σ row.stage_durations_sec[세 단계] + (now − row.stage_started_at)` · `→ max(text − spent, 0) + pics` — 요약이 늦어도 장면 몫은 줄이지 않는다
+- elif `row.stage == frames` → if `frames`에 칸이 있음 → `→ (waiting · in_flight 칸 수) × config.FRAME_EST_SEC` · else → `→ max(pics − (now − row.stage_started_at), 0)`
 - else(자막 가져오기 · 음성 내려받기 · 음성 추출 · 받아쓰기에 들어갔지만 조각 행이 없음 — 음성을 나누는 중) → `→ max(row.est_seconds − Σ row.stage_durations_sec.values() − (now − row.stage_started_at), 0)` — 앞 단계라 예상 전체에서 지난 시간을 뺀다. 0이 되면 화면이 '약 0초'가 아니라 값을 비운다([[VA-API-001#GET/api/videos/{id}/job]] — 0이면 화면이 비운다)
 
-**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 + 요약 세 단계 몫 · 첫 조각 완료 전에는 예상치 기반 · 받아쓰기가 예상보다 빨리 끝나도 요약 단계는 세 단계 몫에서 시작한다(받아쓰기 때보다 늘지 않는다) · 챕터 단계에서는 요약에 쓴 시간만큼 줄어 있다 · 요약 세 단계가 예상보다 오래 걸리면 0 · 다시 시도 뒤 이전 실행의 완료 조각은 속도에 안 든다 · 조각 행이 아직 없으면 예상 전체 − 지난 시간
+**테스트 관점** 30개 중 12 완료가 4분 걸렸으면 남은 18개는 6분 + 요약 세 단계 몫 · 첫 조각 완료 전에는 예상치 기반 · 받아쓰기가 예상보다 빨리 끝나도 요약 단계는 세 단계 몫에서 시작한다(받아쓰기 때보다 늘지 않는다) · 챕터 단계에서는 요약에 쓴 시간만큼 줄어 있다 · 요약 세 단계가 예상보다 오래 걸리면 0 · 다시 시도 뒤 이전 실행의 완료 조각은 속도에 안 든다 · 조각 행이 아직 없으면 예상 전체 − 지난 시간 · 받아쓰기 · 요약 단계의 값에 장면 몫 30초가 더해진다(장면 단계가 있는 작업만) · 장면 단계에서 칸 8개 중 5개가 끝났으면 3 × 2 = 6초
 
 ---
 
 #### JobService.to_job 행 → Job
 
-**시그니처** `def to_job(row: AnalysisJobRow, chunks: list[AudioChunkRow], queue_position: int | None = None) -> Job`
+**시그니처** `def to_job(row: AnalysisJobRow, chunks: list[AudioChunkRow], queue_position: int | None = None, frames: FrameProgress | None = None) -> Job`
 
 근거: [[VA-API-001#GET/api/videos/{id}/job]]의 요소 ↔ 필드 표
 
@@ -388,23 +393,25 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 1. `stage_index = row.stages.index(row.stage) + 1` (`pending`이면 1)
 2. `chunks_dto` = if `chunks` 비어 있음 → `None` · else → `Chunks(total, done, in_flight, failed, waiting 수, next_seq=state != done인 첫 seq 또는 None, items=[Chunk(seq, state) …])`
 3. `error` = if `row.status == failed` → `JobError(row.error_kind, row.error_reason, row.error_chunk_seq, row.error_attempts)` · else → `None`
-4. `→ Job(id, video_id, status, stage, queue_position, stages, stage_index, progress_pct, remaining_sec=remaining_sec(row, chunks), chunks=chunks_dto, concurrency=row.concurrency if transcribe in stages else None, models=Models(stt=row.stt_model, text=row.text_model), error, est_seconds, est_cost_usd, stage_durations_sec, started_at, finished_at)`
+4. `frames_dto` = if `frames ∉ row.stages` → `None`(로컬 음성 · 장면 단계 전의 작업) · elif `frames`를 받았다 → 그대로 · else → `FrameProgress(done=0, total=0, items=[])` — 시작 · 다시 시도의 응답은 장면 칸을 받지 않는다. 시작할 때는 챕터가 없어 이것이 참값이고, 다시 시도는 첫 폴링이 채운다
+5. `→ Job(id, video_id, status, stage, queue_position, stages, stage_index, progress_pct, remaining_sec=remaining_sec(row, chunks, frames), chunks=chunks_dto, frames=frames_dto, concurrency=row.concurrency if transcribe in stages else None, models=Models(stt=row.stt_model, text=row.text_model), error, est_seconds, est_cost_usd, stage_durations_sec, started_at, finished_at)`
 
 **호출하는 것** [[#JobService.remaining_sec]]. `queue_position`은 DB를 읽어야 해서 부르는 쪽이 세어 넘긴다 — 이 함수는 순수 함수로 둔다
 
-**테스트 관점** `stages` 4개 · `stage=chapter`면 `stage_index=3` · 실패 작업의 `error.chunk_seq`가 화면 k · `next_seq`가 r(k와 다를 수 있다 — 16번 실패, 17번 완료면 `next_seq=16`)
+**테스트 관점** `stages` 4개 · `stage=chapter`면 `stage_index=3` · 실패 작업의 `error.chunk_seq`가 화면 k · `next_seq`가 r(k와 다를 수 있다 — 16번 실패, 17번 완료면 `next_seq=16`) · `stages`에 `frames`가 없으면 `frames=None`, 있는데 안 받았으면 빈 칸
 
 ---
 
 #### pipeline.worker 대기열 워커
 
-**시그니처** `async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None`
+**시그니처** `async def worker(load_video: Callable[[int], Awaitable[Video | None]], release_upload: Callable[[Video], Awaitable[None]]) -> None`
 
 근거: [[VA-SEQ-001#SEQ-14]] · [[VA-SEQ-001#SEQ-13]] · [[VA-DOM-002]] 5장 8 · 시퀀스 되먹임 #7
 
-**입력** `load_video` — 영상 id로 `Video` DTO를 주는 함수. `main.py`가 `VideoService.get`을 감싸 넘긴다(없으면 `None`). 작업 묶음은 영상 묶음을 import하지 않는다 — 조립하는 곳(`main.py`)만 둘을 안다. 작업 행에 영상 값을 복사해 두는 안은 같은 값이 두 테이블에 생겨 버렸다(3장)
+**입력** `load_video` — 영상 id로 `Video` DTO를 주는 함수. `main.py`가 `VideoService.get`을 감싸 넘긴다(없으면 `None`). 작업 묶음은 영상 묶음을 import하지 않는다 — 조립하는 곳(`main.py`)만 둘을 안다. 작업 행에 영상 값을 복사해 두는 안은 같은 값이 두 테이블에 생겨 버렸다(3장) · `release_upload` — 끝난 작업의 올린 사본을 놓는 함수. `main.py`가 `VideoService.release_upload`를 감싸 넘긴다. 워커가 모듈 속성 `pipeline.release_upload`에 두고 `run` · `resume`이 끝에서 부른다 — 어댑터를 모듈 속성으로 받는 것과 같은 자리다([[VA-DOM-002]] 6장)
 
 **처리** — `main.py` lifespan이 태스크 하나로 띄운다. 끝없이 돈다
+0. `pipeline.release_upload = release_upload`(한 번)
 1. `JobService.work_event.clear()`
 2. `row = JobService.claim_next()`(짧은 세션) · if `None` → `JobService.wait_for_work()` · 1로. `claim_next`가 예외면(DB가 잠깐 안 됨 등) 로그를 남기고 `None`과 같게 — 워커는 죽지 않는다
 3. `video = load_video(row.video_id)` · if `None`(그 사이 지워짐 — 행도 cascade로 없다) → 1로 · if 예외 → 그 작업을 `fail`(`error_kind(e)`)로 접고 1로 — `running`으로 꺼낸 채 두면 대기열이 막힌다
@@ -424,25 +431,26 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 **시그니처** `async def run(job_id: int, video: Video) -> None`
 
-근거: [[VA-SEQ-001#SEQ-3]] · [[VA-SEQ-001#SEQ-4]] · [[VA-UC-001#UC-H0]] 4~7번 · [[VA-UC-001#UC-S2]] · [[VA-UC-001#UC-S4]]
+근거: [[VA-SEQ-001#SEQ-3]] · [[VA-SEQ-001#SEQ-4]] · [[VA-SEQ-001#SEQ-16]] · [[VA-UC-001#UC-H0]] 4~7번 · [[VA-UC-001#UC-S2]] · [[VA-UC-001#UC-S4]] · [[VA-UC-001#UC-S7]] · [[VA-UC-001#UC-H2]] 4번 · 4a
 
 **처리** — 워커([[#pipeline.worker]])가 띄운 백그라운드 태스크 안. 서비스 호출마다 세션 하나
 1. `stages = DB: analysis_jobs where id`의 `stages`(짧은 세션) · 행이 없으면 `→ None` — 워커가 꺼낸 뒤 태스크를 걸기 전에 삭제가 왔다(그때는 취소할 태스크가 없어 cascade가 행을 지웠다). 실패로 접지 않고 임시 폴더도 만들지 않는다 · `tmp = config.DATA_DIR / "tmp" / str(video.id)` · `FS: mkdir`
 2. `for stage in stages:` `JobService.mark_stage(job_id, stage)` 뒤 단계 실행 —
    - `download` · if `video.has_captions` → `(lines, lang, kind) = AudioSourcePort.captions(video.source_id)` · if `None`(등록 뒤 자막이 사라짐 — 단계 목록에 받아쓰기가 없다) → `! YtdlpError('자막을 찾지 못했습니다', kind=unavailable)`, `youtube`로 접힌다 · `AnalysisService.save_transcript(video.id, caption_manual if kind == manual else caption_auto, lang, None, lines)` · else → `audio = AudioSourcePort.download_audio(video.source_id, tmp)`
-   - `extract` → `audio = AudioSourcePort.extract_audio(config.INBOX_DIR / video.origin, tmp)`
-   - `transcribe` → if `audio` 없음(로컬 음성 — 추출 단계가 없다) → `audio = AudioSourcePort.extract_audio(config.INBOX_DIR / video.origin, tmp)` — mp3로 바꾼다. `ffmpeg.cut`은 다시 인코딩하지 않아 wav · m4a를 그대로 자를 수 없고, 조각이 하나면 음성 파일이 곧 조각이라 받아쓰기가 끝나면 지워진다 — inbox 원본은 읽기만 한다 · `transcribe_stage(job_id, video, audio, tmp)`
+   - `extract` → `audio = AudioSourcePort.extract_audio(sources.local_path(video.origin, video.source_id, video.uploaded), tmp)` — inbox 파일 또는 올린 사본
+   - `transcribe` → if `audio` 없음(로컬 음성 — 추출 단계가 없다) → `audio = AudioSourcePort.extract_audio(sources.local_path(…), tmp)` — mp3로 바꾼다. `ffmpeg.cut`은 다시 인코딩하지 않아 wav · m4a를 그대로 자를 수 없고, 조각이 하나면 음성 파일이 곧 조각이라 받아쓰기가 끝나면 지워진다 — 원본은 읽기만 한다 · `transcribe_stage(job_id, video, audio, tmp)`
    - `summarize` → `AnalysisService.generate_summary(video)`
    - `chapter` → `AnalysisService.generate_chapters(video)`
    - `suggest` → `AnalysisService.generate_questions(video)`
-3. `JobService.finish(job_id)` · `FS: rmtree(tmp, ignore_errors=True)`
+   - `frames` → `AnalysisService(짧은 세션, storyboard, local_frames).make_frames(video)`([[VA-MS-003#AnalysisService.make_frames]]) · `CancelledError`는 올리고 그 밖의 예외는 로그 한 줄로 삼킨다 — 장면은 작업을 실패로 만들지 않는다([[VA-UC-001#UC-S6]] 1b). 포트는 모듈 속성 `pipeline.storyboard` · `pipeline.local_frames`(`main.py`가 넣는다)
+3. `JobService.finish(job_id)` · `release_upload(video)` — 올린 사본이면 지운다. 장면을 뽑은 **뒤**다(로컬 장면이 사본을 읽는다). 예외는 로그 한 줄로 삼킨다 — 작업은 이미 `done`이고, 남은 사본은 다음 시작의 청소가 지운다([[VA-SEQ-001#SEQ-13]]) · `FS: rmtree(tmp, ignore_errors=True)`
 4. 예외 처리 — `except CancelledError → raise`(아무것도 쓰지 않는다. 조각 파일도 둔다) · `except Exception as e → JobService.fail(job_id, JobError(error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1))` · 내려받기 · 추출 실패면 `FS: rmtree(tmp)`([[VA-UC-001#UC-S2]] 1d) · 첫 단계에 들어가기 전에 실패하면(작업 행 읽기 · 임시 폴더 만들기) 처음부터(`run`)는 지우고 이어하기(`resume`)는 그대로 둔다 — 받아쓰기에서 멈춘 작업의 조각 파일이 그 안에 있다. 지우면 조각 행만 남아 다시 시도가 매번 실패한다. 받아쓰기 실패는 `transcribe_stage`가 `chunk_seq` · `attempts`를 채운 `JobError`로 던진다
 
 **출력** 없음. 결과는 행에
 
-**호출하는 것** [[#JobService.mark_stage]] · [[#JobService.finish]] · [[#JobService.fail]] · [[#pipeline.transcribe_stage]] · [[#pipeline.error_kind]] · [[#pipeline.reason_of]] · `AudioSourcePort.captions` · `download_audio` · `extract_audio` · `AnalysisService.save_transcript` · `generate_summary` · `generate_chapters` · `generate_questions`
+**호출하는 것** [[#JobService.mark_stage]] · [[#JobService.finish]] · [[#JobService.fail]] · [[#pipeline.transcribe_stage]] · [[#pipeline.error_kind]] · [[#pipeline.reason_of]] · `AudioSourcePort.captions` · `download_audio` · `extract_audio` · `AnalysisService.save_transcript` · `generate_summary` · `generate_chapters` · `generate_questions` · `make_frames` · `sources.local_path` · `release_upload`
 
-**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 4개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다 · 자막이 사라져 `captions`가 None → `failed`, `error.kind=youtube` · 로컬 음성(wav) → `extract_audio`로 바꾼 `tmp` 안 mp3를 나누고, inbox 원본은 그대로 남는다 · 작업 행이 없으면(그 사이 지워짐) 아무것도 하지 않고 끝난다 — 실패를 쓰지 않고 임시 폴더도 없다
+**테스트 관점** 가짜 포트로: 자막 있는 YouTube → 단계 5개 지나 `done`, OpenAI 받아쓰기 호출 0회 · 장면 단계에서 장면 포트가 예외 → 그래도 `done`(장면은 null 행) · 올린 영상 → `extract_audio`가 사본 경로를 받고, `done` 뒤 `release_upload`가 한 번 불린다 · 요약에서 실패하면 `release_upload`를 부르지 않는다(사본이 남는다) · `release_upload`가 예외여도 작업은 `done` · 요약 단계에서 예외 → `failed`, `stage=summarize`, 스크립트는 남아 있다 · 취소 → 행 상태가 안 바뀌고 예외가 밖으로 · 끝나면 `data/tmp/{id}`가 없다 · 내려받기 실패 → `tmp` 폴더가 없다 · 자막이 사라져 `captions`가 None → `failed`, `error.kind=youtube` · 로컬 음성(wav) → `extract_audio`로 바꾼 `tmp` 안 mp3를 나누고, inbox 원본은 그대로 남는다 · 작업 행이 없으면(그 사이 지워짐) 아무것도 하지 않고 끝난다 — 실패를 쓰지 않고 임시 폴더도 없다
 
 ---
 
@@ -458,11 +466,12 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
    - `download` · `extract`에서 실패했으면 처음부터와 같다(임시 파일이 지워졌다)
    - `transcribe`에서 실패했으면 조각 행이 있을 때는 음성 파일이 필요 없다(`audio = None`) — `transcribe_stage`는 `done`이 아닌 조각만, 남아 있는 조각 파일로 보낸다. 조각 행이 없으면(바꾸다 · 나누다 멈춤) — 로컬 음성은 받아쓰기 단계가 늘 다시 바꾼다([[#pipeline.run]]). `tmp / audio.mp3`가 있어도 바꾸다 멈춘 반쪽일 수 있어서다. 그 밖은 `audio = tmp / audio.mp3`(내려받기 · 추출이 다 쓴 파일 — 그 단계가 끝나야 받아쓰기로 넘어온다) · 없으면 `stages`에서 앞 단계(`download` · `extract`)를 찾아 그 단계부터
    - `summarize` 이후 실패는 스크립트가 있으므로 그 단계부터
+   - `frames`에서 실패했으면(장면은 실패하지 않으므로 서버가 그 단계에서 죽은 경우뿐이다) 그 단계부터 — 행이 없는 챕터만 한다([[VA-MS-003#AnalysisService.make_frames]] 2번). 올린 영상이면 실패한 동안 사본이 남아 있다
 3. 마무리 · 예외 처리는 `run`과 같다
 
 **호출하는 것** [[#pipeline.run]]의 것 전부 · [[#pipeline.transcribe_stage]]
 
-**테스트 관점** 조각 하나가 실패한 상태에서 재개 → 완료한 조각은 OpenAI에 안 보낸다(가짜 포트 호출 기록) · 요약 실패에서 재개 → 받아쓰기를 안 한다 · 조각도 음성 파일도 없이 받아쓰기 재개 → 추출부터 다시 · 로컬 음성을 바꾸다 멈춘 채 재개 → 음성 파일이 남아 있어도 다시 바꾼다 · 이어하기가 첫 단계에 들어가기 전에 실패해도 조각 파일은 남고, 다음 다시 시도에서 이어 간다
+**테스트 관점** 조각 하나가 실패한 상태에서 재개 → 완료한 조각은 OpenAI에 안 보낸다(가짜 포트 호출 기록) · 요약 실패에서 재개 → 받아쓰기를 안 한다 · 조각도 음성 파일도 없이 받아쓰기 재개 → 추출부터 다시 · 로컬 음성을 바꾸다 멈춘 채 재개 → 음성 파일이 남아 있어도 다시 바꾼다 · 이어하기가 첫 단계에 들어가기 전에 실패해도 조각 파일은 남고, 다음 다시 시도에서 이어 간다 · 장면 단계에서 멈춘 작업을 재개 → 장면 행이 없는 챕터만 가져오고 `done` 뒤 사본을 놓는다
 
 ---
 
@@ -534,7 +543,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 - [x] (반영: 클래스 명세 v9 · ERD v3) **되먹임** — `AnalysisJob`에 `stage_started_at` 속성(`analysis_jobs.stage_started_at timestamptz`)이 필요하다. 걸린 시간과 남은 시간 계산의 기준이고, 재시도 뒤에는 `started_at`으로 계산할 수 없다. [[VA-DOM-002#AnalysisJob]] · [[VA-DOM-003#analysis_jobs]]에 더한다
 - [x] 조각이 없는 단계의 남은 시간을 0까지 내려 주는 것 — 결정: 0을 주고 화면이 비운다([[VA-API-001]] v2 4장 `remaining_sec`)
-- [ ] 진행률 반올림 — 30을 네 단계로 나누면 7.5. 단계마다 내림하고 마지막 단계에서 100을 맞춘다로 갈지
+- [ ] 진행률 반올림 — 30을 네 단계로 나누면 7.5. 단계마다 내림하고 마지막 단계에서 100을 맞춘다로 갈지. 장면 단계가 생겨 새 작업은 나눗셈이 모두 정수다(30 ÷ 5 · 100 ÷ 5 · 30 ÷ 3) — 남는 것은 장면 단계 전에 실패해 다시 시도하는 옛 작업뿐이다
+- [ ] 장면 단계 예상 시간 `FRAMES_EST_SEC` 30 · `FRAME_EST_SEC` 2 — 카드 D2에서 실제 영상(42분 YouTube · 2시간 30분 로컬)으로 잰다
 - [x] 첫 값 여섯(`CHUNK_SEC` · `STT_CONCURRENCY` · `CHUNK_MAX_ATTEMPTS` · `CHUNK_EST_SEC` · `TEXT_EST_SEC` · `TOKENS_PER_MIN`)은 측정 뒤 조정 — 결정(카드 C, 실제 영상 셋): `TOKENS_PER_MIN`만 200 → 450, 나머지는 그대로다. 받아쓰기는 영상 1시간당 2.7 · 3.0분으로 [[VA-PRD-001#N1]] 목표 안이고(조각 600초 · 동시 3), 조각 한 차례 15~57초(예상 45초), 텍스트 세 단계 43~72초(예상 60초), 조각 재시도 0번이었다. 추출 · 내려받기 몫(`duration_sec / 60`초)은 넉넉하다(2시간 30분 추출 42초 · 31분 내려받기 19초) — 예상 시간은 실제보다 조금 길게 나온다. [[VA-INFRA-001]] 9절의 조각 길이 · 병렬 수 미결을 이 값으로 닫는다
 - [x] 동시 분석 대기열 — 결정: 대기열(사용자 결정 2026-09-21). `start` · `retry`는 `queued`로 넣고, `claim_next` · `wake` · `wait_for_work` · `queue_position` · `pipeline.worker`를 더했다. 부분 unique 인덱스는 그대로다
 - [x] 워커가 `Video`를 얻는 길(시퀀스 되먹임 #7) — 결정: `main.py`가 `worker(load_video)`로 넘긴다. 작업 행에 영상 값을 복사하는 안은 같은 값이 두 테이블에 생기고, 영상 정보가 덮어써질 때([[VA-API-001#POST/api/videos]] 다시 넣기) 어긋날 수 있어 버렸다. `run(job_id)`로 시그니처를 줄이는 안은 `AnalysisService.generate_*`가 `Video`를 받고 있어 고칠 곳이 더 많다
