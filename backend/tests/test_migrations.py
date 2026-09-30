@@ -292,7 +292,7 @@ async def test_uploaded_only_local(conn: AsyncConnection) -> None:
             "INSERT INTO videos (source_kind, source_id, title, duration_sec, origin, has_captions,"
             " uploaded) VALUES ('local', :s, 'talk.mp4', 3012, 'talk.mp4', false, true) RETURNING id"
         ),
-        {"s": "a" * 64},
+        {"s": "9" * 64},  # 앱 테스트가 남긴 영상과 겹치지 않는 출처
     )
     assert local is not None
 
