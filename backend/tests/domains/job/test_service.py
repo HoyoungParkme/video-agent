@@ -447,15 +447,25 @@ async def test_start_without_key_makes_no_row(db, make, env_file) -> None:
 async def test_progress_without_job(db, make) -> None:
     row = await make.video()
     with pytest.raises(NotFound) as e:
-        await JobService(db).progress(row.id)
+        await JobService(db).progress(row.id, None)
     assert e.value.extra["resource"] == "job"
+
+
+async def test_progress_carries_frames_only_with_frames_stage(db, make) -> None:
+    row = await make.video()
+    await make.job(row.id, JobStatus.running, stages=FRAME_JOB, stage="frames")
+    cells = _cells(1, 3)
+    assert (await JobService(db).progress(row.id, cells)).frames == cells  # 넘긴 칸 그대로
+    audio = await make.video(source_kind=SourceKind.local, channel=None, origin="call.m4a")
+    await make.job(audio.id, JobStatus.queued, stages=STT_STAGES[1:])  # 도는 작업은 하나뿐
+    assert (await JobService(db).progress(audio.id, _cells(0, 0))).frames is None  # 로컬 음성
 
 
 async def test_progress_queued(db, make) -> None:
     await make.job((await make.video()).id, JobStatus.running)
     row = await make.video()
     await make.job(row.id, JobStatus.queued)
-    job = await JobService(db).progress(row.id)
+    job = await JobService(db).progress(row.id, None)
     assert (job.status, job.queue_position, job.remaining_sec, job.chunks) == (
         JobStatus.queued,
         1,
@@ -472,7 +482,7 @@ async def test_progress_counts_chunks_without_result(db, make, queries) -> None:
         job.id, [ChunkState.done] * 12 + [ChunkState.in_flight] * 3 + [ChunkState.waiting] * 15
     )
     queries.clear()
-    got = await JobService(db).progress(row.id)
+    got = await JobService(db).progress(row.id, None)
     assert (got.chunks.done, got.chunks.in_flight, got.chunks.waiting, got.chunks.next_seq) == (
         12,
         3,
@@ -655,7 +665,7 @@ async def test_fail_keeps_stage_and_progress(db, make) -> None:
     job = await make.job(video.id, JobStatus.running, stage="summarize", progress_pct=25)
     error = JobError(kind=ErrorKind.openai, reason="형식이 틀렸어요", chunk_seq=None, attempts=1)
     await JobService(db).fail(job.id, error)
-    got = await JobService(db).progress(video.id)
+    got = await JobService(db).progress(video.id, None)
     assert got.status == JobStatus.failed
     assert got.error == error
     assert (got.stage, got.progress_pct) == (JobStage.summarize, 25)

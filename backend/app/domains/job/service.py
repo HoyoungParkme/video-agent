@@ -397,13 +397,16 @@ class JobService:
     def _exists(row: AnalysisJobRow) -> JobExists:
         return JobExists(job_id=row.id, job_status=row.status.value)
 
-    async def progress(self, video_id: int) -> Job:
+    async def progress(self, video_id: int, frames: FrameProgress | None) -> Job:
         """VA-MS-002#JobService.progress
 
         폴링 응답 — 영상의 가장 최근 작업. 1초마다 불리므로 쿼리 둘(대기 중이면 셋)로 끝난다.
+        장면 칸은 라우터가 AnalysisService.frame_progress로 받아 넘긴다 — 작업 묶음은 장면
+        테이블을 모른다. 싣는지는 to_job이 단계 목록으로 정한다.
 
         Args:
             video_id: 영상 id
+            frames: 장면 칸
 
         Returns:
             단계 · 진행률 · 조각 · 남은 시간 · 실패 내용
@@ -415,7 +418,7 @@ class JobService:
         if row is None:
             raise NotFound(resource="job", id=video_id)
         chunks = await crud.chunks(self.session, row.id)
-        return self.to_job(row, chunks, await self.queue_position(row))
+        return self.to_job(row, chunks, await self.queue_position(row), frames)
 
     async def latest(self, video_id: int) -> JobSummary | None:
         """VA-MS-002#JobService.latest
