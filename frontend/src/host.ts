@@ -1,7 +1,7 @@
 /**
  * Host 판정 한곳(VA-DOM-002 1장) — localhost · 127.0.0.1 · [::1]만 받는다(VA-INFRA-001 5절).
  * 인증이 없어, 악성 페이지가 자기 도메인을 127.0.0.1로 돌리는 DNS 리바인딩은 바인딩만으로 못 막는다.
- * proxy.ts(`/api/*`)와 app/api/uploads/route.ts(올리기 — proxy에서 빠졌다)가 같이 쓴다.
+ * proxy.ts(`/api/*`)와 pages/api/uploads.ts(올리기 — proxy에서 빠졌다)가 같이 쓴다.
  */
 const ALLOWED = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
