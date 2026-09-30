@@ -254,6 +254,23 @@ async def test_generate_chapters_50_minutes(db, make, summarizer, env_file) -> N
     assert await _count(db, PartRow) == 0
 
 
+async def test_generate_chapters_same_second_is_one(db, make, summarizer, env_file) -> None:
+    """같은 초에 시작하는 챕터 둘은 하나 — 시각 표기 · 장면 그림 이름이 겹치지 않게(이슈 #16)."""
+    video = await _video(db, make, duration_sec=3000)
+    await make.transcript(video.id, ["x"] * 30, step=96.7)  # 마지막 구간이 2804.3초에 시작한다
+    summarizer.chapter_draft = ChapterDraft(
+        parts=[],
+        chapters=[
+            (None, 0.0, "첫째", ["a"]),
+            (None, 2804.0, "끝", ["a"]),
+            (None, 5000.0, "길이 밖", ["a"]),  # 마지막 구간(2804.3초)으로 — 2804.0과 같은 초
+        ],
+    )
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    rows = list(await db.scalars(select(ChapterRow).order_by(ChapterRow.seq)))
+    assert [(r.start_sec, r.title) for r in rows] == [(0, "첫째"), (2804, "끝")]
+
+
 async def test_generate_chapters_twice_one_set(db, make, summarizer, env_file) -> None:
     video = await _video(db, make, duration_sec=3000)
     await make.transcript(video.id, ["x"] * 30, step=100)

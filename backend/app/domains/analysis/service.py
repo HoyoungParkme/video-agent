@@ -657,7 +657,7 @@ class AnalysisService:
         duration_sec: int,
         segments: list[Segment],
     ) -> list[tuple[float, str, list[str]]]:
-        # 시작 시각 보정 · 시각순(같은 시각이면 모델이 준 순서 — 안정 정렬) · 같은 시각은 하나 ·
+        # 시작 시각 보정 · 시각순(같은 시각이면 모델이 준 순서 — 안정 정렬) · 같은 초는 하나 ·
         # 첫 챕터 0초 · 요점 셋까지
         placed = sorted(
             (
@@ -672,7 +672,9 @@ class AnalysisService:
         )
         chapters: list[tuple[float, str, list[str]]] = []
         for start, title, bullets in placed:
-            if chapters and chapters[-1][0] == start:
+            # 같은 초(소수를 버린 초)면 뒤 것을 뺀다 — 길이 밖 시각은 구간 시작(소수 초)으로
+            # 보정되어, 같은 초의 두 시각이 남으면 시각 표기와 장면 그림 이름이 겹친다(이슈 #16)
+            if chapters and int(chapters[-1][0]) == int(start):
                 continue
             chapters.append((start, title, bullets))
         if chapters and chapters[0][0] != 0:  # 스크립트 처음이 어느 챕터에도 안 들어가지 않게
