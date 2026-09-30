@@ -21,7 +21,8 @@
  * UI-1로 방문 기록을 바꿔치기해 가며 그 화면의 「분석한 영상」 제목에 초점을 둔다(UI-6 규칙).
  * 장면 단계 전에 분석한 결과(frames_state = absent)는 열 때 장면 채우기를 한 번 맡기고, 채우는
  * 동안(making) 3초마다 장면만 다시 받아 온 장면부터 6.8을 6.7로 바꾼다. 끝나면 장면이 없는 챕터의
- * 6.8을 거둔다(UI-4 규칙, UC-H3 1a).
+ * 6.8을 거둔다. 채우기가 장면 없이 끝나 다시 absent가 되면 다시 맡기지 않고 6.8을 거둔다 — 다음에
+ * 열 때 다시 맡긴다(UI-4 규칙, UC-H3 1a).
  */
 "use client";
 
@@ -305,7 +306,9 @@ export default function Result({ id }: { id: number }) {
       try {
         const set = await (framesState === "absent" ? api.fillFrames(id) : api.frames(id));
         if (!alive) return;
-        apply(set);
+        // 채우던 것이 다시 absent — 서버가 장면을 쓰지 못하고 끝났다. absent로 두면 이 효과가 다시
+        // 돌아 3초마다 채우기를 맡기므로 끝난 것으로 둔다(열 때 한 번, UI-4 규칙)
+        apply(framesState === "making" && set.state === "absent" ? { ...set, state: "done" } : set);
         if (set.state === "making") timer = setTimeout(ask, FRAMES_POLL_MS); // 같은 상태면 이어서
       } catch (e) {
         if (!alive) return;

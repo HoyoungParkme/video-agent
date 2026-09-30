@@ -2,7 +2,8 @@
  * 챕터 대표 장면(VA-UC-001 UC-S7 · UC-H3 1a, VA-CODE-001 D2) — 장면 단계에서 진행 화면의 장면 칸이 한 장씩
  * 차고(UI-3 4.9 ~ 4.11) 결과 챕터 카드에 장면이 붙는다(UI-4 6.7). 스토리보드가 없는 영상은 장면 없이 끝난다.
  * 장면 단계 전에 분석한 결과는 열 때 채우기를 맡기고 그동안 6.8이 깜빡인다 — OpenAI는 부르지 않는다.
- * 채우는 동안 지우면 채우기가 멈춰 장면 폴더가 다시 생기지 않는다.
+ * 채우는 동안 지우면 채우기가 멈춰 장면 폴더가 다시 생기지 않는다. 채우기가 장면 없이 끝나면 다시
+ * 맡기지 않고 6.8을 거둔다(열 때 한 번).
  * 스토리보드 · 칸 자르기는 가짜다(e2e/fake-ytdlp.mjs · fake-ffmpeg.mjs).
  */
 import { existsSync } from "node:fs";
@@ -115,4 +116,25 @@ test("장면을 채우는 동안 지우면 — 채우기가 멈추고 장면 폴
   // 칸 하나를 자르는 데 0.8초 — 멈추지 않았다면 그 사이에 장면 폴더를 다시 쓴다
   await page.waitForTimeout(2000);
   expect(existsSync(path.join(DATA, "frames", String(id)))).toBe(false);
+});
+
+test("채우기가 장면 없이 끝나면 — 다시 맡기지 않고 6.8을 거둔다", async ({ page }) => {
+  const id = idOf(await openResult(page, "https://youtu.be/e2eOldRes03"));
+  forgetFrames(id);
+  // 서버가 장면을 쓰지 못하고 끝난 것처럼 — 맡기면 making, 다시 받으면 absent
+  let posts = 0;
+  await page.route(`**/api/videos/${id}/frames`, (route) => {
+    if (route.request().method() === "POST") {
+      posts += 1;
+      return route.fulfill({ status: 202, json: { state: "making", frames: [] } });
+    }
+    return route.fulfill({ json: { state: "absent", frames: [] } });
+  });
+  await page.reload();
+  await expect(page.locator(".chapter-frame-wait")).toHaveCount(5);
+  // 3초 뒤 다시 받은 상태가 absent — 6.8을 거둔다
+  await expect(page.locator(".chapter-frame-wait")).toHaveCount(0, { timeout: 10_000 });
+  await page.waitForTimeout(4000); // 폴링 간격이 지나도 다시 맡기지 않는다
+  expect(posts).toBe(1);
+  await expect(page.locator(".chapter-frame-wait")).toHaveCount(0);
 });

@@ -64,6 +64,7 @@ const VIDEOS = {
     subtitles: { ko: [] },
     frameDelayMs: 800,
   },
+  e2eOldRes03: { title: "채우기가 장면 없이 끝나는 발표", duration: 3012, subtitles: { ko: [] } },
 };
 
 // 스토리보드 — 칸 320×180, 장마다 3 × 3칸, 칸 하나가 600 / 9초(장 하나가 10분)
