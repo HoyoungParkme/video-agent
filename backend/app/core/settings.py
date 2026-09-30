@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from app.core.config import ImageQualityOption, ModelOption, ModelOptions, config
+from app.core.config import ImageQuality, ImageQualityOption, ModelOption, ModelOptions, config
 from app.core.errors import (
     Internal,
     KeyInvalid,
@@ -60,12 +60,22 @@ class ChosenModels(BaseModel):
     image_quality: ImageQualityOption
 
 
+class ImageSettings(BaseModel):
+    """인포그래픽 이미지 설정 — 고른 모델 · 품질과 고를 수 있는 것(VA-API-001 4장)."""
+
+    model: str
+    quality: ImageQuality
+    models: list[str]
+    qualities: list[ImageQualityOption]
+
+
 class Settings(BaseModel):
     """설정 전부(VA-API-001 4장)."""
 
     key: KeyStatus
     models: Models
     model_options: ModelOptions
+    image: ImageSettings
     inbox_path: str
 
 
@@ -213,7 +223,8 @@ class SettingsService:
         OpenAI에 아무것도 보내지 않는다.
 
         Returns:
-            키 상태(가린 키) · 고른 모델 id 둘 · 고를 수 있는 모델과 단가 · inbox 경로
+            키 상태(가린 키) · 고른 모델 id 둘 · 고를 수 있는 모델과 단가 · 이미지 설정(품질마다
+            한 장 값 — UI-4 · UI-5 · UI-8이 같이 쓴다) · inbox 경로
         """
         env = self.read_env()
         key = env.get("OPENAI_API_KEY") or None
@@ -232,6 +243,12 @@ class SettingsService:
             key=status,
             models=Models(stt=m.stt.id, text=m.text.id),
             model_options=config.MODEL_OPTIONS,
+            image=ImageSettings(
+                model=m.image_model,
+                quality=m.image_quality.id,
+                models=config.IMAGE_OPTIONS.models,
+                qualities=config.IMAGE_OPTIONS.qualities,
+            ),
             inbox_path=config.INBOX_DISPLAY_PATH,
         )
 

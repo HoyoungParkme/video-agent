@@ -53,6 +53,15 @@ async def test_get_settings(client, env_file) -> None:
         "input_per_mtok_usd": 0.25,
         "output_per_mtok_usd": 2.0,
     }
+    assert body["image"] == {
+        "model": "gpt-image-2",
+        "quality": "low",
+        "models": ["gpt-image-2"],
+        "qualities": [
+            {"id": "low", "label": "낮음", "price_usd": 0.006},
+            {"id": "medium", "label": "중간", "price_usd": 0.05},
+        ],
+    }
     assert "inbox_path" in body
 
 

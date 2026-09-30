@@ -209,6 +209,16 @@ def test_get_masks_and_sends_nothing(svc, env_file, verify, monkeypatch) -> None
     assert verify.calls == []
 
 
+def test_get_image_settings(svc, env_file) -> None:
+    _write(env_file)  # 이미지 줄이 없다
+    image = svc.get().image
+    assert (image.model, image.quality, image.models) == ("gpt-image-2", "low", ["gpt-image-2"])
+    assert [(q.id, q.label, q.price_usd) for q in image.qualities] == [
+        ("low", "낮음", 0.006),
+        ("medium", "중간", 0.05),
+    ]
+
+
 def test_get_key_deleted_by_hand(svc, env_file, verify) -> None:
     _write(env_file)
     svc.last_check = KeyCheck(KeyState.ok, None, None, datetime.now(UTC))
