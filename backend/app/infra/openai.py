@@ -286,6 +286,9 @@ def reason_of(e: BaseException) -> str:
         return "OpenAI 잔액 부족" if quota else "OpenAI 요청 한도 초과"
     if isinstance(status, int) and status >= 500:
         return "OpenAI 서버 오류"
+    # 인포그래픽 재료가 이미지 모델의 안전 검사에 걸렸다
+    if status == 400 and getattr(e, "code", None) in MODERATION_CODES:
+        return "안전 정책에 걸려 그리지 않음"
     if isinstance(status, int):
         return f"OpenAI가 요청을 거절함({status})"
     return "OpenAI 오류"

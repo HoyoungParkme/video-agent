@@ -345,5 +345,7 @@ def test_reason_of_each_row() -> None:
     assert reason(_status(429, "insufficient_quota")) == "OpenAI 잔액 부족"
     assert reason(_status(429, "rate_limit_exceeded")) == "OpenAI 요청 한도 초과"
     assert reason(_status(503)) == "OpenAI 서버 오류"
-    assert reason(_status(400)) == "OpenAI가 요청을 거절함(400)"
+    assert reason(_status(400, "moderation_blocked")) == "안전 정책에 걸려 그리지 않음"
+    assert reason(_status(400, "content_policy_violation")) == "안전 정책에 걸려 그리지 않음"
+    assert reason(_status(400)) == "OpenAI가 요청을 거절함(400)"  # 다른 400
     assert reason(sdk.OpenAIError("상태 없음")) == "OpenAI 오류"
