@@ -24,7 +24,7 @@ from openai import APIConnectionError, APITimeoutError, OpenAIError
 from app.core.config import config
 from app.core.db import SessionLocal
 from app.domains.analysis.models import TranscriptSource
-from app.domains.analysis.ports import SummarizerPort
+from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
 from app.domains.analysis.schemas import CaptionLine
 from app.domains.analysis.service import AnalysisService
 from app.domains.job import crud
@@ -34,6 +34,7 @@ from app.domains.job.schemas import JobError
 from app.domains.job.service import JobService
 from app.infra import openai, ytdlp
 from app.infra.errors import FfmpegError, OpenAIOutputError, YtdlpError
+from app.shared import sources
 
 if TYPE_CHECKING:
     from app.domains.video.schemas import Video
@@ -45,6 +46,8 @@ audio_source: AudioSourcePort | None = None
 audio_split: AudioSplitPort | None = None
 stt: SttPort | None = None
 summarizer: SummarizerPort | None = None
+storyboard: FrameSourcePort | None = None
+local_frames: FrameSourcePort | None = None
 
 # 내려받기 · 추출 · 로컬 음성 변환이 쓰는 이름(infra/ffmpeg.extract_audio)
 AUDIO_NAME = "audio.mp3"
@@ -325,18 +328,27 @@ async def _stage(
             return None
         return await source.download_audio(video.source_id, str(tmp))
     if stage == JobStage.extract:
-        return await source.extract_audio(str(Path(config.INBOX_DIR) / video.origin), str(tmp))
+        return await source.extract_audio(_original(video), str(tmp))
     if stage == JobStage.transcribe:
         if audio is None:
             async with SessionLocal() as s:
                 has_chunks = await crud.has_chunks(s, job_id)
             if not has_chunks and _local_audio(stages):
-                # 로컬 음성 — 추출 단계가 없어 여기서 mp3로 바꾼다. inbox 원본은 읽기만 한다
-                inbox = str(Path(config.INBOX_DIR) / video.origin)
-                audio = await source.extract_audio(inbox, str(tmp))
+                # 로컬 음성 — 추출 단계가 없어 여기서 mp3로 바꾼다. 원본은 읽기만 한다
+                audio = await source.extract_audio(_original(video), str(tmp))
             elif not has_chunks:
                 audio = str(tmp / AUDIO_NAME)  # 다시 시도 — 앞 단계가 다 써 둔 음성
         await transcribe_stage(job_id, video, audio, str(tmp))
+        return None
+    if stage == JobStage.frames:
+        # 장면은 작업을 실패로 만들지 않는다(UC-S6 1b) — 취소만 올리고 나머지는 로그 한 줄
+        try:
+            async with SessionLocal() as s:
+                await AnalysisService(
+                    s, storyboard=storyboard, local_frames=local_frames
+                ).make_frames(video)
+        except Exception as e:
+            log.warning("작업 %d의 장면 단계가 실패: %s", job_id, type(e).__name__)
         return None
     async with SessionLocal() as s:
         analysis = AnalysisService(s, _need(summarizer, "summarizer"))
@@ -347,6 +359,11 @@ async def _stage(
         elif stage == JobStage.suggest:
             await analysis.generate_questions(video)
     return None
+
+
+def _original(video: Video) -> str:
+    # 로컬 영상의 원본 — inbox 파일(올린 사본은 카드 D4가 더한다)
+    return str(sources.local_path(video.origin, video.source_id, False))
 
 
 def _error_of(e: Exception) -> JobError:
