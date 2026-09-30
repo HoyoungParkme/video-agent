@@ -220,6 +220,8 @@ def build(result: Result, turns: list[ChatTurn] | None, file_name: str | None = 
 
     lines = [f"# {v.title}", _origin(v)]
     lines += ["", f"> {result.summary.one_liner}", "", "## 한눈에 보기"]
+    if file_name and result.infographic.image:  # 인포그래픽은 한눈에 보기 첫 줄(파일로 저장할 때만)
+        lines.append(f"![[{infographic_name(file_name)}]]")
     lines += [gantt(result), "", mindmap(result), "", "## 핵심 인사이트"]
     for i in result.summary.insights:
         lines.append(" ".join([f"{i.seq}. {i.text}", *(link(s, v) for s in i.source_secs)]))

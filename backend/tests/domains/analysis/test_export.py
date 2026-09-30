@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.core.config import ImageQuality
 from app.core.settings import Models
 from app.domains.analysis import export
 from app.domains.analysis.models import FrameSource, InfographicState, TranscriptSource
@@ -13,6 +14,7 @@ from app.domains.analysis.schemas import (
     Frame,
     FramesState,
     Infographic,
+    InfographicImage,
     Insight,
     Part,
     Result,
@@ -350,6 +352,29 @@ def test_build_frame_line_only_with_file_name_and_frame() -> None:
     assert "청킹 다시 보기\n![[RAG 운영기 10-00.jpg]]\n- 256 토큰으로\n" in note
     assert note.count("![[") == 1  # 장면이 없는 챕터에는 없다
     assert "![[" not in export.build(result, None, None)  # 복사 — 가리킬 파일이 없다
+
+
+def test_build_infographic_line_first_in_glance() -> None:
+    result = youtube_50m()
+    result.infographic = Infographic(
+        state=InfographicState.done,
+        image=InfographicImage(
+            url="/api/videos/12/infographic/image?v=1",
+            model="gpt-image-2",
+            quality=ImageQuality.low,
+            width=1024,
+            height=1536,
+            created_at=T0,
+            cost_usd=0.006,
+        ),
+        error_reason=None,
+    )
+    note = export.build(result, None, "RAG 운영기")
+    # 인포그래픽 줄은 한눈에 보기 첫 줄 — gantt 블록 앞
+    assert "## 한눈에 보기\n![[RAG 운영기 인포그래픽.png]]\n```mermaid\ngantt\n" in note
+    assert "인포그래픽" not in export.build(result, None, None)  # 복사 — 가리킬 파일이 없다
+    result.infographic = NO_INFOGRAPHIC  # 그림이 없으면 줄도 없다
+    assert "인포그래픽" not in export.build(result, None, "RAG 운영기")
 
 
 def test_build_youtube_50m_snapshot() -> None:
