@@ -560,6 +560,13 @@ h1, h2, p { margin: 0; }
   border-radius: var(--radius-12); border: 1px solid transparent; background: transparent; color: var(--c-ink); text-align: left; cursor: pointer;
 }
 .chapter.is-selected { border-color: var(--c-chapter-line); background: var(--c-card); }
+/* 대표 장면(6.7) · 가져오는 중(6.8) — 있으면 오른쪽 160×90 칸(간격 16px), 장면은 잘리지 않게 줄여 넣는다 */
+.chapter.has-frame { grid-template-columns: 84px minmax(0, 1fr) 160px; column-gap: var(--space-16); }
+.chapter-frame { width: 160px; height: 90px; border-radius: var(--radius-8); border: 1px solid var(--c-line); background: var(--c-ink) center / contain no-repeat; }
+.chapter-frame-wait {
+  width: 160px; height: 90px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-8); background: var(--c-chip); color: var(--c-caption); font-size: var(--text-12);
+}
 .chapter-time {
   align-self: start; justify-self: start; height: 26px; padding: 0 var(--space-8); display: flex; align-items: center;
   border-radius: var(--radius-6); background: var(--c-teal-soft); color: var(--c-teal); font-size: var(--text-13); font-weight: 600;
