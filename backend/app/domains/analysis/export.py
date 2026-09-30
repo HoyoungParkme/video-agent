@@ -39,8 +39,17 @@ SCRIPT_SUFFIX = " 스크립트"
 GANTT_CHARS = str.maketrans(
     {":": "∶", ";": "；", "#": "＃", "%": "％", "`": "'", "\n": " ", "\r": " "}
 )
-# Mermaid mindmap이 노드 모양으로 읽는 괄호 → 전각(MS-003 export.mindmap)
-MIND_CHARS = str.maketrans("()[]{}`\n", "（）［］｛｝' ")
+# Mermaid mindmap이 노드 모양 · 따옴표 문자열로 읽는 글자와, 노드 글을 Markdown · HTML로 그릴 때
+# 뜻이 생기는 글자 → 전각(MS-003 export.mindmap)
+MIND_CHARS = str.maketrans(
+    {
+        **dict(zip("()[]{}", "（）［］｛｝", strict=True)),
+        **dict(zip('"<>*_%#', "＂＜＞＊＿％＃", strict=True)),
+        "`": "'",
+        "\n": " ",
+        "\r": " ",
+    }
+)
 
 
 def timecode(sec: float, duration_sec: int) -> str:
@@ -128,7 +137,8 @@ def mindmap(result: Result) -> str:
     한눈에 보기 — 마인드맵. Mermaid `mindmap` 블록(울타리 포함). 뿌리는 한 줄 요약, 그 아래
     챕터(시각과 제목) → 요점. 파트가 있으면 뿌리 → 파트 → 챕터이고 요점은 넣지 않는다 — 화면
     마인드맵과 같고, 요점까지 넣으면 2시간 30분 영상은 노드가 겹쳐 읽히지 않는다(VA-UI-001 7장 20).
-    들여쓰기 두 칸이 한 단계다. mindmap은 괄호를 노드 모양으로 읽어 글 속 괄호를 전각으로 바꾼다.
+    들여쓰기 두 칸이 한 단계다. mindmap은 괄호를 노드 모양으로, 모양 안의 따옴표를 문자열로 읽고
+    노드 글을 Markdown · HTML로 그려 글 속 괄호 · 따옴표 · `< > * _ % #`을 전각으로 바꾼다.
 
     Args:
         result: 결과 화면이 받는 것 전부
@@ -148,7 +158,9 @@ def mindmap(result: Result) -> str:
             lines += [chapter(c, "      ") for c in result.chapters if c.part_seq == p.seq]
     else:
         for c in result.chapters:
-            lines += [chapter(c, "    ")] + [f"      {_mind_text(b)}" for b in c.bullets]
+            # 요점 앞의 가운뎃점 — 화면 마인드맵과 같고, 요점이 mindmap · ::icon · :::class로
+            # 시작해도 문법으로 읽히지 않는다
+            lines += [chapter(c, "    ")] + [f"      · {_mind_text(b)}" for b in c.bullets]
     lines.append("```")
     return "\n".join(lines)
 
@@ -259,7 +271,7 @@ def _gantt_name(text: str, fallback: str) -> str:
 
 
 def _mind_text(text: str) -> str:
-    # mindmap이 노드 모양으로 읽는 괄호 셋을 전각으로 · 줄바꿈은 공백
+    # mindmap이 문법 · Markdown · HTML로 읽는 글자를 전각으로 · 줄바꿈과 캐리지 리턴은 공백
     return text.translate(MIND_CHARS).strip()
 
 

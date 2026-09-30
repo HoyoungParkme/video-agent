@@ -299,7 +299,21 @@ def test_mindmap_brackets_do_not_close_nodes() -> None:
     result.chapters[0].bullets = ["괄호 ) 하나"]
     md = export.mindmap(result)
     assert "  root(요약 （a） ［b］ ｛c｝ 'd' 끝)\n" in md
-    assert "      괄호 ） 하나\n" in md
+    assert "      · 괄호 ） 하나\n" in md  # 요점 앞 가운뎃점
+
+
+def test_mindmap_quotes_and_markdown_characters_become_fullwidth() -> None:
+    # 모양 안의 따옴표는 문자열로, 노드 글은 Markdown · HTML로 읽혀 블록이 깨지거나 글이 바뀌었다
+    # (카드 D1 코드 리뷰, Mermaid 11.17.2)
+    result = youtube_50m()
+    result.summary.one_liner = '"측정할 수 없으면 개선할 수 없다"는 원칙'
+    result.chapters[0].bullets = ["Optional<User>로 감싸 __init__에서 5*3 · 10% #1", "줄\r바꿈"]
+    result.chapters[1].bullets = ["Mindmap으로 정리"]
+    md = export.mindmap(result)
+    assert "  root(＂측정할 수 없으면 개선할 수 없다＂는 원칙)\n" in md
+    assert "      · Optional＜User＞로 감싸 ＿＿init＿＿에서 5＊3 · 10％ ＃1\n" in md
+    assert "      · 줄 바꿈\n" in md
+    assert "      · Mindmap으로 정리\n" in md  # 키워드로 시작해도 가운뎃점이 앞이다
 
 
 def turn(i: int, question: str, answer: str, cited: list[float]) -> ChatTurn:
