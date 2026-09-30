@@ -44,9 +44,28 @@ REQ = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
 STT_STAGES = ["download", "transcribe", "summarize", "chapter", "suggest"]
 
 
+class Released:
+    """release_upload 자리 — 놓으라고 받은 영상 id를 적는다. error면 던진다."""
+
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+        self.error: Exception | None = None
+
+    async def __call__(self, video) -> None:
+        self.calls.append(video.id)
+        if self.error is not None:
+            raise self.error
+
+
 @pytest.fixture
-def ports(monkeypatch, audio_source, audio_split, stt, summarizer, tmp_path):
+def released() -> Released:
+    return Released()
+
+
+@pytest.fixture
+def ports(monkeypatch, audio_source, audio_split, stt, summarizer, released, tmp_path):
     """파이프라인에 가짜 포트를 끼우고 data · inbox 폴더를 임시로."""
+    monkeypatch.setattr(pipeline, "release_upload", released)
     monkeypatch.setattr(pipeline, "audio_source", audio_source)
     monkeypatch.setattr(pipeline, "audio_split", audio_split)
     monkeypatch.setattr(pipeline, "stt", stt)
@@ -286,6 +305,38 @@ async def test_run_local_video_extracts(db, make, ports, tmp_path) -> None:
         "chapter",
         "suggest",
     }
+
+
+def _uploaded(origin: str = "Talk.MP4", sha: str = "f" * 64) -> dict:
+    return _local(origin) | {"source_id": sha, "uploaded": True}
+
+
+async def test_run_uploaded_video_reads_copy_then_releases(db, make, ports, released, tmp_path):
+    audio_source, _ = ports
+    copy = tmp_path / "uploads" / f"{'f' * 64}.mp4"  # 원래 이름의 확장자(소문자)
+    copy.parent.mkdir()
+    copy.write_bytes(b"mp4")
+    video, job = await _stt_job(make, ["extract", *STT_STAGES[1:]], **_uploaded())
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done
+    assert audio_source.audio_calls[0][:2] == ("extract", str(copy))  # 사본을 읽는다
+    assert released.calls == [video.id]  # done 뒤 한 번
+
+
+async def test_run_failure_keeps_copy(db, make, ports, released) -> None:
+    _, summarizer = ports
+    summarizer.fail = {"summary": ValueError("요약 실패")}
+    video, job = await _stt_job(make, ["extract", *STT_STAGES[1:]], **_uploaded())
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.failed
+    assert released.calls == []  # 사본을 남긴다 — 다시 시도가 읽는다
+
+
+async def test_run_release_failure_still_done(db, make, ports, released) -> None:
+    released.error = OSError("사본을 지우지 못했다")
+    video, job = await _stt_job(make, ["extract", *STT_STAGES[1:]], **_uploaded())
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done  # 남은 사본은 다음 시작의 청소가 지운다
 
 
 async def test_run_audio_download_fails_removes_tmp(db, make, ports, tmp_path) -> None:
