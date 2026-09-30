@@ -320,6 +320,11 @@ def turn(i: int, question: str, answer: str, cited: list[float]) -> ChatTurn:
     return ChatTurn(id=i, question=question, answer=answer, cited_secs=cited, asked_at=T0)
 
 
+def test_frame_name_colons_become_hyphens() -> None:
+    assert export.frame_name("RAG 운영기", 591.0, 3012) == "RAG 운영기 09-51.jpg"
+    assert export.frame_name("워크숍", 3926.0, 9000) == "워크숍 1-05-26.jpg"  # 1시간 이상은 h:mm:ss
+
+
 def test_build_youtube_50m_snapshot() -> None:
     # 제목 → 원본 링크 → 한 줄 요약 → 인사이트(시각 둘 다) → 챕터, 스크립트 · 질문 기록 절 없음
     expected = (SNAP / "export_youtube_50m.md").read_text(encoding="utf-8")

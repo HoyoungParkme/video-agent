@@ -165,6 +165,23 @@ def mindmap(result: Result) -> str:
     return "\n".join(lines)
 
 
+def frame_name(file_name: str, sec: float, duration_sec: int) -> str:
+    """VA-MS-003#export.frame_name
+
+    장면 그림 파일 이름 — `{이름} {시각}.jpg`, 쌍점은 하이픈(쌍점을 파일 이름에 못 쓰는 곳이 있다).
+    챕터 시작 시각이라 한 노트 안에서 겹치지 않는다. 노트의 그림 줄과 복사할 파일이 이것을 쓴다.
+
+    Args:
+        file_name: 노트 파일 이름(확장자 없이)
+        sec: 챕터 시작(초)
+        duration_sec: 영상 길이(초) — 시각 표기를 정한다
+
+    Returns:
+        `RAG 운영기 09-51.jpg` · `워크숍 1-05-26.jpg`
+    """
+    return f"{file_name} {timecode(sec, duration_sec).replace(':', '-')}.jpg"
+
+
 def build(result: Result, turns: list[ChatTurn] | None, file_name: str | None = None) -> str:
     """VA-MS-003#export.build
 
