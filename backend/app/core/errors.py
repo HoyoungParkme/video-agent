@@ -1,4 +1,4 @@
-"""problem+json 에러 17종 — 종류마다 예외 클래스 하나(VA-API-001 2장, DEV-5).
+"""problem+json 에러 18종 — 종류마다 예외 클래스 하나(VA-API-001 2장, DEV-5).
 
 서비스는 이 예외를 던지기만 하고 라우터는 잡지 않는다. main.py가 건 핸들러가 응답으로 바꾸고,
 표에 없는 예외는 포괄 핸들러가 `internal`로 만든다.
@@ -135,6 +135,12 @@ class ExportFailed(Problem):
     """data/export/에 파일을 쓰지 못했다. path · reason"""
 
     kind, status, title = "export-failed", 500, "파일을 저장하지 못했어요"
+
+
+class FramesUnavailable(Problem):
+    """장면을 만들 수 없는 영상에 장면 채우기를 시킴(음성 파일 · 원본 없음). reason"""
+
+    kind, status, title = "frames-unavailable", 409, "장면을 만들 수 없어요"
 
 
 class Internal(Problem):

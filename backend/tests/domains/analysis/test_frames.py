@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import config
+from app.core.errors import FramesUnavailable, ResultNotReady
 from app.domains.analysis import crud
 from app.domains.analysis.models import FrameSource
 from app.domains.analysis.schemas import FramesState
@@ -176,3 +177,65 @@ async def test_state_done_even_if_original_is_gone(db, make) -> None:
         await crud.add_frame(db, c.id)
     await db.commit()
     assert await _state(db, video) == FramesState.done
+
+
+# --- fill_frames
+
+
+async def test_fill_absent_starts_one_task_until_done(db, make, storyboard, local_frames) -> None:
+    video = await _video(db, make)
+    svc = _svc(db, storyboard, local_frames)
+    got = await svc.fill_frames(video)
+    assert (got.state, got.frames) == (FramesState.making, [])  # 202 — 바로 돌려준다
+    task = AnalysisService._frame_tasks[video.id]
+    again = await svc.fill_frames(video)  # 곧바로 다시 불러도 태스크는 하나
+    assert again.state == FramesState.making
+    assert AnalysisService._frame_tasks[video.id] is task
+    await task
+    assert video.id not in AnalysisService._frame_tasks
+    assert await _state(db, video) == FramesState.done
+    assert len(storyboard.calls) == 1
+    assert [got for got, *_ in await _rows(db, video.id)] == [True, True, True]
+
+
+async def test_fill_done_starts_nothing(db, make, storyboard, local_frames) -> None:
+    video = await _video(db, make)
+    for c in await crud.chapter_rows(db, video.id):
+        await crud.add_frame(db, c.id)
+    await db.commit()
+    got = await _svc(db, storyboard, local_frames).fill_frames(video)
+    assert got.state == FramesState.done
+    assert AnalysisService._frame_tasks == {} and storyboard.calls == []
+
+
+async def test_fill_task_failure_is_logged_not_raised(db, make, storyboard, local_frames) -> None:
+    video = await _video(db, make)
+    storyboard.fail_at = 0  # 스토리보드가 없다 — 챕터마다 그림 없는 행
+    await _svc(db, storyboard, local_frames).fill_frames(video)
+    await AnalysisService._frame_tasks[video.id]
+    assert await _state(db, video) == FramesState.done  # 다시 채우지 않는다
+    assert [got for got, *_ in await _rows(db, video.id)] == [False, False, False]
+
+
+async def test_fill_audio_file_is_unavailable(db, make, storyboard, local_frames, data_dir) -> None:
+    (data_dir / "inbox").mkdir()
+    (data_dir / "inbox" / "memo.m4a").write_bytes(b"audio")
+    video = await _video(db, make, source_kind=SourceKind.local, origin="memo.m4a", channel=None)
+    with pytest.raises(FramesUnavailable) as e:
+        await _svc(db, storyboard, local_frames).fill_frames(video)
+    assert e.value.extra == {"reason": "음성 파일이라 장면이 없어요"}
+
+
+async def test_fill_missing_original_is_unavailable(db, make, storyboard, local_frames) -> None:
+    video = await _video(db, make, source_kind=SourceKind.local, origin="옮긴 파일.mp4")
+    with pytest.raises(FramesUnavailable) as e:
+        await _svc(db, storyboard, local_frames).fill_frames(video)
+    assert e.value.extra == {"reason": "원본 파일을 찾을 수 없어요"}
+
+
+async def test_fill_while_analyzing_is_not_ready(db, make, storyboard, local_frames) -> None:
+    row = await make.video()
+    await make.job(row.id, JobStatus.running)
+    video = VideoService.to_dto(row, await JobService(db).latest(row.id), 0)
+    with pytest.raises(ResultNotReady):
+        await _svc(db, storyboard, local_frames).fill_frames(video)

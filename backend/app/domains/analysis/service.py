@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING, ClassVar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
-from app.core.errors import ExportFailed, ResultNotReady
+from app.core.db import SessionLocal
+from app.core.errors import ExportFailed, FramesUnavailable, ResultNotReady
 from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.export import SCRIPT_SUFFIX
@@ -33,6 +34,8 @@ from app.domains.analysis.schemas import (
     ExportMethod,
     ExportPreview,
     ExportResult,
+    Frame,
+    FrameSet,
     FramesState,
     Insight,
     Part,
@@ -124,6 +127,29 @@ def _sample(segments: list[Segment], limit: int) -> list[Segment]:
     around = sorted(segments, key=lambda s: abs(s.seq - segments[mid].seq))
     picked = take(segments) + take(around) + take(segments[::-1])
     return sorted({s.seq: s for s in picked}.values(), key=lambda s: s.seq)
+
+
+def _frame_list(
+    video_id: int, chapters: list[ChapterRow], frames: list[ChapterFrameRow]
+) -> list[Frame]:
+    """그림이 있고 파일도 있는 장면만, 챕터 순서로 — 응답의 장면 목록."""
+    by_chapter = {f.chapter_id: f for f in frames}
+    out: list[Frame] = []
+    for c in chapters:
+        f = by_chapter.get(c.id)
+        if f is None or f.path is None or not os.path.isfile(f.path):
+            continue
+        out.append(
+            Frame(
+                chapter_seq=c.seq,
+                sec=f.sec,
+                source=f.source,
+                width=f.width,
+                height=f.height,
+                url=f"/api/videos/{video_id}/frames/{c.seq}",
+            )
+        )
+    return out
 
 
 def _files(name: str) -> list[ExportFile]:
@@ -369,6 +395,52 @@ class AnalysisService:
             if ext in config.AUDIO_EXTS or not original.is_file():
                 return FramesState.unavailable
         return FramesState.absent
+
+    async def fill_frames(self, video: Video) -> FrameSet:
+        """VA-MS-003#AnalysisService.fill_frames
+
+        장면 단계 전에 분석한 결과에 장면 채우기를 맡긴다 — 뒤에서 돌고 바로 돌려준다(202).
+        이미 만드는 중이거나 끝났으면 아무것도 하지 않는다. 키를 보지 않는다(OpenAI 비용이 없다).
+
+        Args:
+            video: 결과를 연 영상
+
+        Returns:
+            지금 상태(맡겼으면 making)와 이미 있는 장면
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+            FramesUnavailable: 음성 파일이거나 원본 파일이 없다
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        chapters = await crud.chapter_rows(self.session, video.id)
+        frames = await crud.frames(self.session, video.id)
+        state = self.frames_state(video, chapters, frames)
+        if state == FramesState.unavailable:
+            audio = Path(video.origin).suffix.lower().lstrip(".") in config.AUDIO_EXTS
+            reason = "음성 파일이라 장면이 없어요" if audio else "원본 파일을 찾을 수 없어요"
+            raise FramesUnavailable(reason=reason)
+        if state == FramesState.absent:
+            # 태스크를 띄우기 전에 넣는다 — 곧바로 다시 불러도 태스크가 둘 생기지 않게
+            AnalysisService._making.add(video.id)
+            AnalysisService._frame_tasks[video.id] = asyncio.create_task(self._fill(video))
+            state = FramesState.making
+        return FrameSet(state=state, frames=_frame_list(video.id, chapters, frames))
+
+    async def _fill(self, video: Video) -> None:
+        """채우기 태스크 — 요청이 끝난 뒤에도 돌아 자기 세션을 연다. 실패는 로그 한 줄."""
+        try:
+            async with SessionLocal() as session:
+                service = AnalysisService(
+                    session, storyboard=self._storyboard, local_frames=self._local_frames
+                )
+                await service.make_frames(video)
+        except Exception:
+            log.exception("영상 %s의 장면 채우기가 실패했다", video.id)
+        finally:
+            AnalysisService._frame_tasks.pop(video.id, None)
+            AnalysisService._making.discard(video.id)
 
     async def save_transcript(
         self,
