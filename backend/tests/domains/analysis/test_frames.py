@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import config
-from app.core.errors import FramesUnavailable, ResultNotReady
+from app.core.errors import FramesUnavailable, NotFound, ResultNotReady
 from app.domains.analysis import crud
 from app.domains.analysis.models import FrameSource
 from app.domains.analysis.schemas import FramesState
@@ -309,3 +309,26 @@ async def test_progress_without_chapters_is_zero(db, make) -> None:
     row = await make.video()
     got = await AnalysisService(db).frame_progress(row.id)
     assert (got.done, got.total, got.items) == (0, 0, [])
+
+
+# --- frame_file
+
+
+async def test_frame_file(db, make, storyboard, local_frames) -> None:
+    video = await _video(db, make)
+    storyboard.none_at = {1}
+    svc = _svc(db, storyboard, local_frames)
+    await svc.make_frames(video)
+    path = await svc.frame_file(video.id, 1)
+    assert Path(path).read_bytes() == b"jpeg"
+    for vid, seq in (
+        (video.id, 2),
+        (video.id, 9),
+        (video.id + 1, 1),
+    ):  # 그림 없음 · 없는 챕터 · 다른 영상
+        with pytest.raises(NotFound) as e:
+            await svc.frame_file(vid, seq)
+        assert e.value.extra == {"resource": "frame", "id": seq}
+    Path(path).unlink()  # 파일이 지워졌다
+    with pytest.raises(NotFound):
+        await svc.frame_file(video.id, 1)

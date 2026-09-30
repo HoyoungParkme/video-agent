@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
 from app.core.db import SessionLocal
-from app.core.errors import ExportFailed, FramesUnavailable, ResultNotReady
+from app.core.errors import ExportFailed, FramesUnavailable, NotFound, ResultNotReady
 from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.export import SCRIPT_SUFFIX
@@ -497,6 +497,26 @@ class AnalysisService:
                 items.append(FrameProgressItem(chapter_seq=c.seq, state=state, url=None))
         done = sum(1 for i in items if i.state == "done")
         return FrameProgress(done=done, total=len(chapters), items=items)
+
+    async def frame_file(self, video_id: int, seq: int) -> str:
+        """VA-MS-003#AnalysisService.frame_file
+
+        장면 그림 파일 경로 — 라우터가 image/jpeg · no-cache로 준다.
+
+        Args:
+            video_id: 영상 id
+            seq: 챕터 번호
+
+        Returns:
+            파일 경로
+
+        Raises:
+            NotFound: 행이 없거나 그림이 없는 행이거나 파일이 없다(영상이 없어도 같다)
+        """
+        row = await crud.frame_by_seq(self.session, video_id, seq)
+        if row is None or row.path is None or not os.path.isfile(row.path):
+            raise NotFound(resource="frame", id=seq)
+        return row.path
 
     async def save_transcript(
         self,
