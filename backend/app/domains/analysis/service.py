@@ -22,6 +22,7 @@ from app.core.config import config
 from app.core.errors import ExportFailed, ResultNotReady
 from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
+from app.domains.analysis.export import SCRIPT_SUFFIX
 from app.domains.analysis.models import TranscriptSource
 from app.domains.analysis.ports import SummarizerPort
 from app.domains.analysis.schemas import (
@@ -56,8 +57,6 @@ _UNSAFE = re.compile(r'[\\/:*?"<>|\[\]#^\x00-\x1f\x7f]')
 # 이름 뒤에 ` 스크립트.md`(16바이트)가 붙는다 — 노트(`.md`)보다 긴 쪽에 맞춘다(MS-003 v8)
 NAME_MAX = 80
 NAME_BYTES_MAX = 238
-# 노트 곁에 따로 쓰는 스크립트 파일 — `{이름} 스크립트.md`. 노트가 `[[{이름} 스크립트]]`로 가리킨다
-SCRIPT_SUFFIX = " 스크립트"
 # 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
 # config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
 EXPORT_SHOWN = "data/export"
@@ -554,7 +553,7 @@ class AnalysisService:
         result = await self.result_of(video)
         name = self.filename_for(video)
         script = f"{name}{SCRIPT_SUFFIX}"
-        note = export.build(result, turns if with_chat else None, script).encode("utf-8")
+        note = export.build(result, turns if with_chat else None, name).encode("utf-8")
         text = export.build_script(result).encode("utf-8")
         for file, data in ((script, text), (name, note)):
             try:

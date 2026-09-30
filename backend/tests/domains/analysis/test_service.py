@@ -496,9 +496,7 @@ async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path,
     note = folder / "RAG 서비스 1년 운영기.md"
     script = folder / "RAG 서비스 1년 운영기 스크립트.md"
     # 노트는 스크립트 파일을 가리키는 절이 붙고, 스크립트는 따로(MS-003 v8)
-    assert note.read_text(encoding="utf-8") == export.build(
-        result, None, "RAG 서비스 1년 운영기 스크립트"
-    )
+    assert note.read_text(encoding="utf-8") == export.build(result, None, "RAG 서비스 1년 운영기")
     assert script.read_text(encoding="utf-8") == export.build_script(result)
     assert (done.filename, done.path, done.bytes) == (
         "RAG 서비스 1년 운영기",

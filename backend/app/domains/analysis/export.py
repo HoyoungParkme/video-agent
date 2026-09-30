@@ -1,8 +1,9 @@
 """내보내기 마크다운 — 순수 함수(VA-MS-003 export). 결과 서비스(`export_markdown`)가 부른다.
 
 시각 표기는 영상 길이로 정하고(`timecode`), YouTube면 그 시점 링크를 건다(`link`). `build`가
-노트를 제목 → 원본 → 한 줄 요약 → 핵심 인사이트 → 챕터 → (스크립트 파일 링크) → (질문 기록)
-순서로 잇는다. 스크립트는 노트에 없다 — 따로 쓰는 파일이다(PRD R10).
+노트를 제목 → 원본 → 한 줄 요약 → 한눈에 보기(`gantt` · `mindmap`) → 핵심 인사이트 → 챕터 →
+(스크립트 파일 링크) → (질문 기록) 순서로 잇는다. 스크립트는 노트에 없다 — 따로 쓰는 파일이다
+(PRD R10).
 """
 
 from __future__ import annotations
@@ -32,6 +33,8 @@ LANGUAGES = {
     "vi": "베트남어",
 }
 NO_CHAT = "질문 기록이 없습니다"
+# 노트 곁에 쓰는 스크립트 파일 이름의 꼬리 — `{노트 이름} 스크립트.md`(PRD R10)
+SCRIPT_SUFFIX = " 스크립트"
 # Mermaid gantt가 구분자로 읽는 글자 → 비슷해 보이는 다른 글자(MS-003 export.gantt)
 GANTT_CHARS = str.maketrans({":": "∶", ";": "；", "#": "＃", "`": "'", "\n": " "})
 # Mermaid mindmap이 노드 모양으로 읽는 괄호 → 전각(MS-003 export.mindmap)
@@ -141,17 +144,19 @@ def mindmap(result: Result) -> str:
     return "\n".join(lines)
 
 
-def build(result: Result, turns: list[ChatTurn] | None, script_name: str | None = None) -> str:
+def build(result: Result, turns: list[ChatTurn] | None, file_name: str | None = None) -> str:
     """VA-MS-003#export.build
 
-    결과 → 노트 마크다운. 옵시디언 · 노션에 그대로 붙는다. 시각은 문장 끝에 전부 남긴다. 스크립트
-    줄은 노트에 없다 — 길면 노트가 스크립트로 가득 찬다(2시간 30분에 5천 줄). 따로 쓰는 파일이다.
+    결과 → 노트 마크다운. 옵시디언 · 노션에 그대로 붙는다. 한 줄 요약 다음에 한눈에 보기(Mermaid
+    타임라인 · 마인드맵)가 온다. 시각은 문장 끝에 전부 남긴다. 스크립트 줄은 노트에 없다 — 길면
+    노트가 스크립트로 가득 찬다(2시간 30분에 5천 줄). 따로 쓰는 파일이다.
 
     Args:
         result: 결과 화면이 받는 것 전부
         turns: 질문 기록. None이면 절을 붙이지 않고, 빈 목록이면 절 제목과 '질문 기록이 없습니다'
-        script_name: 파일로 저장할 때의 스크립트 파일 이름(확장자 없이). 오면 챕터 다음에 그 파일을
-            가리키는 위키링크 절을 둔다. 미리 보기 · 복사는 None — 가리킬 파일이 없다
+        file_name: 파일로 저장할 노트의 이름(확장자 없이). 오면(파일로 저장 · 그 미리 보기) 챕터
+            다음에 스크립트 파일 `{file_name} 스크립트`를 가리키는 위키링크 절을 둔다. 복사는 None
+            — 가리킬 파일이 없다
 
     Returns:
         마크다운(줄바꿈 `\n`, 끝에 줄바꿈 하나)
@@ -162,7 +167,8 @@ def build(result: Result, turns: list[ChatTurn] | None, script_name: str | None 
         return timecode(sec, v.duration_sec)
 
     lines = [f"# {v.title}", _origin(v)]
-    lines += ["", f"> {result.summary.one_liner}", "", "## 핵심 인사이트"]
+    lines += ["", f"> {result.summary.one_liner}", "", "## 한눈에 보기"]
+    lines += [gantt(result), "", mindmap(result), "", "## 핵심 인사이트"]
     for i in result.summary.insights:
         lines.append(" ".join([f"{i.seq}. {i.text}", *(link(s, v) for s in i.source_secs)]))
     lines += ["", "## 챕터"]
@@ -174,8 +180,8 @@ def build(result: Result, turns: list[ChatTurn] | None, script_name: str | None 
             lines += _chapters(inside, v, "####")
     else:
         lines += _chapters(result.chapters, v, "###")
-    if script_name:
-        lines += ["", "## 스크립트", f"[[{script_name}]]"]
+    if file_name:
+        lines += ["", "## 스크립트", f"[[{file_name}{SCRIPT_SUFFIX}]]"]
     if turns is not None:
         lines += ["", "## 질문 기록"]
         if not turns:

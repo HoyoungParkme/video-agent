@@ -319,6 +319,14 @@ def test_build_chat_section_at_the_end() -> None:
     assert "## 질문 기록" not in export.build(youtube_50m(), None)  # None이면 절이 없다
 
 
+def test_build_glance_section_between_one_liner_and_insights() -> None:
+    # 한눈에 보기 절 — Mermaid 블록 둘(gantt · mindmap). 파일로 저장이든 복사든 들어간다
+    result = youtube_50m()
+    for md in (export.build(result, None), export.build(result, None, "RAG 서비스 1년 운영기")):
+        assert md.index("> RAG 서비스") < md.index("## 한눈에 보기") < md.index("## 핵심 인사이트")
+        assert f"## 한눈에 보기\n{export.gantt(result)}\n\n{export.mindmap(result)}\n\n" in md
+
+
 def test_build_note_has_no_script_lines() -> None:
     # 스크립트 줄은 노트에 없다 — 따로 쓰는 파일이다(MS-003 v8)
     md = export.build(youtube_50m(), None)
@@ -327,7 +335,7 @@ def test_build_note_has_no_script_lines() -> None:
 
 def test_build_links_script_file_between_chapters_and_chat() -> None:
     # 파일로 저장할 때만 — 챕터 다음, 질문 기록 앞에 위키링크 한 줄
-    md = export.build(youtube_50m(), [], "RAG 서비스 1년 운영기 스크립트")
+    md = export.build(youtube_50m(), [], "RAG 서비스 1년 운영기")
     tail = (
         "\n## 스크립트\n[[RAG 서비스 1년 운영기 스크립트]]\n\n## 질문 기록\n질문 기록이 없습니다\n"
     )
