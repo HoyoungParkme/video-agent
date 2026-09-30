@@ -10,7 +10,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 ## 0. 이 문서가 다루는 것
 
-`infra/ytdlp.py` · `infra/ffmpeg.py` · `infra/openai.py`의 함수 13개. 클래스 명세 [[VA-DOM-002]] 4.7의 시그니처를 함수 내부까지 내린 것. 외부 프로그램 · API를 감싸는 얇은 층이고 **도메인 타입을 모른다** — 돌려주는 것은 dict · 문자열 · 경로다. 어댑터([[VA-MS-006]])만 부른다 — 예외를 글로 바꾸는 순수 함수 [[#openai.reason_of]]만 파이프라인의 실패 이유 한 줄([[VA-MS-002#pipeline.reason_of]])도 부른다. 밖으로 나가는 것은 이 파일 셋을 지나는 것뿐이다([[VA-INFRA-001#C9]]).
+`infra/ytdlp.py` · `infra/ffmpeg.py` · `infra/openai.py`의 함수 16개. 클래스 명세 [[VA-DOM-002]] 4.7의 시그니처를 함수 내부까지 내린 것. 외부 프로그램 · API를 감싸는 얇은 층이고 **도메인 타입을 모른다** — 돌려주는 것은 dict · 문자열 · 경로다. 어댑터([[VA-MS-006]])만 부른다 — 예외를 글로 바꾸는 순수 함수 [[#openai.reason_of]]만 파이프라인의 실패 이유 한 줄([[VA-MS-002#pipeline.reason_of]])도 부른다. 밖으로 나가는 것은 이 파일 셋을 지나는 것뿐이다([[VA-INFRA-001#C9]]) — 카드 D에서 둘이 늘었다: ffmpeg가 YouTube 스토리보드 장 주소(i.ytimg.com)를 받고([[#ffmpeg.crop]]), OpenAI에 인포그래픽 재료(한 줄 요약 · 인사이트 · 챕터 제목)가 간다([[#openai.image]]).
 
 형식은 명세 작성 규약 2.10. 간략형이 많다 — 대부분 명령 한 줄이다.
 
@@ -20,7 +20,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 **yt-dlp 실패 이유** — `ytdlp.REASONS`는 `YtdlpError.kind` → 사람에게 보일 이유 한 줄(명사구) 표다: `private` '비공개 영상' · `unavailable` '삭제되었거나 볼 수 없는 영상' · `geo` '이 지역에서 볼 수 없는 영상' · `network` 'YouTube 연결 실패' · `extractor` 'yt-dlp가 영상을 읽지 못함(yt-dlp 업데이트 필요)' · `other` 'yt-dlp 오류'. 이유에는 줄표(—)를 넣지 않는다 — 시작 불가 판이 '영상 정보를 가져오지 못했어요 — {이유}'로 뒤에 붙인다(코드 리뷰, 카드 B5). 등록의 `source-unavailable`([[VA-MS-006#youtube_info.info]])과 분석 실패 알림([[VA-MS-002#pipeline.reason_of]])이 같이 쓴다 — 표가 두 벌이면 같은 실패가 화면마다 다르게 적힌다(카드 B5, [[#openai.reason_of]]와 같은 이유)
 
-**자식 프로세스** — yt-dlp · ffmpeg는 `asyncio.create_subprocess_exec`로 띄운다(셸 없이, 인자 목록으로 — 경로에 공백 · 특수 문자가 있어도 안전). 표준 입력은 닫는다(`DEVNULL` — ffmpeg가 터미널 입력을 읽지 않게). 표준 오류는 모아서 예외 `reason`에 마지막 3줄을 넣는다. 시간 제한은 `config.PROC_TIMEOUT_SEC`(첫 값 1800 — 3시간 영상 추출도 30분이면 끝난다). **시간 제한을 넘거나 부른 쪽이 취소하면**(작업 취소 · 서버 끄기) 자식 프로세스를 죽이고 끝나기를 기다린다 — 주인 없이 돌며 임시 폴더에 쓰지 않게. 실행 파일을 띄우지 못하거나(없음 · 권한) JSON이어야 할 출력이 JSON이 아니면 그 모듈의 예외(`YtdlpError(kind=other)` · `FfmpegError`)로 낸다.
+**자식 프로세스** — yt-dlp · ffmpeg는 `asyncio.create_subprocess_exec`로 띄운다(셸 없이, 인자 목록으로 — 경로에 공백 · 특수 문자가 있어도 안전). 표준 입력은 닫는다(`DEVNULL` — ffmpeg가 터미널 입력을 읽지 않게). 표준 오류는 모아서 예외 `reason`에 마지막 3줄을 넣는다. 시간 제한은 `config.PROC_TIMEOUT_SEC`(첫 값 1800 — 3시간 영상 추출도 30분이면 끝난다), 장면 한 장([[#ffmpeg.frame]] · [[#ffmpeg.crop]])은 `config.FRAME_TIMEOUT_SEC`. **시간 제한을 넘거나 부른 쪽이 취소하면**(작업 취소 · 서버 끄기) 자식 프로세스를 죽이고 끝나기를 기다린다 — 주인 없이 돌며 임시 폴더에 쓰지 않게. 실행 파일을 띄우지 못하거나(없음 · 권한) JSON이어야 할 출력이 JSON이 아니면 그 모듈의 예외(`YtdlpError(kind=other)` · `FfmpegError`)로 낸다.
 
 **설정값(첫 값)**
 
@@ -30,6 +30,8 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | `config.INFO_TIMEOUT_SEC` | 40 | 등록 때 영상 정보 읽기 상한 — [[VA-MS-006#youtube_info.info]]가 [[#ytdlp.info]]에 준다. 누를 때의 키 확인(10초)과 더해도 web 프록시 60초([[VA-DOM-002]] 6장) 안에 든다. 넘으면 `kind=network`. 파이프라인의 정보 읽기([[VA-MS-006#audio_source.captions]])는 주지 않아 `PROC_TIMEOUT_SEC`다 |
 | `config.YTDLP_BIN` · `config.FFMPEG_BIN` · `config.FFPROBE_BIN` | `yt-dlp` · `ffmpeg` · `ffprobe` | 이미지에 든 실행 파일([[VA-INFRA-001#C8]]) |
 | `config.OPENAI_TIMEOUT_SEC` | 120 | 조각 하나 받아쓰기 · 긴 요약 호출의 상한 |
+| `config.IMAGE_TIMEOUT_SEC` | 180 | 인포그래픽 한 장의 상한 — 세로 한 장이 수십 초 걸릴 수 있다([[VA-INFRA-001#C11]]). 뒤에서 돌아 web 넘기기 60초와 상관없다(맡기고 바로 돌려준다, [[VA-API-001]] 5장 13) |
+| `config.FRAME_TIMEOUT_SEC` | 30 | 장면 한 장(로컬 프레임 · 스토리보드 장 받아 칸 자르기)의 상한. 한 장 1~2초라 넉넉하다(카드 D 조사) |
 | `config.OPENAI_BASE_URL` | None | OpenAI 주소. 비우면 공식 주소. E2E가 가짜 OpenAI 서버를 가리킬 때만 채운다 — 사용자가 채울 값이 아니다 |
 | `config.OPENAI_MAX_RETRIES` | 0 | SDK 자체 재시도를 끈다 — 재시도는 파이프라인이 세면서 한다([[VA-MS-002#pipeline.transcribe_stage]]) |
 | `config.TEXT_REASONING_EFFORT` | `low` | 텍스트 모델의 추론 강도 — 요약 · 챕터 · 추천 질문 · 답 넷 모두([[#openai.chat]]). 실측(카드 C, gpt-5-mini, 같은 입력): 기본(medium)은 답 5.7~11.8초 · 47분 영상 요약 21초 · 챕터 26초, `low`는 답 2.4~3.1초 · 요약 8초 · 챕터 16초이고 답 · 근거 · 인사이트 수가 비슷했다. 기본이면 자막 영상 1분 · 답 10초([[VA-PRD-001#N1]])를 넘는다. `minimal`은 챕터가 잘게 쪼개졌다(47분에 16개). 사용자 결정 2026-09-29 |
@@ -47,11 +49,14 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | [[#ffmpeg.extract_audio]] | 음성 추출 · 변환 |
 | [[#ffmpeg.silences]] | 무음 구간 가운데 시각 |
 | [[#ffmpeg.cut]] | 구간 잘라 새 파일 |
+| [[#ffmpeg.frame]] | 그 시각의 프레임 한 장 (JPEG) |
+| [[#ffmpeg.crop]] | 그림(스토리보드 장 주소도)에서 칸 하나 (JPEG) |
 | [[#openai.client]] | 키로 클라이언트 |
 | [[#openai.verify_key]] | 모델 목록 조회로 키 확인 |
 | [[#openai.transcribe]] | 음성 → verbose_json |
 | [[#openai.chat]] | 채팅 완성 (JSON 모드) |
 | [[#openai.chat_json]] | JSON 응답을 파싱까지 — 형식이 틀리면 다시 부른다 |
+| [[#openai.image]] | 이미지 생성 한 번 → PNG 바이트 |
 | [[#openai.reason_of]] | OpenAI 호출 예외 → 한국어 한 줄 |
 
 ---
@@ -67,13 +72,13 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 **처리**
 1. `PROC: yt-dlp --dump-single-json --skip-download --no-playlist --no-warnings {url}` — 정보만. 재생 목록 주소면 그 영상 하나만. 시간 제한은 `timeout`이고, 주지 않으면 `config.PROC_TIMEOUT_SEC`다(0도 0초다 — 없음으로 보지 않는다). 등록([[VA-MS-006#youtube_info.info]])은 `INFO_TIMEOUT_SEC`를 준다 — 사람이 web 프록시 60초 뒤에서 기다린다. 파이프라인([[VA-MS-006#audio_source.captions]])은 주지 않는다 — 백그라운드라 기다리는 사람이 없다(코드 리뷰, 카드 B5)
 2. if 종료 코드 ≠ 0 → 표준 오류에서 종류를 가른다(대소문자 무시, **앞의 것이 이긴다** — YouTube는 비공개 · 지역 제한도 `Video unavailable.`로 시작한다): `Private video` · `video is private` → `private` · `available in your country` · `geo restriction` → `geo` · `Video unavailable` · `removed` → `unavailable` · `Unable to download webpage` · `getaddrinfo` · `timed out` → `network` · `Unsupported URL` · `Unable to extract` → `extractor` · 그 밖 → `other` · `! YtdlpError(reason=표준 오류 끝 3줄, kind)`
-3. `→ json.loads(표준 출력)` — `id` · `title` · `channel` · `uploader` · `duration` · `subtitles` · `automatic_captions` · `is_live`를 쓴다
+3. `→ json.loads(표준 출력)` — `id` · `title` · `channel` · `uploader` · `duration` · `language` · `subtitles` · `automatic_captions` · `is_live`, 그리고 장면용 `formats`의 스토리보드(`format_id` · `format_note` · `width` · `height` · `rows` · `columns` · `fps` · `fragments[].url`, [[VA-MS-006#frames_storyboard.frames]])를 쓴다
 
 **출력** yt-dlp의 JSON 그대로(dict)
 
 **예외** `YtdlpError`
 
-**테스트 관점** 고정 JSON을 내는 가짜 실행 파일로: 필드가 그대로 · 종료 코드 1 + 'Private video' → `kind=private` · 'Video unavailable. The uploader has not made this video available in your country' → `geo` · 'Unable to extract' → `extractor` · `timeout` 초과 → `YtdlpError(kind=network)` · `timeout`을 주지 않으면 `PROC_TIMEOUT_SEC` · `timeout=0`이면 곧바로 `network` · 셸을 거치지 않는다(인자에 `;`가 있어도 명령이 안 된다) · 실행 파일이 없음 · 표준 출력이 JSON이 아님 → `YtdlpError(kind=other)` · 부른 쪽이 취소하면 자식 프로세스가 죽는다
+**테스트 관점** 고정 JSON을 내는 가짜 실행 파일로: 필드가 그대로(스토리보드 `formats` 포함) · 종료 코드 1 + 'Private video' → `kind=private` · 'Video unavailable. The uploader has not made this video available in your country' → `geo` · 'Unable to extract' → `extractor` · `timeout` 초과 → `YtdlpError(kind=network)` · `timeout`을 주지 않으면 `PROC_TIMEOUT_SEC` · `timeout=0`이면 곧바로 `network` · 셸을 거치지 않는다(인자에 `;`가 있어도 명령이 안 된다) · 실행 파일이 없음 · 표준 출력이 JSON이 아님 → `YtdlpError(kind=other)` · 부른 쪽이 취소하면 자식 프로세스가 죽는다
 
 ---
 
@@ -152,6 +157,30 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 ---
 
+#### ffmpeg.frame 그 시각의 프레임 한 장
+
+**시그니처** `async def frame(src: str, sec: float, width: int, dest: str) -> str`
+
+근거: [[VA-MS-006#frames_local.frames]] · [[VA-INFRA-001#C12]] · [[VA-UC-001#UC-S7]] 2번
+
+**처리** `PROC: ffmpeg -y -v error -ss {sec} -i {src} -frames:v 1 -vf scale={width}:-2 -q:v 3 {dest}` — `-ss`를 `-i` 앞에 두어 그 시각으로 바로 건너뛴다(수 GB 원본도 1초 안팎). 높이는 비율대로 짝수(`-2`), 회전 정보가 있는 영상은 ffmpeg가 돌려 놓는다 · 시간 제한 `config.FRAME_TIMEOUT_SEC` · 실패 → `! FfmpegError` · 끝났는데 `dest`가 없으면(시각이 영상 끝을 넘음) → `! FfmpegError('프레임을 뽑지 못함')` · `src`는 읽기만 · `→ dest`
+
+**테스트 관점** 결과가 JPEG, 폭 640 · 높이 짝수 · 영상 끝을 넘는 시각 → `FfmpegError` · `src`의 mtime · 크기가 그대로 · 공백 · 한글이 든 경로 · 시간 제한을 넘으면 자식 프로세스가 죽고 `FfmpegError`
+
+---
+
+#### ffmpeg.crop 그림에서 칸 하나
+
+**시그니처** `async def crop(src: str, x: int, y: int, w: int, h: int, dest: str) -> str`
+
+근거: [[VA-MS-006#frames_storyboard.frames]] · [[VA-INFRA-001#C12]] · [[VA-UC-001#UC-S7]] 3번
+
+**처리** `PROC: ffmpeg -y -v error -i {src} -vf crop={w}:{h}:{x}:{y} -frames:v 1 -q:v 3 {dest}` — `src`는 파일 경로도, 스토리보드 장의 https 주소도 된다. ffmpeg가 직접 받아 자른다 — HTTP 클라이언트 의존성을 더하지 않는다([[VA-INFRA-001#C12]]) · 시간 제한 `config.FRAME_TIMEOUT_SEC` · 실패(주소를 못 받음 · 칸이 그림 밖) → `! FfmpegError` · `→ dest`
+
+**테스트 관점** 3×3 격자 그림(960×540)에서 `(320, 180, 320, 180)` → 320×180 JPEG, 가운데 칸 · 칸이 그림 밖이면 `FfmpegError` · 가짜 HTTP 서버의 주소도 입력으로 받는다 · 받는 중 시간 제한을 넘으면 `FfmpegError`
+
+---
+
 #### openai.client 키로 클라이언트
 
 **시그니처** `def client(key: str) -> AsyncOpenAI`
@@ -224,11 +253,23 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 ---
 
+#### openai.image 이미지 생성 한 번
+
+**시그니처** `async def image(client: AsyncOpenAI, model: str, prompt: str, size: str, quality: str) -> bytes`
+
+근거: [[VA-INFRA-001#C11]] · [[VA-PRD-001#R13]] · [[VA-MS-006#image_openai.infographic]] · [[VA-UC-001#UC-H9]] 4번
+
+**처리** `EXT: client.images.generate(model=model, prompt=prompt, size=size, quality=quality, n=1)` — 시간 제한은 `config.IMAGE_TIMEOUT_SEC`(이 호출만 `with_options`로) · `b64 = data[0].b64_json` · if 없음 → `! OpenAIOutputError('그림을 받지 못했어요')` · `→ base64를 푼 PNG 바이트` · 사용량(입력 · 출력 이미지 토큰)은 로그에 한 줄 — 한 장 값을 재는 근거다([[VA-MS-005]] 3장 미결) · 프롬프트는 로그에 찍지 않는다 · SDK 예외는 그대로 올린다(어댑터가 `llm-unavailable`로 바꾼다)
+
+**테스트 관점** 가짜 SDK가 받은 인자에 `size` · `quality` · `n=1`, 시간 제한이 `IMAGE_TIMEOUT_SEC` · 응답의 b64를 풀어 PNG 바이트 · `b64_json`이 없으면 `OpenAIOutputError` · 사용량이 로그에 한 줄이고 프롬프트는 없다 · SDK 예외가 그대로 나간다
+
+---
+
 #### openai.reason_of OpenAI 호출 예외 → 한국어 한 줄
 
 **시그니처** `def reason_of(e: BaseException) -> str`
 
-근거: [[VA-MS-002#pipeline.reason_of]](실패 알림의 '왜') · [[VA-MS-006#answerer_openai.answer]](답변 실패의 '왜') — 표가 두 벌이 되지 않게 여기 하나
+근거: [[VA-MS-002#pipeline.reason_of]](실패 알림의 '왜') · [[VA-MS-006#answerer_openai.answer]](답변 실패의 '왜') · [[VA-MS-006#image_openai.infographic]](인포그래픽 실패의 '왜') — 표가 두 벌이 되지 않게 여기 하나
 
 **처리** 위에서부터 처음 맞는 줄
 
@@ -242,10 +283,11 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | 상태 429, `code`가 `insufficient_quota` | 'OpenAI 잔액 부족' |
 | 상태 429 | 'OpenAI 요청 한도 초과' |
 | 상태 5xx | 'OpenAI 서버 오류' |
+| 상태 400, `code`가 `moderation_blocked` · `content_policy_violation` | '안전 정책에 걸려 그리지 않음' — 인포그래픽 재료가 이미지 모델의 안전 검사에 걸렸다 |
 | 그 밖의 상태 | 'OpenAI가 요청을 거절함({상태})' |
 | 그 밖 | 'OpenAI 오류' |
 
-**테스트 관점** 표의 줄마다 하나 · `APITimeoutError`가 `APIConnectionError`보다 먼저다(하위 클래스) · 상태가 없는 SDK 예외는 'OpenAI 오류'
+**테스트 관점** 표의 줄마다 하나 · `APITimeoutError`가 `APIConnectionError`보다 먼저다(하위 클래스) · 상태가 없는 SDK 예외는 'OpenAI 오류' · 400 + `moderation_blocked` → '안전 정책에 걸려 그리지 않음' · 다른 400 → 'OpenAI가 요청을 거절함(400)'
 
 ---
 
@@ -254,5 +296,6 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 - [ ] yt-dlp 버전 고정과 업데이트 주기 — 이미지 빌드 때 최신을 넣고, 깨지면 이미지를 다시 빌드한다([[VA-INFRA-001#C7]] · 7절). 자동 업데이트(`yt-dlp -U`)를 컨테이너 시작 때 돌릴지 사용자 확인
 - [ ] `ffmpeg.cut`의 `-c copy` 오차 — mp3 프레임 경계라 수십 ms. 받아쓰기 시각에는 무시할 수준이지만, 재인코딩(`-c:a libmp3lame`)으로 바꾸면 정확해지는 대신 15조각에 수십 초가 든다. 첫 버전은 `-c copy`
 - [ ] OpenAI 사용량 로그를 작업 행에 모아 실제 비용을 보여 줄지 — 사전 안내 예상치와 비교하는 화면이 요구에 없어 첫 버전은 로그만
+- [ ] 스토리보드 장 주소를 ffmpeg가 받을 때 YouTube가 머리(User-Agent 등)를 요구하는지 — 카드 D 조사에서는 그대로 받혔다. 막히면 [[#ffmpeg.crop]]에 `-user_agent`를 준다(카드 D2에서 실제로 본다)
 - [ ] `verify_key`의 `format` 검사(`sk-` 접두)가 앞으로의 키 형식과 맞는지 — 형식이 바뀌면 이 검사만 풀고 요청으로 판정
 - [x] 키 확인의 실패 가르기(카드 A 코드 리뷰, 2026-09-23) — 앞 판은 401 · quota 말고는 모두 `auth`라, OpenAI가 잠깐 5xx를 내면 멀쩡한 키가 막힌 채 다시 확인되지 않았다(`require_key`는 `network`만 다시 확인한다). 잠깐의 실패를 `network`로 옮기고 이유를 한국어 한 줄로 고정했다. [[VA-API-001]] v4 `ReasonKind` 설명을 함께 고쳤다
