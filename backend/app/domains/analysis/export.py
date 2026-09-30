@@ -182,6 +182,20 @@ def frame_name(file_name: str, sec: float, duration_sec: int) -> str:
     return f"{file_name} {timecode(sec, duration_sec).replace(':', '-')}.jpg"
 
 
+def infographic_name(file_name: str) -> str:
+    """VA-MS-003#export.infographic_name
+
+    인포그래픽 그림 파일 이름 — `{이름} 인포그래픽.png`. 노트의 그림 줄과 복사할 파일이 이것을 쓴다.
+
+    Args:
+        file_name: 노트 파일 이름(확장자 없이)
+
+    Returns:
+        `RAG 운영기 인포그래픽.png`
+    """
+    return f"{file_name} 인포그래픽.png"
+
+
 def build(result: Result, turns: list[ChatTurn] | None, file_name: str | None = None) -> str:
     """VA-MS-003#export.build
 

@@ -330,6 +330,10 @@ def test_frame_name_colons_become_hyphens() -> None:
     assert export.frame_name("워크숍", 3926.0, 9000) == "워크숍 1-05-26.jpg"  # 1시간 이상은 h:mm:ss
 
 
+def test_infographic_name() -> None:
+    assert export.infographic_name("RAG 운영기") == "RAG 운영기 인포그래픽.png"
+
+
 def test_build_frame_line_only_with_file_name_and_frame() -> None:
     result = youtube_50m()
     frame = Frame(
