@@ -109,6 +109,27 @@ async def test_past_last_sheet_is_last_cell(fake) -> None:
     assert shot.sec == 890.0
 
 
+async def test_partly_filled_last_sheet_is_its_last_real_cell(fake) -> None:
+    # 장 셋, 마지막 장은 20초(두 칸)만 찼다 — 칸은 모두 20개. 250초(칸 25)는 실제 마지막 칸 19
+    sb = board("sb0", 320, 180, 3, 3, 0.1, 3)
+    sb["fragments"][-1]["duration"] = 20
+    fake["raw"] = {"formats": [sb]}
+    [shot] = await shots([250.0])
+    assert fake["crops"] == [("https://i.ytimg.com/sb/sb0/M2.jpg", 320, 0, 320, 180, "/d/sb-1.jpg")]
+    assert shot.sec == 190.0
+
+
+async def test_sheets_without_duration_count_full(fake) -> None:
+    # 장에 duration이 없으면 장 수 × 칸 수 — 장 둘 × 9칸 = 18칸, 300초는 칸 17
+    sb = board("sb0", 320, 180, 3, 3, 0.1, 2)
+    for f in sb["fragments"]:
+        del f["duration"]
+    fake["raw"] = {"formats": [sb]}
+    [shot] = await shots([300.0])
+    assert fake["crops"][0][:3] == ("https://i.ytimg.com/sb/sb0/M1.jpg", 640, 360)
+    assert shot.sec == 170.0
+
+
 async def test_info_failure_goes_up(monkeypatch) -> None:
     async def info(url: str, timeout: float | None = None) -> dict:
         raise YtdlpError("YouTube 연결 실패", "network")

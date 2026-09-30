@@ -32,6 +32,13 @@ def _storyboard(raw: dict[str, Any]) -> dict[str, Any]:
     return max(boards, key=lambda f: (f.get("width") or 0) * (f.get("height") or 0))
 
 
+def _cells(sheets: list[dict[str, Any]], fps: float, per: int) -> int:
+    """실제 칸 수 — 장마다 duration × fps의 합. duration이 없으면 장 수 × 칸 수."""
+    if any(s.get("duration") is None for s in sheets):
+        return len(sheets) * per
+    return sum(min(round(s["duration"] * fps), per) for s in sheets)
+
+
 class FramesStoryboard:
     """YouTube 영상 ID → 챕터 시각마다 스토리보드 칸 한 장."""
 
@@ -58,12 +65,11 @@ class FramesStoryboard:
         w, h, rows, cols, fps = sb["width"], sb["height"], sb["rows"], sb["columns"], sb["fps"]
         sheets = sb["fragments"]
         per = rows * cols
+        last = max(_cells(sheets, fps, per), 1) - 1
         for i, sec in enumerate(secs, start=1):
-            n = math.floor(sec * fps + _EPS)
+            # 영상 끝 가까운 시각은 실제로 있는 마지막 칸 — 덜 찬 장의 빈 자리는 crop이 실패한다
+            n = min(math.floor(sec * fps + _EPS), last)
             sheet, k = divmod(n, per)
-            if sheet >= len(sheets):  # 마지막 장을 넘는 시각 — 영상 끝 가까이, 마지막 칸
-                sheet, k = len(sheets) - 1, per - 1
-                n = sheet * per + k
             row, col = divmod(k, cols)
             dest = f"{dest_dir}/sb-{i}.jpg"
             try:
