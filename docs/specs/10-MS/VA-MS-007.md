@@ -163,9 +163,9 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 근거: [[VA-MS-006#frames_local.frames]] · [[VA-INFRA-001#C12]] · [[VA-UC-001#UC-S7]] 2번
 
-**처리** `PROC: ffmpeg -y -v error -ss {sec} -i {src} -frames:v 1 -vf scale={width}:-2 -q:v 3 {dest}` — `-ss`를 `-i` 앞에 두어 그 시각으로 바로 건너뛴다(수 GB 원본도 1초 안팎). 높이는 비율대로 짝수(`-2`), 회전 정보가 있는 영상은 ffmpeg가 돌려 놓는다 · 시간 제한 `config.FRAME_TIMEOUT_SEC` · 실패 → `! FfmpegError` · 끝났는데 `dest`가 없으면(시각이 영상 끝을 넘음) → `! FfmpegError('프레임을 뽑지 못함')` · `src`는 읽기만 · `→ dest`
+**처리** 먼저 `dest`를 지운다(없으면 넘어간다) — 앞선 실행이 남긴 같은 이름의 파일을 새 프레임으로 보지 않게(카드 D2 코드 리뷰) · `PROC: ffmpeg -y -v error -ss {sec} -i {src} -frames:v 1 -vf scale={width}:-2 -q:v 3 {dest}` — `-ss`를 `-i` 앞에 두어 그 시각으로 바로 건너뛴다(수 GB 원본도 1초 안팎). 높이는 비율대로 짝수(`-2`), 회전 정보가 있는 영상은 ffmpeg가 돌려 놓는다 · 시간 제한 `config.FRAME_TIMEOUT_SEC` · 실패 → `! FfmpegError` · 끝났는데 `dest`가 없으면(시각이 영상 끝을 넘음) → `! FfmpegError('프레임을 뽑지 못함')` · `src`는 읽기만 · `→ dest`
 
-**테스트 관점** 결과가 JPEG, 폭 640 · 높이 짝수 · 영상 끝을 넘는 시각 → `FfmpegError` · `src`의 mtime · 크기가 그대로 · 공백 · 한글이 든 경로 · 시간 제한을 넘으면 자식 프로세스가 죽고 `FfmpegError`
+**테스트 관점** 결과가 JPEG, 폭 640 · 높이 짝수 · 영상 끝을 넘는 시각 → `FfmpegError` · `dest`에 옛 파일이 있어도 영상 끝을 넘는 시각 → `FfmpegError`(옛 파일을 돌려주지 않는다) · `src`의 mtime · 크기가 그대로 · 공백 · 한글이 든 경로 · 시간 제한을 넘으면 자식 프로세스가 죽고 `FfmpegError`
 
 ---
 

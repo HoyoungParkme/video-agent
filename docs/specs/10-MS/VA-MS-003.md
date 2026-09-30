@@ -138,7 +138,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 1. `segments = segments_of(video.id)` · `model = …text` · `target = max(3, round(video.duration_sec / 60 / config.CHAPTER_MINUTES))` — 목표 챕터 수
 2. if `토큰 수 ≤ config.TEXT_TOKEN_LIMIT` → `draft = SummarizerPort.chapters(segments, video.duration_sec, model)`
    else → 구간(`config.TEXT_WINDOW_SEC`)마다 `SummarizerPort.chapters(구간 segments, 구간 길이, model)` · 챕터 목록을 이어 붙인다(시각은 절대 시각으로 이미 온다) · 파트는 만들지 않는다 — 5번에서 만든다
-3. `chapters = draft.chapters`를 `start_sec` 오름차순 · `start_sec = clamp_secs([start_sec], duration, segments)[0]` · 같은 시각이 둘이면 뒤 것을 뺀다 · 첫 챕터의 `start_sec`가 0이 아니면 0으로 당긴다(스크립트 처음이 어느 챕터에도 안 들어가는 것을 막는다)
+3. `chapters = draft.chapters`를 `start_sec` 오름차순 · `start_sec = clamp_secs([start_sec], duration, segments)[0]` · 같은 초(소수를 버린 초 — 시각 표기가 같다)가 둘이면 뒤 것을 뺀다 — 화면 · 노트에 같은 시각의 챕터 둘이 서지 않고, 장면 그림 이름([[#export.frame_name]])이 겹치지 않는다(이슈 #16) · 첫 챕터의 `start_sec`가 0이 아니면 0으로 당긴다(스크립트 처음이 어느 챕터에도 안 들어가는 것을 막는다)
 4. `bullets`는 2~3줄로 자른다(4개 이상이면 앞 3개)
 5. if `video.duration_sec > config.PART_THRESHOLD_SEC` → 파트 — if `draft.parts`가 있고 `len ≥ 2` → 그대로 · else → 챕터를 60분 단위로 묶어 파트를 만들고 제목은 `SummarizerPort.summary`가 아니라 첫 챕터 제목을 쓴다(미결 3) · 파트 시작 시각도 `clamp_secs`로 보정해 오름차순, 같은 시각은 하나로, **첫 파트는 0초로 당긴다**(첫 챕터가 0초라 어느 파트에도 안 드는 것을 막는다) · 챕터마다 `part_seq` = 시작 시각이 속한 파트(모델이 준 번호가 아니라 시각으로 정한다) · 챕터가 하나도 없는 파트는 빼고 번호를 다시 매긴다 · **파트 시작 시각을 그 파트 첫 챕터의 시작으로 맞춘다** — 모델이 준 파트 시작은 챕터 경계와 다를 수 있어, 한눈에 보기의 파트 띠를 누르면 앞 파트의 챕터가 강조되고 띠와 막대의 경계가 어긋났다(이슈 #14, 카드 D1 코드 리뷰). 챕터가 드는 파트는 그대로다 — 파트의 첫 챕터 시작 ≤ 그 파트 챕터 < 다음 파트의 첫 챕터 시작
    else → 파트 없음, `part_seq=None`
@@ -149,7 +149,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** [[#AnalysisService.segments_of]] · [[#AnalysisService.clamp_secs]] · `SettingsService.current_models` · `SummarizerPort.chapters`
 
-**테스트 관점** 50분 → 파트 0, 챕터 8 안팎, 첫 챕터 0초 · 150분 → 파트 ≥ 2, 챕터마다 `part_id`, 파트 시작 시각이 오름차순 · 모델이 첫 파트를 5분에 두어도 0초로 당겨 첫 챕터가 첫 파트에 든다 · 챕터 없는 파트는 빠진다 · 모델이 둘째 파트를 1:15:00에 두고 챕터가 1:14:30 · 1:16:30이면 둘째 파트는 1:16:30에서 시작하고 1:14:30 챕터는 첫 파트에 남는다 · 모델 파트가 하나뿐이면 60분 묶음 · 같은 시각 챕터 둘 → 하나 · `bullets` 4개 → 3개 · 두 번 돌리면 행이 한 벌
+**테스트 관점** 50분 → 파트 0, 챕터 8 안팎, 첫 챕터 0초 · 150분 → 파트 ≥ 2, 챕터마다 `part_id`, 파트 시작 시각이 오름차순 · 모델이 첫 파트를 5분에 두어도 0초로 당겨 첫 챕터가 첫 파트에 든다 · 챕터 없는 파트는 빠진다 · 모델이 둘째 파트를 1:15:00에 두고 챕터가 1:14:30 · 1:16:30이면 둘째 파트는 1:16:30에서 시작하고 1:14:30 챕터는 첫 파트에 남는다 · 모델 파트가 하나뿐이면 60분 묶음 · 같은 시각 챕터 둘 → 하나 · 65.2초 · 65.9초로 보정된 챕터 둘(같은 초) → 앞의 것 하나 · `bullets` 4개 → 3개 · 두 번 돌리면 행이 한 벌
 
 ---
 
@@ -445,7 +445,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 **처리**
 1. `result = result_of(video)` · `name = filename_for(video)` · `script = f"{name} 스크립트"` — 노트와 스크립트를 다시 만든다. 화면이 보낸 본문을 쓰지 않는다
 2. `note = export.build(result, turns if with_chat else None, name)` — [[#AnalysisService.export_markdown]]의 `file`과 같다(그림 줄 · `## 스크립트` 절) · `text = `[[#export.build_script]]`(result)`
-3. `FS: mkdir(config.EXPORT_DIR)` · 스크립트 `{script}.md` → 노트 `{name}.md` 순서로 UTF-8로 쓰기(덮어쓰기, 파일마다 같은 폴더의 임시 파일에 쓴 뒤 rename) → 장면이 있는 챕터마다 [[#AnalysisService.frame_file]]의 그림을 `export.frame_name(…)`으로, 인포그래픽 그림이 있으면 [[#AnalysisService.infographic_file]]의 그림을 `export.infographic_name(name)`으로 복사(같은 임시 파일 · rename) · if `OSError` → `! export-failed {path: 쓰지 못한 파일의 보일 경로, reason}` — `path`는 보일 경로(`data/export/…`), `reason`은 errno로 고른 한 줄이다(화면이 '파일을 저장하지 못했어요 — {이유}'로 보인다, [[VA-UI-002#UI-7]] 5.1)
+3. `FS: mkdir(config.EXPORT_DIR)` · 스크립트 `{script}.md` → 노트 `{name}.md` 순서로 UTF-8로 쓰기(덮어쓰기, 파일마다 같은 폴더의 임시 파일에 쓴 뒤 rename) → 장면이 있는 챕터마다 [[#AnalysisService.frame_file]]의 그림을 `export.frame_name(…)`으로, 인포그래픽 그림이 있으면 [[#AnalysisService.infographic_file]]의 그림을 `export.infographic_name(name)`으로 복사(같은 임시 파일 · rename) · if `OSError` → `! export-failed {path: 쓰지 못한 파일의 보일 경로, reason}` · 복사할 그림이 없으면(결과를 읽은 뒤 다시 채우기 · 지우기로 없어졌다 — `frame_file`의 `not-found`, 읽기의 `OSError`) → `! export-failed {path: 그 그림의 보일 경로, reason: '그림 파일을 찾을 수 없음'}`(카드 D2 코드 리뷰 — 없음 404가 아니라 저장 실패로 알린다) — `path`는 보일 경로(`data/export/…`), `reason`은 errno로 고른 한 줄이다(화면이 '파일을 저장하지 못했어요 — {이유}'로 보인다, [[VA-UI-002#UI-7]] 5.1)
    - 노트를 쓰다 실패하면 먼저 쓴 스크립트 파일만 새것으로 남는다 — 화면이 실패를 알리고(5.1) 다시 저장하면 둘이 맞춰진다. 결과는 DB에 있어 파일은 언제든 다시 만든다(카드 C 코드 리뷰)
    - 같은 이름은 덮어쓴다(사용자 결정 2026-09-28). 제목이 `{다른 영상 제목} 스크립트`인 영상의 노트도 그 다른 영상의 스크립트 파일과 이름이 같아, 나중에 저장한 쪽이 덮어쓴다 — 제목이 ' 스크립트'로 끝나야 생기는 드문 경우라 같은 규칙으로 둔다(사용자 결정 2026-09-29, 카드 C 코드 리뷰)
 
@@ -465,7 +465,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** [[#AnalysisService.result_of]] · [[#AnalysisService.filename_for]] · [[#export.build]] · [[#export.build_script]]
 
-**테스트 관점** 응답의 `files`가 `config.EXPORT_DIR`에 실제로 쓴 파일과 같다(이름으로) · 두 파일이 `config.EXPORT_DIR`에 생긴다(0644) · 노트는 `export_markdown(method=file)`의 본문과 같다 · 스크립트 파일은 `# {제목} — 스크립트`로 시작 · 장면 둘 · 인포그래픽이 있으면 파일 다섯, `images=3`, 이름이 `{이름} 09-51.jpg` · `{이름} 인포그래픽.png`이고 노트의 그림 줄이 그 이름을 가리킨다 · 그림 복사가 실패하면 `export-failed`(그 그림의 보일 경로) · `bytes`는 쓴 파일 전부의 합 · 두 번 저장하면 둘 다 덮어쓴다 · 폴더가 없으면 만든다 · 폴더 자리에 파일이 있으면 `export-failed`(`path`는 보일 경로, `reason` '저장 폴더를 만들 수 없음(그 자리에 파일이 있다)') · 임시 파일이 남지 않는다
+**테스트 관점** 응답의 `files`가 `config.EXPORT_DIR`에 실제로 쓴 파일과 같다(이름으로) · 두 파일이 `config.EXPORT_DIR`에 생긴다(0644) · 노트는 `export_markdown(method=file)`의 본문과 같다 · 스크립트 파일은 `# {제목} — 스크립트`로 시작 · 장면 둘 · 인포그래픽이 있으면 파일 다섯, `images=3`, 이름이 `{이름} 09-51.jpg` · `{이름} 인포그래픽.png`이고 노트의 그림 줄이 그 이름을 가리킨다 · 그림 복사가 실패하면 `export-failed`(그 그림의 보일 경로) · 그림 파일이 그 사이 없어지면 `export-failed`('그림 파일을 찾을 수 없음', 그 그림의 보일 경로) · `bytes`는 쓴 파일 전부의 합 · 두 번 저장하면 둘 다 덮어쓴다 · 폴더가 없으면 만든다 · 폴더 자리에 파일이 있으면 `export-failed`(`path`는 보일 경로, `reason` '저장 폴더를 만들 수 없음(그 자리에 파일이 있다)') · 임시 파일이 남지 않는다
 
 ---
 
@@ -581,7 +581,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 근거: [[VA-UI-002#UI-7]] 규칙(`{파일 이름} {시각}.jpg`, 쌍점은 하이픈) · [[VA-API-001#POST/api/videos/{id}/export]]
 
-**처리** `→ f"{file_name} {timecode(sec, duration_sec).replace(':', '-')}.jpg"` — 쌍점을 파일 이름에 쓸 수 없는 곳이 있다. 챕터 시작 시각이라 한 노트 안에서 겹치지 않는다(같은 시각 챕터는 [[#AnalysisService.generate_chapters]]가 하나로 줄인다). 노트의 그림 줄과 복사할 파일이 이 함수 하나를 쓴다
+**처리** `→ f"{file_name} {timecode(sec, duration_sec).replace(':', '-')}.jpg"` — 쌍점을 파일 이름에 쓸 수 없는 곳이 있다. 챕터 시작 시각이라 한 노트 안에서 겹치지 않는다(같은 초의 챕터는 [[#AnalysisService.generate_chapters]]가 하나로 줄인다 — 이슈 #16). 노트의 그림 줄과 복사할 파일이 이 함수 하나를 쓴다
 
 **테스트 관점** 50분 영상 591초 → `{이름} 09-51.jpg` · 150분 영상 3926초 → `{이름} 1-05-26.jpg`
 
