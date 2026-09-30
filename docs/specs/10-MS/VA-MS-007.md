@@ -175,9 +175,9 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 근거: [[VA-MS-006#frames_storyboard.frames]] · [[VA-INFRA-001#C12]] · [[VA-UC-001#UC-S7]] 3번
 
-**처리** `PROC: ffmpeg -y -v error -i {src} -vf crop={w}:{h}:{x}:{y} -frames:v 1 -q:v 3 {dest}` — `src`는 파일 경로도, 스토리보드 장의 https 주소도 된다. ffmpeg가 직접 받아 자른다 — HTTP 클라이언트 의존성을 더하지 않는다([[VA-INFRA-001#C12]]) · 시간 제한 `config.FRAME_TIMEOUT_SEC` · 실패(주소를 못 받음 · 칸이 그림 밖) → `! FfmpegError` · `→ dest`
+**처리** `PROC: ffmpeg -y -v error -i {src} -vf crop=w='if(lte({x}+{w},iw),{w},0)':h='if(lte({y}+{h},ih),{h},0)':x={x}:y={y} -frames:v 1 -q:v 3 {dest}` — `src`는 파일 경로도, 스토리보드 장의 https 주소도 된다. ffmpeg가 직접 받아 자른다 — HTTP 클라이언트 의존성을 더하지 않는다([[VA-INFRA-001#C12]]) · 칸이 그림 밖이면 폭 · 높이 식이 0이 되어 ffmpeg가 실패한다 — `crop={w}:{h}:{x}:{y}`만 주면 crop 필터가 x · y를 그림 안으로 당겨 붙여 오류 없이 가장자리 칸을 자른다(카드 D2, ffmpeg 7.1.5 실측 — 덜 찬 마지막 장에서 엉뚱한 장면이 조용히 들어간다) · 시간 제한 `config.FRAME_TIMEOUT_SEC` · 실패(주소를 못 받음 · 칸이 그림 밖) → `! FfmpegError` · `→ dest`
 
-**테스트 관점** 3×3 격자 그림(960×540)에서 `(320, 180, 320, 180)` → 320×180 JPEG, 가운데 칸 · 칸이 그림 밖이면 `FfmpegError` · 가짜 HTTP 서버의 주소도 입력으로 받는다 · 받는 중 시간 제한을 넘으면 `FfmpegError`
+**테스트 관점** 3×3 격자 그림(960×540)에서 `(320, 180, 320, 180)` → 320×180 JPEG, 가운데 칸 · 칸이 그림 밖(`(900, 500, 320, 180)`)이면 가장자리 칸이 아니라 `FfmpegError` · 가짜 HTTP 서버의 주소도 입력으로 받는다 · 받는 중 시간 제한을 넘으면 `FfmpegError`
 
 ---
 
