@@ -6,6 +6,7 @@ SDK 예외는 그대로 올린다. 키 원문과 메시지 본문은 로그에 �
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from collections.abc import Callable
@@ -220,11 +221,48 @@ async def chat_json[T](
     raise OpenAIOutputError(f"모델 출력을 읽지 못했어요({why})")
 
 
+# 이미지 모델의 안전 검사에 걸렸을 때 400의 code
+MODERATION_CODES = ("moderation_blocked", "content_policy_violation")
+
+
+async def image(client: AsyncOpenAI, model: str, prompt: str, size: str, quality: str) -> bytes:
+    """VA-MS-007#openai.image
+
+    이미지 생성 한 번 — 인포그래픽 세로 한 장. 이 호출만 시간 제한이 길다(IMAGE_TIMEOUT_SEC).
+    사용량(입력 · 출력 이미지 토큰)만 로그에 남긴다 — 한 장 값을 재는 근거다. 프롬프트는 찍지
+    않는다. SDK 예외는 그대로 올린다(어댑터가 llm-unavailable로 바꾼다).
+
+    Args:
+        client: `client(key)`가 준 클라이언트
+        model: 이미지 모델
+        prompt: 지시문과 재료
+        size: `1024x1536` 같은 크기
+        quality: low · medium
+
+    Returns:
+        PNG 바이트
+
+    Raises:
+        OpenAIOutputError: 응답에 그림이 없다
+    """
+    resp = await client.with_options(timeout=config.IMAGE_TIMEOUT_SEC).images.generate(
+        model=model, prompt=prompt, size=size, quality=quality, n=1
+    )
+    usage = getattr(resp, "usage", None)
+    if usage is not None:
+        tokens = (usage.input_tokens, usage.output_tokens)
+        log.info("image %s %s 토큰 입력 %d · 출력 %d", model, quality, *tokens)
+    b64 = resp.data[0].b64_json if resp.data else None
+    if not b64:
+        raise OpenAIOutputError("그림을 받지 못했어요")
+    return base64.b64decode(b64)
+
+
 def reason_of(e: BaseException) -> str:
     """VA-MS-007#openai.reason_of
 
-    OpenAI 호출 예외 → 한국어 한 줄. 실패 알림(파이프라인)과 답변 실패(대화)의 '왜'가 이 표
-    하나를 쓴다. 시간 초과가 연결 오류보다 먼저다(하위 클래스).
+    OpenAI 호출 예외 → 한국어 한 줄. 실패 알림(파이프라인) · 답변 실패(대화) · 인포그래픽 실패의
+    '왜'가 이 표 하나를 쓴다. 시간 초과가 연결 오류보다 먼저다(하위 클래스).
 
     Args:
         e: OpenAI 호출에서 난 예외

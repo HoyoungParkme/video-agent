@@ -169,6 +169,8 @@ class Config(BaseSettings):
     FFMPEG_BIN: str = "ffmpeg"
     FFPROBE_BIN: str = "ffprobe"
     OPENAI_TIMEOUT_SEC: float = 120
+    # 인포그래픽 한 장의 상한 — 세로 한 장이 수십 초 걸린다. 뒤에서 돌아 web 넘기기 60초와 무관
+    IMAGE_TIMEOUT_SEC: float = 180
     OPENAI_BASE_URL: str | None = None  # E2E의 가짜 OpenAI 서버만 채운다
     OPENAI_MAX_RETRIES: int = 0
     # 텍스트 모델의 추론 강도 — low면 답 2~3초 · 47분 요약 8초(기본은 3~4배, 카드 C 실측)
