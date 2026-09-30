@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.config import config
 from app.core.errors import SourceUnavailable
+from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
 from app.infra.openai import ReasonKind
@@ -166,6 +167,23 @@ async def test_delete_running_stops_task_then_wakes(api, make) -> None:
     assert JobService.work_event.is_set()  # 지운 뒤 워커를 깨웠다 — 기다리던 영상이 돈다
     job = (await api.get(f"/api/videos/{waiting.id}/job")).json()
     assert (job["status"], job["queue_position"]) == ("queued", 1)  # 워커가 곧 꺼낸다
+
+
+async def test_delete_stops_frame_fill_first(api, make, storyboard, tmp_path, monkeypatch) -> None:
+    """채우는 중인 장면을 먼저 멈추고 지운다 — 지운 장면 폴더에 다시 쓰지 않는다."""
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    storyboard.gate = asyncio.Event()  # 첫 장 앞에서 기다린다
+    row = await make.video()
+    await make.job(row.id, JobStatus.done)
+    await make.chapters(row.id, [(0.0, "하나", ["a"])])
+    assert (await api.post(f"/api/videos/{row.id}/frames")).status_code == 202
+    task = AnalysisService._frame_tasks[row.id]
+    assert (await api.delete(f"/api/videos/{row.id}")).status_code == 204
+    assert task.cancelled()
+    assert row.id not in AnalysisService._frame_tasks
+    storyboard.gate.set()
+    await asyncio.sleep(0.05)
+    assert not (tmp_path / "frames" / str(row.id)).exists()
 
 
 async def test_delete_queued_moves_queue_up(api, make) -> None:
