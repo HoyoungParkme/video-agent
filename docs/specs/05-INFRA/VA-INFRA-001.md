@@ -47,7 +47,7 @@ OpenAI가 2026-08-26에 `whisper-1` · `gpt-4o-transcribe` · `gpt-4o-mini-trans
 
 처음에는 inbox만 두었다 — 3시간 mp4를 브라우저로 올리면 느리고 디스크를 두 배 쓴다고 봤다. 브라우저와 앱이 같은 PC라 올리기는 디스크 복사에 가깝고(2시간 30분 워크숍이 588MB), 사본은 분석하는 동안만 있어 두 배도 잠깐이다.
 
-**올리기 한 경로는 Next proxy를 거치지 않는다.** web의 `/api/*` 넘기기(rewrites) 앞에서 Host 확인(5절)을 하는 Next proxy가 도는데, proxy가 도는 요청은 Next가 본문을 복제해 메모리에 쌓고 `proxyClientMaxBodySize`(기본 10MB)에서 자른다(Next 16.3 `server/body-streams.js`, 카드 D 조사). 수 GB 본문은 이 길로 못 보낸다. 그래서 `/api/uploads` 하나만 proxy matcher에서 빼고 web의 라우트 핸들러가 받는다 — proxy와 같은 Host 판정을 한 뒤 본문을 스트림 그대로 api에 넘긴다. web 메모리는 파일 크기만큼 늘지 않는다. api가 `X-Forwarded-Host`로 판정하는 길은 쓰지 않는다 — DNS 리바인딩으로 같은 출처가 된 악성 페이지는 그 헤더를 스스로 넣을 수 있다.
+**올리기 한 경로는 Next proxy를 거치지 않는다.** web의 `/api/*` 넘기기(rewrites) 앞에서 Host 확인(5절)을 하는 Next proxy가 도는데, proxy가 도는 요청은 Next가 본문을 복제해 메모리에 쌓고 `proxyClientMaxBodySize`(기본 10MB)에서 자른다(Next 16.3 `server/body-streams.js`, 카드 D 조사). 수 GB 본문은 이 길로 못 보낸다. 그래서 `/api/uploads` 하나만 proxy matcher에서 빼고 web의 API 라우트가 받는다 — proxy와 같은 Host 판정을 한 뒤 Node 요청을 그대로 api 요청에 흘려보낸다(`pipe` — 받는 쪽이 느리면 보내는 쪽을 멈춘다). App Router의 라우트 핸들러가 아니라 Pages Router의 API 라우트다(카드 D4 실측: 느린 api로 300MB를 올리면 App Router 라우트 핸들러는 web 메모리가 +344MB, 진짜 스택에서 588MB에 +650MB였다 — Next가 요청 스트림을 받는 쪽 속도와 상관없이 읽어 들인다. Pages Router API 라우트는 1GB에도 +70MB 안이다). web 메모리는 파일 크기만큼 늘지 않는다. api가 `X-Forwarded-Host`로 판정하는 길은 쓰지 않는다 — DNS 리바인딩으로 같은 출처가 된 악성 페이지는 그 헤더를 스스로 넣을 수 있다.
 
 #### C5 사용자 한 명, localhost
 
@@ -147,7 +147,7 @@ flowchart LR
 | 요약·챕터·Q&A | **OpenAI `gpt-5-mini`** | $0.25/$2.00 per 1M. 영상당 수 센트 | gpt-5.4-mini, gpt-5.4, gpt-5-nano | 품질 부족이 확인되면 설정으로 상향. 더 싼 nano는 영상당 절감이 1센트 안팎이라 두지 않았다(사용자 결정 2026-09-29) |
 | 인포그래픽 | **OpenAI `gpt-image-2`**, 품질 `low`(기본) · `medium` | 한 장 약 $0.01 · $0.05, 한글 글자를 그린다 ([[#C11]]) | `gpt-image-1-mini`, 앱이 그리는 요약 카드 | mini는 한글 글자가 깨지기 쉽다. 요약 카드는 AI 그림이 없다(사용자 결정 2026-09-29) |
 | 한눈에 보기 그리기 | **화면: 라이브러리 없이 HTML/CSS · SVG**(React 컴포넌트) · **노트: Mermaid `mindmap` · `gantt` 텍스트** | 화면은 누르면 스크립트로 가는 동작 · 디자인 토큰 · 요소 번호(`data-el`)를 그대로 지킨다. 노트는 옵시디언 1.4 이상이 그대로 그린다. 타임라인은 `timeline`이 아니라 `gantt`(시각 축, 챕터 길이 비례)다 — `timeline`은 시각 `00:00`의 쌍점을 기간과 사건의 구분자로 읽어 깨진다(캔버스 검토 2026-09-29) | 화면에서 mermaid.js, markmap | mermaid.js는 번들이 수 MB이고 노드 누르기가 어색하다. markmap은 d3에 기대 디자인 토큰을 맞추기 어렵다 |
-| 파일 올리기 | **한 요청(XHR) + web 라우트 핸들러가 스트림으로 api에 넘김** | 진행률(`upload.onprogress`)과 멈추기가 된다. 같은 PC라 이어 올리기가 필요 없다 ([[#C4]]) | 조각 나눠 올리기(tus 등), api 포트를 호스트에 열기 | 조각은 서버에 이어 붙이기 · 상태가 는다. api를 열면 Host 확인과 CORS를 api에 한 벌 더 둔다 |
+| 파일 올리기 | **한 요청(XHR) + web의 API 라우트(Pages Router)가 `pipe`로 api에 넘김** | 진행률(`upload.onprogress`)과 멈추기가 된다. 같은 PC라 이어 올리기가 필요 없다. 받는 쪽이 느리면 보내는 쪽을 멈춰 web 메모리가 파일 크기만큼 늘지 않는다 ([[#C4]]) | 조각 나눠 올리기(tus 등), api 포트를 호스트에 열기, App Router 라우트 핸들러 | 조각은 서버에 이어 붙이기 · 상태가 는다. api를 열면 Host 확인과 CORS를 api에 한 벌 더 둔다. 라우트 핸들러는 본문을 web 메모리에 쌓는다(카드 D4 실측, [[#C4]]) |
 | AI 전략 | 단순 API 호출 + 긴 스크립트는 구간 분할 | 프롬프트로 충분. 벡터 DB 불필요 — 영상 하나 안에서만 검색 | RAG(임베딩) | 3시간 스크립트도 관련 구간 선별은 챕터 단위 필터로 충분 ([[VA-UC-001#UC-H4]] 3b) |
 | 백그라운드 작업 | **프로세스 안 asyncio 태스크 + 프로세스 안 대기열(순차)** | 사용자 하나. 동시에 도는 분석은 하나이고 나머지는 DB의 대기 상태로 줄을 서서 워커 하나가 차례로 돌린다(사용자 결정 2026-09-21). 외부 큐 불필요 | Celery + Redis | 구성 요소 둘 추가. 비목표(일괄 처리) |
 | 진행 상태 | **폴링** (1초) `GET /jobs/{id}` | 가장 단순. SSE는 프록시·재연결 처리 필요 | SSE, WebSocket | 필요해지면 교체 비용 낮음 |
@@ -180,14 +180,14 @@ flowchart LR
 
 api는 명세 작성 규약 1.9의 기본형(도메인별 폴더 + 계층 파일)을 따르고, 확정본은 클래스 명세 1장이다 — 저장소 폴더는 `backend/` · `frontend/`(compose 서비스 이름은 `api` · `web`), 에이전트용 안내는 `AGENTS.md`(`CLAUDE.md`는 그것을 가리키는 한 줄). 도메인 묶음은 넷 — **video**(입력·정보·목록·삭제), **job**(파이프라인·조각·진행), **analysis**(스크립트·요약·챕터·추천 질문·내보내기), **chat**(Q&A). 외부 호출(yt-dlp, ffmpeg, OpenAI)은 `infra/` 공용 클라이언트 + 묶음별 어댑터로 격리해 모델 교체·테스트 시 대체가 되게 한다. 프롬프트 문장은 `backend/app/prompts/*.md`에 둔다(사용자 결정 2026-09-21).
 
-web은 화면 명세(7단계) 산출물을 그대로 두고, API 호출 층만 얇게 둔다. 올리기 한 경로만 web의 라우트 핸들러가 받아 api로 흘려보낸다([[#C4]]).
+web은 화면 명세(7단계) 산출물을 그대로 두고, API 호출 층만 얇게 둔다. 올리기 한 경로만 web의 API 라우트(Pages Router — `src/pages/`는 이것 하나)가 받아 api로 흘려보낸다([[#C4]]).
 
 ## 5. 인증과 접근
 
 | 대상 | 방식 |
 |---|---|
 | 사용자 → web/api | 없음. `127.0.0.1` 바인딩 ([[#C5]]). web만 호스트에 열고 api · db는 compose 안에서만 닿는다 |
-| Host 헤더 | web은 `/api/*`를, api는 모든 요청을 Host가 `localhost` · `127.0.0.1`(api는 compose 안 이름 `api`도)일 때만 받는다. 다르면 400. 인증이 없어, 악성 페이지가 자기 도메인을 127.0.0.1로 돌리는 DNS 리바인딩은 바인딩만으로 막지 못한다([[#C5]], 사용자 결정 2026-09-23). `/api/uploads`는 proxy 대신 라우트 핸들러가 같은 판정을 한다([[#C4]]) |
+| Host 헤더 | web은 `/api/*`를, api는 모든 요청을 Host가 `localhost` · `127.0.0.1`(api는 compose 안 이름 `api`도)일 때만 받는다. 다르면 400. 인증이 없어, 악성 페이지가 자기 도메인을 127.0.0.1로 돌리는 DNS 리바인딩은 바인딩만으로 막지 못한다([[#C5]], 사용자 결정 2026-09-23). `/api/uploads`는 proxy 대신 web의 API 라우트가 같은 판정을 한다([[#C4]]) |
 | api → OpenAI | `OPENAI_API_KEY` (.env — 앱이 같은 파일에 쓴다) ([[#C6]]) |
 | api → YouTube | 없음 (공개 영상만). 로그인 필요 영상은 비목표 |
 | api → db | compose 내부 네트워크, DB 비밀번호는 .env |
