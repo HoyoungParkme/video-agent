@@ -239,3 +239,32 @@ async def test_fill_while_analyzing_is_not_ready(db, make, storyboard, local_fra
     video = VideoService.to_dto(row, await JobService(db).latest(row.id), 0)
     with pytest.raises(ResultNotReady):
         await _svc(db, storyboard, local_frames).fill_frames(video)
+
+
+# --- frames_of
+
+
+async def test_frames_of_lists_only_pictures_with_files(
+    db, make, storyboard, local_frames, queries
+) -> None:
+    video = await _video(db, make)
+    storyboard.none_at = {1}
+    svc = _svc(db, storyboard, local_frames)
+    await svc.make_frames(video)
+    rows = await crud.frames(db, video.id)
+    Path(rows[2].path).unlink()  # 파일이 지워진 행
+    queries.clear()
+    got = await svc.frames_of(video)
+    assert got.state == FramesState.done
+    assert [(f.chapter_seq, f.sec, f.url) for f in got.frames] == [
+        (1, 1.0, f"/api/videos/{video.id}/frames/1")
+    ]  # 그림 없는 행 · 파일이 없는 행은 없다
+    assert len(queries) == 2  # 챕터 · 장면
+
+
+async def test_frames_of_while_analyzing_is_not_ready(db, make) -> None:
+    row = await make.video()
+    await make.job(row.id, JobStatus.failed)
+    video = VideoService.to_dto(row, await JobService(db).latest(row.id), 0)
+    with pytest.raises(ResultNotReady):
+        await AnalysisService(db).frames_of(video)

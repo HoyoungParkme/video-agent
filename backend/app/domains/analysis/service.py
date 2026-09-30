@@ -442,6 +442,29 @@ class AnalysisService:
             AnalysisService._frame_tasks.pop(video.id, None)
             AnalysisService._making.discard(video.id)
 
+    async def frames_of(self, video: Video) -> FrameSet:
+        """VA-MS-003#AnalysisService.frames_of
+
+        장면 상태와 목록 — 채우는 동안 화면이 3초마다 부른다. 쿼리 둘(챕터 · 장면).
+
+        Args:
+            video: 결과를 연 영상
+
+        Returns:
+            상태와 그림이 있고 파일도 있는 장면(챕터 순서)
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        chapters = await crud.chapter_rows(self.session, video.id)
+        frames = await crud.frames(self.session, video.id)
+        return FrameSet(
+            state=self.frames_state(video, chapters, frames),
+            frames=_frame_list(video.id, chapters, frames),
+        )
+
     async def save_transcript(
         self,
         video_id: int,
