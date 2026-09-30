@@ -1,6 +1,7 @@
-"""마이그레이션 — 테이블 11개 · 인덱스 · 제약이 ERD(VA-DOM-003)대로인지, 올리고 내릴 수 있는지.
+"""마이그레이션 — 테이블 12개 · 인덱스 · 제약이 ERD(VA-DOM-003)대로인지, 올리고 내릴 수 있는지.
 
-0001_initial이 전부를 만들고 0002가 영상 하나에 기다리는 · 도는 작업 하나를 더한다.
+0001_initial이 11개를 만들고 0002가 영상 하나에 기다리는 · 도는 작업 하나를, 0003이 챕터 대표
+장면(chapter_frames)을 더한다.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ TABLES = {
     "chapters",
     "suggested_questions",
     "chat_turns",
+    "chapter_frames",
 }
 NOW = datetime(2026, 9, 23, tzinfo=UTC)
 
@@ -215,6 +217,36 @@ async def test_chapter_part_same_video(conn: AsyncConnection) -> None:
     )
 
 
+async def _insert_chapter(c: AsyncConnection, video_id: int, seq: int = 1) -> int:
+    return await c.scalar(
+        text(
+            "INSERT INTO chapters (video_id, seq, start_sec, title, bullets)"
+            " VALUES (:v, :s, 0, '챕터', '[]') RETURNING id"
+        ),
+        {"v": video_id, "s": seq},
+    )
+
+
+FRAME_SQL = (
+    "INSERT INTO chapter_frames (chapter_id, sec, source, width, height, path)"
+    " VALUES (:c, :sec, :src, :w, :h, :p)"
+)
+
+
+async def test_chapter_frame_is_got_or_tried(conn: AsyncConnection) -> None:
+    """장면 행은 「얻었다」(모두 있음) 또는 「해 봤지만 없다」(모두 null) — 반쪽 행은 CHECK가 막는다."""
+    v = await _insert_video(conn)
+    got, tried, half = [await _insert_chapter(conn, v, i) for i in (1, 2, 3)]
+    frame = {"sec": 763, "src": "storyboard", "w": 320, "h": 180, "p": "data/frames/1/1.jpg"}
+    await conn.execute(text(FRAME_SQL), {"c": got, **frame})
+    await conn.execute(
+        text(FRAME_SQL), {"c": tried, "sec": None, "src": None, "w": None, "h": None, "p": None}
+    )
+    await _expect_violation(conn, FRAME_SQL, {"c": half, **frame, "sec": None})  # 경로만 있음
+    await _expect_violation(conn, FRAME_SQL, {"c": half, **frame, "w": 0})
+    await _expect_violation(conn, FRAME_SQL, {"c": got, **frame})  # 챕터마다 0..1
+
+
 async def test_delete_video_cascades(conn: AsyncConnection) -> None:
     """영상 행 하나를 지우면 딸린 것이 전부 사라진다(DOM-003 4장 5)."""
     v = await _insert_video(conn)
@@ -246,6 +278,10 @@ async def test_delete_video_cascades(conn: AsyncConnection) -> None:
         ),
         {"v": v},
     )
+    ch = await _insert_chapter(conn, v)
+    await conn.execute(
+        text(FRAME_SQL), {"c": ch, "sec": None, "src": None, "w": None, "h": None, "p": None}
+    )
     await conn.execute(text("DELETE FROM videos WHERE id = :v"), {"v": v})
     # 이 영상의 것만 센다 — 앞서 돈 테스트 · E2E가 같은 DB에 남긴 행과 섞이지 않게
     left = {
@@ -254,6 +290,7 @@ async def test_delete_video_cascades(conn: AsyncConnection) -> None:
         "summaries": ("video_id", v),
         "insights": ("summary_id", s),
         "chat_turns": ("video_id", v),
+        "chapter_frames": ("chapter_id", ch),
     }
     for table, (column, owner) in left.items():
         count = f"SELECT count(*) FROM {table} WHERE {column} = :o"
@@ -263,7 +300,7 @@ async def test_delete_video_cascades(conn: AsyncConnection) -> None:
 async def test_downgrade_then_upgrade(
     migrated: None, alembic: Callable[[str, str], Awaitable[None]]
 ) -> None:
-    """내리면 테이블이 없고, 다시 올리면 11개."""
+    """내리면 테이블이 없고, 다시 올리면 12개."""
     engine = create_async_engine(config.DATABASE_URL)
     try:
         await alembic("downgrade", "base")

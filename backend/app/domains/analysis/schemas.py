@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.core.settings import Models
-from app.domains.analysis.models import TranscriptSource
+from app.domains.analysis.models import FrameSource, TranscriptSource
 from app.domains.video.schemas import Video
 
 
@@ -150,13 +150,6 @@ class ChapterDraft:
 
     parts: list[tuple[str, float]]
     chapters: list[tuple[int | None, float, str, list[str]]]
-
-
-class FrameSource(StrEnum):
-    """장면을 어디서 얻었나 — YouTube 스토리보드 칸 · 로컬 원본 프레임(VA-API-001 FrameSource)."""
-
-    storyboard = "storyboard"
-    local_frame = "local_frame"
 
 
 @dataclass(frozen=True)
