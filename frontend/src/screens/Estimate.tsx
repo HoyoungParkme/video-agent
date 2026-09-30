@@ -3,7 +3,9 @@
  * 3 예상 시간(3.1 · 3.2) · 4 예상 비용(4.1 ~ 4.3) · 5 전송 안내 · 6 버튼 줄(6.1 대기 안내 · 6.2 취소 ·
  * 6.3 분석 시작) · 7 시작 불가 판(7.1 · 7.2 · 7.3).
  * 숫자는 서버가 준 값을 그대로 보인다. 판은 자막 유무로 — 자막 있음 판과 받아쓰기 필요 판(자막 없는
- * YouTube · 로컬 영상 · 로컬 음성, 2.1 · 2.3 · 2.5 · 3.2 · 4.2 · 5가 다르다).
+ * YouTube · 로컬 영상 · 로컬 음성, 2.1 · 2.3 · 2.5 · 3.2 · 4.2 · 5가 다르다). 올린 파일 판은 2.3이 '로컬
+ * 파일 · 올린 사본'이고 6.4 사본 안내가 있으며, 닫는 넷(1.3 · 6.2 · Esc · 덮개)은 모두 취소라 서버가
+ * 사본을 지운다(영상을 지운다 — VA-UC-001 UC-H2 3a).
  * 시작 불가 판(7)은 UI-1이 등록 실패로 연다 — 7.1 문구는 오류 종류별(blockedOf, UI-2 7.1 규칙).
  */
 "use client";
@@ -28,7 +30,8 @@ interface Props {
   estimate: EstimateData;
   /** 열 때 목록에 진행 중 · 대기 중 영상이 있었는가 — 대기 안내(6.1) */
   othersRunning: boolean;
-  onClose: () => void;
+  /** 닫혔다 — 올린 파일이면 discarded가 사본을 지웠는가(UI-1 4.17 알림) */
+  onClose: (discarded?: boolean) => void;
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -165,15 +168,23 @@ function sendNote(estimate: EstimateData, local: boolean, audio: boolean): strin
 export default function Estimate({ video, estimate, othersRunning, onClose }: Props) {
   const router = useRouter();
   const [starting, setStarting] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const local = video.source_kind === "local";
   const audio = local && isAudioFile(video.origin);
   const stt = estimate.needs_stt;
 
-  // [분석 시작]을 누른 뒤에는 어느 길로도 닫히지 않는다(UI-2 규칙)
+  // [분석 시작]을 누른 뒤에는 어느 길로도 닫히지 않는다(UI-2 규칙). 올린 파일이면 닫기가 곧 취소라
+  // 영상을 지워 사본을 없앤다 — 지우지 못하면(연결) 사본은 서버가 다음 시작 때 지운다
   const close = () => {
-    if (!starting) onClose();
+    if (starting || discarding) return;
+    if (!video.uploaded) return onClose();
+    setDiscarding(true);
+    api.deleteVideo(video.id).then(
+      () => onClose(true),
+      () => onClose(false),
+    );
   };
 
   async function start() {
@@ -237,7 +248,11 @@ export default function Estimate({ video, estimate, othersRunning, onClose }: Pr
               {video.title}
             </span>
             <span className="estimate-video-sub" data-el="2.3">
-              {local ? "로컬 파일 · inbox" : `YouTube · ${video.channel ?? ""}`}
+              {!local
+                ? `YouTube · ${video.channel ?? ""}`
+                : video.uploaded
+                  ? "로컬 파일 · 올린 사본"
+                  : "로컬 파일 · inbox"}
             </span>
             <div className="chips">
               <span className="chip" data-el="2.4">
@@ -307,16 +322,26 @@ export default function Estimate({ video, estimate, othersRunning, onClose }: Pr
 
         {error && <p className="field-error">{error}</p>}
         <div className="dialog-actions" data-el="6">
-          {othersRunning && (
-            <span className="dialog-note" data-el="6.1">
-              지금 다른 영상을 분석 중이에요. 시작하면 차례를 기다렸다가 저절로 시작돼요.
-            </span>
+          {(othersRunning || video.uploaded) && (
+            <div className="dialog-notes">
+              {othersRunning && (
+                <span className="dialog-note" data-el="6.1">
+                  지금 다른 영상을 분석 중이에요. 시작하면 차례를 기다렸다가 저절로 시작돼요.
+                </span>
+              )}
+              {video.uploaded && (
+                <span className="dialog-note" data-el="6.4">
+                  취소하면 올린 사본을 지워요. 원본 파일은 그대로예요.
+                </span>
+              )}
+            </div>
           )}
           <Button
             kind="secondary"
             el="6.2"
             onClick={close}
-            aria-disabled={starting ? "true" : undefined}
+            busy={discarding}
+            aria-disabled={starting || discarding ? "true" : undefined}
           >
             취소
           </Button>

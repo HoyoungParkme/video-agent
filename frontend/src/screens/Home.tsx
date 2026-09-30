@@ -811,7 +811,12 @@ export default function Home() {
           video={opened.video}
           estimate={opened.estimate}
           othersRunning={opened.othersRunning}
-          onClose={() => setOpened(null)}
+          onClose={(discarded) => {
+            setOpened(null);
+            // 올린 파일 판에서 취소했다 — 서버가 사본을 지웠다(UI-1 4.17 알림)
+            if (discarded)
+              setLine({ text: "분석을 취소했어요 — 올린 사본을 지웠어요", alert: false });
+          }}
         />
       )}
       {deleting && (

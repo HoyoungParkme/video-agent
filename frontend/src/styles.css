@@ -498,6 +498,8 @@ h1, h2, p { margin: 0; }
 .stat-line { display: flex; justify-content: space-between; gap: var(--space-8); font-size: var(--text-13); line-height: 1.55; color: var(--c-ink-3); }
 .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-10); }
 .dialog-note { margin-right: auto; max-width: 300px; font-size: var(--text-13); line-height: 1.55; color: var(--c-ink-3); }
+/* 버튼 줄 왼쪽 안내가 둘이면(UI-2 6.1 · 6.4) 두 줄로 쌓는다 — 6.1이 위 */
+.dialog-notes { margin-right: auto; max-width: 300px; display: flex; flex-direction: column; gap: var(--space-4); }
 /* 다이얼로그 버튼 줄 왼쪽 끝의 실패 한 줄 — UI-6 3.1 · UI-7 5.1 */
 .dialog-error { margin-right: auto; font-size: var(--text-14); line-height: 1.5; color: var(--c-danger); }
 .estimate-blocked { display: flex; flex-direction: column; gap: var(--space-12); }
