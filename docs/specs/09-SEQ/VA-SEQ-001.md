@@ -30,7 +30,7 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 |---|---|---|---|---|
 | 사람 | U | 브라우저를 쓰는 본인 | 액터 | [[VA-UC-001]] 1장 |
 | 화면 | W | Next.js 화면과 `api/client.ts`. 어느 화면인지는 그림의 메시지에 | Boundary | [[VA-DOM-002]] 1장 frontend, [[VA-UI-002]] |
-| uploads route | UR | `frontend/src/app/api/uploads/route.ts` — Host를 확인하고 올리기 본문을 스트림 그대로 api에 넘기는 web의 라우트 핸들러 | Boundary | [[VA-DOM-002]] 1장 frontend, [[VA-INFRA-001#C4]] |
+| uploads route | UR | `frontend/src/pages/api/uploads.ts` — Host를 확인하고 올리기 본문을 스트림 그대로(pipe) api에 넘기는 web의 API 라우트(Pages Router) | Boundary | [[VA-DOM-002]] 1장 frontend, [[VA-INFRA-001#C4]] |
 | video/router | RV | `domains/video/router.py` | Boundary | [[VA-DOM-002]] 3.1, [[VA-API-001]] 3.2 · 3.3 |
 | job/router | RJ | `domains/job/router.py` | Boundary | [[VA-DOM-002]] 3.1, [[VA-API-001]] 3.4 |
 | analysis/router | RA | `domains/analysis/router.py` | Boundary | [[VA-DOM-002]] 3.1, [[VA-API-001]] 3.5 |
@@ -1099,7 +1099,7 @@ sequenceDiagram
 ```
 
 **읽을 때 볼 것**
-- web은 본문을 쌓지 않는다. 이 한 경로만 proxy를 거치지 않고 라우트 핸들러가 스트림으로 넘긴다 — proxy가 도는 요청은 본문이 메모리에 쌓이고 10MB에서 잘린다([[VA-INFRA-001#C4]], [[VA-DOM-002]] 1장)
+- web은 본문을 쌓지 않는다. 이 한 경로만 proxy를 거치지 않고 API 라우트가 Node 요청을 그대로 넘긴다(pipe — App Router 라우트 핸들러는 본문을 쌓아 쓰지 않았다, 카드 D4 실측) — proxy가 도는 요청은 본문이 메모리에 쌓이고 10MB에서 잘린다([[VA-INFRA-001#C4]], [[VA-DOM-002]] 1장)
 - 키 · 이름 · 디스크는 본문을 읽기 전에 판정한다. 수 GB를 받은 뒤에 거절하지 않으려는 것이다([[VA-API-001]] 5장 12). 거절하면 라우터가 남은 본문을 읽어 버린 뒤 답한다 — 브라우저는 본문을 다 보내야 답을 읽는다(3장, 카드 D4 실측). 파일을 넣어 두지는 않는다
 - SHA-256은 쓰면서 잰다 — 같은 파일을 두 번 읽지 않는다. inbox 등록([[#SEQ-1]])과 같은 해시라, 같은 내용이면 어느 길로 넣어도 같은 영상이다
 - 어느 판정에서 멈추든 `.part`는 남지 않는다. 서버가 올리는 도중에 죽어 남은 것은 시작 때 지운다([[#SEQ-13]])
