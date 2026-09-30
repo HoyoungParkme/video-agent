@@ -83,22 +83,6 @@ class FrameSet(BaseModel):
     frames: list[Frame]
 
 
-class FrameProgressItem(BaseModel):
-    """진행 화면(UI-3)의 장면 칸 하나. missing = 얻지 못함(장면 없이 넘어감)."""
-
-    chapter_seq: int
-    state: Literal["waiting", "in_flight", "done", "missing"]
-    url: str | None
-
-
-class FrameProgress(BaseModel):
-    """장면 단계의 칸들 — done / total이 '{n} / {m}'."""
-
-    done: int
-    total: int
-    items: list[FrameProgressItem]
-
-
 class Chapter(BaseModel):
     seq: int
     part_seq: int | None

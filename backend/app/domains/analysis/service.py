@@ -35,8 +35,6 @@ from app.domains.analysis.schemas import (
     ExportPreview,
     ExportResult,
     Frame,
-    FrameProgress,
-    FrameProgressItem,
     FrameSet,
     FramesState,
     Insight,
@@ -48,6 +46,7 @@ from app.domains.analysis.schemas import (
     SummaryDraft,
     Transcript,
 )
+from app.domains.job.schemas import FrameProgress, FrameProgressItem
 from app.shared import sources, tokens
 
 if TYPE_CHECKING:

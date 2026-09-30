@@ -13,7 +13,6 @@ from sqlalchemy import select
 from app.core.config import config
 from app.core.errors import JobExists, JobNotFailed, KeyMissing, NotFound
 from app.domains.analysis.models import TranscriptRow
-from app.domains.analysis.schemas import FrameProgress, FrameProgressItem
 from app.domains.job import crud, pipeline
 from app.domains.job.models import (
     AnalysisJobRow,
@@ -23,7 +22,13 @@ from app.domains.job.models import (
     JobStage,
     JobStatus,
 )
-from app.domains.job.schemas import ChunkPlan, JobError, SttSegment
+from app.domains.job.schemas import (
+    ChunkPlan,
+    FrameProgress,
+    FrameProgressItem,
+    JobError,
+    SttSegment,
+)
 from app.domains.job.service import JobService
 from app.domains.video.models import SourceKind
 from app.domains.video.schemas import Video
@@ -144,6 +149,14 @@ def test_remaining_sec_in_frames_stage() -> None:
     assert JobService.remaining_sec(row, [], _cells(5, 8)) == 3 * 2  # 남은 칸 × 한 장 2초
     assert JobService.remaining_sec(row, [], _cells(0, 0)) in (19, 20)  # 칸이 아직 없다 — 30 − 10
     assert JobService.remaining_sec(row, []) in (19, 20)
+
+
+def test_to_job_frames_only_for_frames_stage() -> None:
+    assert JobService.to_job(_row(), []).frames is None  # 장면 단계가 없는 작업
+    empty = JobService.to_job(_row(stages=FRAME_JOB), []).frames  # 받지 않았으면 빈 칸
+    assert (empty.done, empty.total, empty.items) == (0, 0, [])
+    cells = _cells(2, 3)
+    assert JobService.to_job(_row(stages=FRAME_JOB), [], None, cells).frames == cells
 
 
 def test_remaining_sec_text_stages_do_not_take_leftover_time() -> None:

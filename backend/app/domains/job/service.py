@@ -22,7 +22,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import config
 from app.core.errors import JobExists, JobNotFailed, NotFound
 from app.core.settings import Models, settings
-from app.domains.analysis.schemas import FrameProgress
 from app.domains.job import crud
 from app.domains.job.models import (
     AnalysisJobRow,
@@ -37,6 +36,7 @@ from app.domains.job.schemas import (
     ChunkPlan,
     Chunks,
     Estimate,
+    FrameProgress,
     Job,
     JobError,
     JobSummary,
@@ -178,16 +178,23 @@ class JobService:
 
     @staticmethod
     def to_job(
-        row: AnalysisJobRow, chunks: list[AudioChunkRow], queue_position: int | None = None
+        row: AnalysisJobRow,
+        chunks: list[AudioChunkRow],
+        queue_position: int | None = None,
+        frames: FrameProgress | None = None,
     ) -> Job:
         """VA-MS-002#JobService.to_job
 
         행 + 조각 → 폴링 응답. 차례는 DB를 읽어야 해서 부르는 쪽이 세어 넘긴다 — 순수 함수.
+        장면 칸은 장면 단계가 있는 작업에만 싣고, 받지 않았으면 빈 칸이다 — 시작 · 다시 시도의
+        응답은 장면 칸을 받지 않는다(시작 때는 챕터가 없어 빈 칸이 참값, 다시 시도는 첫 폴링이
+        채운다).
 
         Args:
             row: 작업 행
             chunks: 조각들(번호순)
             queue_position: 대기열에서의 차례
+            frames: 장면 칸(AnalysisService.frame_progress)
 
         Returns:
             Job
@@ -226,8 +233,13 @@ class JobService:
             stages=row.stages,
             stage_index=row.stages.index(row.stage) + 1 if row.stage != JobStage.pending else 1,
             progress_pct=row.progress_pct,
-            remaining_sec=JobService.remaining_sec(row, chunks),
+            remaining_sec=JobService.remaining_sec(row, chunks, frames),
             chunks=chunks_dto,
+            frames=(
+                None
+                if JobStage.frames not in row.stages
+                else frames or FrameProgress(done=0, total=0, items=[])
+            ),
             concurrency=row.concurrency if JobStage.transcribe in row.stages else None,
             models=Models(stt=row.stt_model, text=row.text_model),
             error=error,
