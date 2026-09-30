@@ -118,6 +118,15 @@ async def test_frame_past_the_end_is_an_error(fake, tmp_path: Path) -> None:
     assert e.value.reason == "프레임을 뽑지 못함"
 
 
+async def test_frame_past_the_end_with_old_file_is_an_error(fake, tmp_path: Path) -> None:
+    # 앞선 실행이 남긴 같은 이름의 파일을 새 프레임으로 돌려주지 않는다
+    old = tmp_path / "lf-1.jpg"
+    old.write_bytes(b"old")
+    with pytest.raises(FfmpegError):
+        await ffmpeg.frame("a.mp4", 99999.0, 640, str(old))
+    assert not old.exists()
+
+
 async def test_frame_timeout_kills_child(
     fake, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

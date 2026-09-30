@@ -169,7 +169,8 @@ async def frame(src: str, sec: float, width: int, dest: str) -> str:
     """VA-MS-007#ffmpeg.frame
 
     그 시각의 프레임 한 장을 JPEG로 뽑는다. -ss를 -i 앞에 두어 그 시각으로 바로 건너뛴다 —
-    수 GB 원본도 1초 안팎. 높이는 비율대로 짝수. 원본은 읽기만 한다.
+    수 GB 원본도 1초 안팎. 높이는 비율대로 짝수. 원본은 읽기만 한다. 먼저 dest를 지운다 —
+    앞선 실행이 남긴 같은 이름의 파일을 새 프레임으로 보지 않게.
 
     Args:
         src: 원본 영상 파일
@@ -180,6 +181,8 @@ async def frame(src: str, sec: float, width: int, dest: str) -> str:
     Returns:
         dest. 시각이 영상 끝을 넘어 파일이 생기지 않았으면 FfmpegError
     """
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(dest)
     await _run(
         config.FFMPEG_BIN,
         "-y",
