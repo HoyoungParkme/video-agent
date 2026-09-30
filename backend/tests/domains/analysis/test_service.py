@@ -542,9 +542,11 @@ async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path,
         "data/export/RAG 서비스 1년 운영기.md",
         note.stat().st_size + script.stat().st_size,  # 두 파일 합
     )
-    # 쓴 파일 — 미리 보기(file)의 files와 같은 목록. 그림은 장면 · 인포그래픽 카드(D2 · D3)부터
+    # 쓴 파일 — 미리 보기(file)의 files와 같은 목록이고 실제로 쓴 파일과 같다. 그림은 장면 ·
+    # 인포그래픽 카드(D2 · D3)부터
     assert done.images == 0
     assert done.files == (await svc.export_markdown(video, False, [], ExportMethod.file)).files
+    assert sorted(f.name for f in done.files) == sorted(p.name for p in folder.iterdir())
     for f in (note, script):
         assert oct(f.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
     await svc.export_to_file(video, True, [])  # 두 번 저장하면 둘 다 덮어쓴다

@@ -359,9 +359,11 @@ def test_build_glance_section_between_one_liner_and_insights() -> None:
 
 
 def test_build_note_has_no_script_lines() -> None:
-    # 스크립트 줄은 노트에 없다 — 따로 쓰는 파일이다(MS-003 v8)
+    # 스크립트 줄은 노트에 없다 — 따로 쓰는 파일이다(MS-003 v8). 복사 · 파일 어느 노트에도
     md = export.build(youtube_50m(), None)
     assert "## 스크립트" not in md and "안녕하세요, 검색 품질 이야기를" not in md
+    note = export.build(youtube_50m(), [], "RAG 서비스 1년 운영기")
+    assert "안녕하세요, 검색 품질 이야기를" not in note
 
 
 def test_build_links_script_file_between_chapters_and_chat() -> None:
