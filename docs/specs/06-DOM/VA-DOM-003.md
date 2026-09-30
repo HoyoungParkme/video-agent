@@ -451,5 +451,5 @@ CHECK: 그림 컬럼(`model` · `quality` · `width` · `height` · `cost_usd` �
 - [ ] `segments.text` 검색 — 첫 버전은 스크립트 검색이 요구에 없어 인덱스가 없다. 질문 맥락 선별을 임베딩으로 바꾸면(`ChatService.context_for`) 그때 `pgvector` 컬럼과 인덱스를 여기 더한다([[VA-INFRA-001]] 9절)
 - [ ] `audio_chunks` 행의 보존 기간 — 지금은 영상과 함께 영구. 조각 이력이 쓸모없다고 판단되면 작업 완료 때 지우는 것으로 바꿀 수 있다([[VA-DOM-001]] 5장 2의 결정을 뒤집는 것이라 도메인 모델부터)
 - [x] (반영: 클래스 명세 v7) 클래스 명세 2장 각 항목에 `테이블: [[VA-DOM-003#…]]` 참조를 더한다 — [[VA-DOM-002]] 7장에 적힌 일. 이 문서가 생겼으므로 다음 클래스 명세 수정 때
-- [ ] (되먹임: 클래스 명세 7장) `chapter_frames` · `infographics`가 생겼으니 [[VA-DOM-002]] 2장 두 항목의 테이블 참조를 항목 링크로 — 다음 클래스 명세 수정 때
+- [x] (반영: 클래스 명세 v26) `chapter_frames` · `infographics`가 생겼으니 [[VA-DOM-002]] 2장 두 항목의 테이블 참조를 항목 링크로 — 다음 클래스 명세 수정 때
 - [ ] 재분석 때의 그림 — 챕터를 다시 만들면 `chapter_frames`는 cascade로 사라지지만 `infographics`는 영상에 붙어 남는다. 도메인 모델은 「결과가 바뀌면 함께 지운다」고 했다([[VA-DOM-001#Infographic]]). 재분석이 생길 때([[VA-DOM-001]] 6장 미결) 지우는 자리를 정한다
