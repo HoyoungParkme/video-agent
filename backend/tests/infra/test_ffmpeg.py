@@ -1,4 +1,4 @@
-"""infra/ffmpeg — VA-MS-007 ffmpeg.probe · extract_audio · silences · cut의 테스트 관점.
+"""infra/ffmpeg — VA-MS-007 ffmpeg.probe · extract_audio · silences · cut · frame의 테스트 관점.
 
 가짜 실행 파일로 인자와 해석을 본다. 진짜 ffmpeg가 있으면(이미지 안) 결과 파일까지 본다.
 """
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -95,6 +96,36 @@ async def test_cancel_kills_child(fake, tmp_path: Path) -> None:
     assert await fake.cancelled_child_is_gone(ffmpeg.silences("audio.mp3"), tmp_path)
 
 
+async def test_frame_args(fake, tmp_path: Path) -> None:
+    fake.behave(write_last=1)
+    dest = str(tmp_path / "lf-0.jpg")
+    assert await ffmpeg.frame("/inbox/강의 녹화.mp4", 591.0, 640, dest) == dest
+    [args] = fake.calls()
+    # -ss가 -i 앞 — 그 시각으로 바로 건너뛴다
+    assert args[:7] == ["-y", "-v", "error", "-ss", "591.000", "-i", "/inbox/강의 녹화.mp4"]
+    assert args[7:] == ["-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "3", dest]
+
+
+async def test_frame_past_the_end_is_an_error(fake, tmp_path: Path) -> None:
+    # ffmpeg는 끝을 넘는 시각에도 0으로 끝나고 파일을 만들지 않는다
+    with pytest.raises(FfmpegError) as e:
+        await ffmpeg.frame("a.mp4", 99999.0, 640, str(tmp_path / "lf-0.jpg"))
+    assert e.value.reason == "프레임을 뽑지 못함"
+
+
+async def test_frame_timeout_kills_child(
+    fake, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(config, "FRAME_TIMEOUT_SEC", 0.5)
+    pidfile = tmp_path / "pid"
+    fake.behave(sleep=30, pidfile=pidfile)
+    with pytest.raises(FfmpegError) as e:
+        await ffmpeg.frame("a.mp4", 1.0, 640, str(tmp_path / "lf-0.jpg"))
+    assert e.value.reason == "시간 제한을 넘었습니다"
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pidfile.read_text()), 0)
+
+
 # 진짜 ffmpeg — 호스트에 없으면 건너뛴다(이미지에는 있다)
 real = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg가 없다")
 
@@ -134,6 +165,22 @@ async def test_real_extract_cut_silences(tmp_path: Path, monkeypatch: pytest.Mon
     assert abs(float((await ffmpeg.probe(part))["format"]["duration"]) - 3.0) <= 0.1
     tail = await ffmpeg.cut(audio, 6.0, 100.0, str(tmp_path / "2.mp3"))  # 끝이 길이를 넘으면 끝까지
     assert abs(float((await ffmpeg.probe(tail))["format"]["duration"]) - 2.0) <= 0.1
+
+
+@real
+async def test_real_frame(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("FFMPEG_BIN", "FFPROBE_BIN"):
+        monkeypatch.setattr(config, name, name.split("_")[0].lower())
+    src = tmp_path / "강의 녹화 1.mp4"  # 공백 · 한글이 든 경로
+    await _make_video(src, 8)
+    before = (src.stat().st_mtime_ns, src.stat().st_size)
+    dest = await ffmpeg.frame(str(src), 3.0, 640, str(tmp_path / "lf-0.jpg"))
+    [stream] = (await ffmpeg.probe(dest))["streams"]
+    assert stream["codec_name"] == "mjpeg"
+    assert (stream["width"], stream["height"] % 2) == (640, 0)
+    assert (src.stat().st_mtime_ns, src.stat().st_size) == before  # 원본은 읽기만
+    with pytest.raises(FfmpegError):
+        await ffmpeg.frame(str(src), 60.0, 640, str(tmp_path / "lf-1.jpg"))  # 영상 끝을 넘음
 
 
 @real

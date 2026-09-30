@@ -1,4 +1,5 @@
-"""ffmpeg · ffprobe 공용 클라이언트 — 길이 · 음성 추출 · 무음 · 자르기(VA-MS-007). 어댑터만 부른다.
+"""ffmpeg · ffprobe 공용 클라이언트 — 길이 · 음성 추출 · 무음 · 자르기 · 장면 한 장(VA-MS-007).
+어댑터만 부른다.
 
 셸 없이 인자 목록으로 띄운다. 실패는 FfmpegError(표준 오류 끝줄들, 종료 코드).
 """
@@ -25,8 +26,11 @@ async def _reap(proc: asyncio.subprocess.Process) -> None:
         await proc.wait()
 
 
-async def _run(*args: str) -> tuple[bytes, str]:
-    """ffmpeg · ffprobe 한 번. 성공하면 (표준 출력, 표준 오류), 아니면 FfmpegError."""
+async def _run(*args: str, timeout: float | None = None) -> tuple[bytes, str]:
+    """ffmpeg · ffprobe 한 번. 성공하면 (표준 출력, 표준 오류), 아니면 FfmpegError.
+
+    시간 제한은 없으면 config.PROC_TIMEOUT_SEC — 장면 한 장은 config.FRAME_TIMEOUT_SEC를 준다.
+    """
     try:
         proc = await asyncio.create_subprocess_exec(
             *args,
@@ -37,7 +41,9 @@ async def _run(*args: str) -> tuple[bytes, str]:
     except OSError as e:
         raise FfmpegError(f"{args[0]}를 실행하지 못했습니다({type(e).__name__})", -1) from None
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), config.PROC_TIMEOUT_SEC)
+        out, err = await asyncio.wait_for(
+            proc.communicate(), timeout if timeout is not None else config.PROC_TIMEOUT_SEC
+        )
     except TimeoutError:
         raise FfmpegError("시간 제한을 넘었습니다", -1) from None
     finally:
@@ -156,4 +162,42 @@ async def cut(path: str, start: float, end: float, dest: str) -> str:
         "copy",
         dest,
     )
+    return dest
+
+
+async def frame(src: str, sec: float, width: int, dest: str) -> str:
+    """VA-MS-007#ffmpeg.frame
+
+    그 시각의 프레임 한 장을 JPEG로 뽑는다. -ss를 -i 앞에 두어 그 시각으로 바로 건너뛴다 —
+    수 GB 원본도 1초 안팎. 높이는 비율대로 짝수. 원본은 읽기만 한다.
+
+    Args:
+        src: 원본 영상 파일
+        sec: 뽑을 시각(초)
+        width: 결과 폭(px)
+        dest: 쓸 JPEG 경로
+
+    Returns:
+        dest. 시각이 영상 끝을 넘어 파일이 생기지 않았으면 FfmpegError
+    """
+    await _run(
+        config.FFMPEG_BIN,
+        "-y",
+        "-v",
+        "error",
+        "-ss",
+        f"{sec:.3f}",
+        "-i",
+        src,
+        "-frames:v",
+        "1",
+        "-vf",
+        f"scale={width}:-2",
+        "-q:v",
+        "3",
+        dest,
+        timeout=config.FRAME_TIMEOUT_SEC,
+    )
+    if not os.path.exists(dest):
+        raise FfmpegError("프레임을 뽑지 못함", 0)
     return dest

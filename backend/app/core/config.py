@@ -120,6 +120,8 @@ class Config(BaseSettings):
 
     # infra — MS-007
     PROC_TIMEOUT_SEC: float = 1800
+    # 장면 한 장(로컬 프레임 · 스토리보드 장 받아 칸 자르기) 상한 — 한 장 1~2초라 넉넉하다(MS-007)
+    FRAME_TIMEOUT_SEC: float = 30
     # 등록 때 yt-dlp 영상 정보 읽기 상한 — 누를 때의 키 확인(10초)과 더해 web 프록시 60초 안(MS-007)
     INFO_TIMEOUT_SEC: float = 40
     YTDLP_BIN: str = "yt-dlp"
