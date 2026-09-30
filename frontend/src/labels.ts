@@ -60,15 +60,23 @@ export function analyzedLabel(iso: string, now: Date = new Date()): string {
   return `${at.getMonth() + 1}월 ${at.getDate()}일`;
 }
 
-// 로컬 음성 파일의 확장자(서버 설정값 AUDIO_EXTS와 같다) — 음성 파일은 추출 단계가 없다(UC-H2 2b)
+// 받는 형식 — 서버 설정값 VIDEO_EXTS · AUDIO_EXTS(MS-001 ACCEPTED)와 같다. 음성 파일은 추출 단계가
+// 없다(UC-H2 2b). 올리기는 보내기 전에 이 목록으로 거른다(UI-1 규칙)
+const VIDEO_EXTS = ["mp4", "mkv", "mov", "webm"];
 const AUDIO_EXTS = ["mp3", "m4a", "wav"];
+export const ACCEPTED = [...VIDEO_EXTS, ...AUDIO_EXTS];
+/** 받는 형식 안내 — '영상 mp4 · mkv · mov · webm, 음성 mp3 · m4a · wav'(UI-1 4.9 · 8.3) */
+export const KINDS = `영상 ${VIDEO_EXTS.join(" · ")}, 음성 ${AUDIO_EXTS.join(" · ")}`;
 
 /**
- * 올린 파일의 크기 — 1 GB 이상이면 GB 소수 한 자리, 아래면 MB 정수(UI-1 4.13 · 4.17, UI-6 '올린 사본').
- * unit을 주면 그 크기로 단위를 정한다('0.7 GB / 1.8 GB'처럼 보낸 / 전체를 같은 단위로).
+ * 파일 크기 — 1 GB 이상이면 GB 소수 한 자리, 1 MB 이상이면 MB 정수, 그 아래는 KB(UI-1 4.3 · 4.13 ·
+ * 4.17, UI-6 '올린 사본'). unit을 주면 그 크기로 단위를 정한다('0.7 GB / 1.8 GB'처럼 보낸 / 전체를
+ * 같은 단위로).
  */
-export function uploadSize(bytes: number, unit = bytes): string {
-  return unit >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+export function sizeLabel(bytes: number, unit = bytes): string {
+  if (unit >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (unit >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
 }
 
 /** 파일 이름이 음성 파일인가 — 확장자를 소문자로 본다. */

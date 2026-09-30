@@ -260,7 +260,7 @@ test("받아쓰기가 실패한 올린 영상 — 사본이 남아 삭제 창이
   await page.goto("/");
   const row = page.locator(".video-row", { hasText: "fail_upload.mp4" });
   await row.locator(".video-row-trash").click();
-  await expect(inAlert(page, "2.1")).toContainText(/올린 사본\(\d+ MB\)$/);
+  await expect(inAlert(page, "2.1")).toContainText(/올린 사본\(\d+ KB\)$/);
   await expect(inAlert(page, "2.2")).toContainText(
     "PC에 있는 원본 파일. 다시 넣으면 처음부터 분석합니다.",
   );

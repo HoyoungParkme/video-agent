@@ -36,7 +36,7 @@ import { Button } from "@/components/buttons";
 import EmptyBox from "@/components/EmptyBox";
 import { durationLabel } from "@/components/TimeChip";
 import { flash } from "@/components/Toast";
-import { analyzedLabel, stageName, uploadSize } from "@/labels";
+import { ACCEPTED, analyzedLabel, KINDS, sizeLabel, stageName } from "@/labels";
 import Delete, { takeListFocus, TrashIcon } from "@/screens/Delete";
 import Estimate, { Blocked, blockedOf, type BlockedInfo } from "@/screens/Estimate";
 
@@ -47,9 +47,6 @@ const EMPTY_BODY = "위에 링크를 붙여 넣거나 파일을 끌어 놓아 �
 const EMPTY_BODY_NO_KEY = `설정에서 OpenAI API 키를 넣은 뒤, ${EMPTY_BODY}`;
 // 진행 중 · 대기 중 행이 있는 동안만 목록을 다시 받는다(UI-1 규칙)
 const REFRESH_MS = 3000;
-// 받는 형식 — 서버의 ACCEPTED와 같다(VA-MS-001). 여러 파일 · 다른 형식은 보내기 전에 거른다
-const ACCEPTED = ["mp4", "mkv", "mov", "webm", "mp3", "m4a", "wav"];
-const KINDS = "영상 mp4 · mkv · mov · webm, 음성 mp3 · m4a · wav";
 // 서버가 올린 뒤에야 아는 것 — UI-2 시작 불가 판으로 알린다(UI-1 규칙)
 const CANNOT = ["unsupported-file", "no-audio-track", "video-too-long"];
 
@@ -176,7 +173,7 @@ function SendingBox({ sending, onStop }: { sending: Sending; onStop: () => void 
           <span className="upload-state" data-el="4.13">
             {checking
               ? "다 올렸어요. 길이와 음성 트랙을 확인하는 중이에요"
-              : `올리는 중 · ${uploadSize(sent, file.size)} / ${uploadSize(file.size)}`}
+              : `올리는 중 · ${sizeLabel(sent, file.size)} / ${sizeLabel(file.size)}`}
           </span>
         </span>
         {!checking && (
@@ -202,13 +199,6 @@ function SendingBox({ sending, onStop }: { sending: Sending; onStop: () => void 
       )}
     </div>
   );
-}
-
-/** 파일 크기(4.3) — '1.8 GB' · '640 MB' · '12 KB'. */
-function sizeLabel(bytes: number): string {
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
-  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
-  return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
 }
 
 /** 상태 글자(6.6)와 그 색 — 숫자는 UI-3 숫자 규칙대로 서버 값을 그대로 쓴다. */
@@ -447,7 +437,7 @@ export default function Home() {
         const needed = Number(e.body.needed_bytes);
         const free = Number(e.body.free_bytes);
         setLine({
-          text: `올릴 자리가 모자라요 — ${uploadSize(needed)}가 필요한데 앱 폴더에 ${uploadSize(free)} 남았어요`,
+          text: `올릴 자리가 모자라요 — ${sizeLabel(needed)}가 필요한데 앱 폴더에 ${sizeLabel(free)} 남았어요`,
           alert: true,
         });
       } else if (e instanceof ApiError && CANNOT.includes(e.kind)) {

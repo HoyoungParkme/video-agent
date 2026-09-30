@@ -14,7 +14,7 @@ import { useState } from "react";
 import { api, ApiError, type Video } from "@/api/client";
 import { Button } from "@/components/buttons";
 import Dialog from "@/components/Dialog";
-import { uploadSize } from "@/labels";
+import { sizeLabel } from "@/labels";
 
 // UI-4에서 지운 뒤 열리는 UI-1이 5.1에 초점을 둔다 — 연 쪽이 맡기고 UI-1이 한 번만 꺼낸다
 let listFocus = false;
@@ -61,7 +61,7 @@ export default function Delete({ video, turns, onClose, onDeleted }: Props) {
   // 분석이 끝나지 않은 영상(진행 중 · 대기 중 · 실패)은 임시 음성 파일도 지운다
   const unfinished = video.status === "in_progress" || video.status === "failed";
   // 올린 사본이 아직 남아 있으면(진행 중 · 대기 중 · 실패한 올린 파일) 맨 끝에 크기와 함께
-  const copy = video.upload_bytes === null ? "" : `, 올린 사본(${uploadSize(video.upload_bytes)})`;
+  const copy = video.upload_bytes === null ? "" : `, 올린 사본(${sizeLabel(video.upload_bytes)})`;
   const gone = `스크립트, 핵심 요약, 챕터, 추천 질문, 질문 기록 ${turns}개${unfinished ? ", 임시 음성 파일" : ""}${copy}`;
   // 남는 것 — 원본은 지우지 않는다. 올린 파일은 앱 폴더의 사본만 지운다(INFRA C4)
   const origin =
