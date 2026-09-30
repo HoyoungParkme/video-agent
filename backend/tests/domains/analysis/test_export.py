@@ -7,11 +7,12 @@ from pathlib import Path
 
 from app.core.settings import Models
 from app.domains.analysis import export
-from app.domains.analysis.models import FrameSource, TranscriptSource
+from app.domains.analysis.models import FrameSource, InfographicState, TranscriptSource
 from app.domains.analysis.schemas import (
     Chapter,
     Frame,
     FramesState,
+    Infographic,
     Insight,
     Part,
     Result,
@@ -25,6 +26,7 @@ from app.domains.video.schemas import Video, VideoStatus
 
 T0 = datetime(2026, 9, 28, 1, 0, tzinfo=UTC)
 SNAP = Path(__file__).parent / "snapshots"
+NO_INFOGRAPHIC = Infographic(state=InfographicState.none, image=None, error_reason=None)
 
 
 def video(kind: SourceKind = SourceKind.youtube, duration: int = 3000, **extra) -> Video:
@@ -119,6 +121,7 @@ def youtube_50m() -> Result:
         models=Models(stt="whisper-1", text="gpt-5-mini"),
         analyzed_at=T0,
         frames_state=FramesState.done,
+        infographic=NO_INFOGRAPHIC,
     )
 
 
@@ -164,6 +167,7 @@ def local_150m() -> Result:
         models=Models(stt="whisper-1", text="gpt-5-mini"),
         analyzed_at=T0,
         frames_state=FramesState.done,
+        infographic=NO_INFOGRAPHIC,
     )
 
 
@@ -220,6 +224,7 @@ def glance_42m(chapter_count: int = 8) -> Result:
         models=Models(stt=None, text="gpt-5-mini"),
         analyzed_at=T0,
         frames_state=FramesState.done,
+        infographic=NO_INFOGRAPHIC,
     )
 
 

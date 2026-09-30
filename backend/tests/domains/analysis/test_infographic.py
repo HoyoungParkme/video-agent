@@ -300,3 +300,18 @@ async def test_fail_orphans(db, make, data_dir) -> None:
     )
     assert (rows[again.id].state, rows[again.id].created_at) == ("failed", T1)  # 이전 그림 그대로
     assert (rows[done.id].state, rows[done.id].error_reason) == ("done", None)
+
+
+# --- result_of
+
+
+async def test_result_carries_infographic(db, make, data_dir, queries) -> None:
+    video = await _analyzed(db, make)
+    svc = AnalysisService(db)
+    assert (await svc.result_of(video)).infographic.state == "none"
+    await _row(db, video.id, InfographicState.done, **_picture(data_dir, video.id))
+    queries.clear()
+    got = await svc.result_of(video)
+    assert len(queries) <= 8  # 쿼리 여덟을 넘지 않는다
+    assert got.infographic == await svc.infographic_of(video)  # 같은 모양
+    assert got.infographic.image.url.endswith(f"?v={int(T1.timestamp())}")

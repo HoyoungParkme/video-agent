@@ -131,6 +131,7 @@ class Result(BaseModel):
     models: Models
     analyzed_at: datetime
     frames_state: FramesState
+    infographic: Infographic
 
 
 class ExportMethod(StrEnum):

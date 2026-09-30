@@ -947,7 +947,8 @@ class AnalysisService:
         """VA-MS-003#AnalysisService.result_of
 
         결과 화면 응답 전부 — 구간을 나누지 않는다. 읽기만 한다 — 장면 채우기를 시작하지 않는다.
-        쿼리 일곱. 챕터의 장면은 그림이 있고 파일도 있을 때만 싣는다.
+        쿼리 여덟. 챕터의 장면은 그림이 있고 파일도 있을 때만 싣는다. 인포그래픽은
+        infographic_of와 같은 모양이다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상(상태 · 길이 · 대화 수)
@@ -969,6 +970,7 @@ class AnalysisService:
         chapter_rows = await crud.chapters_with_part_seq(self.session, video.id)
         questions = await crud.questions(self.session, video.id)
         frame_rows = await crud.frames(self.session, video.id)
+        infographic = await crud.infographic(self.session, video.id)
         frames = {
             f.chapter_seq: f
             for f in _frame_list(video.id, [c for c, _ in chapter_rows], frame_rows)
@@ -1019,6 +1021,7 @@ class AnalysisService:
             models=Models(stt=t.model, text=s.model),
             analyzed_at=video.analyzed_at,
             frames_state=self.frames_state(video, [c for c, _ in chapter_rows], frame_rows),
+            infographic=_infographic(video.id, infographic),
         )
 
     async def export_markdown(
