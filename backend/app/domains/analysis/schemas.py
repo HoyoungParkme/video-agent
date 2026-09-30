@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -79,20 +81,44 @@ class Result(BaseModel):
     analyzed_at: datetime
 
 
+class ExportMethod(StrEnum):
+    """내보내기 방법(미리 보기의 쿼리 `method`). 파일로 저장한 노트에만 스크립트 절 · 그림 줄."""
+
+    file = "file"
+    clipboard = "clipboard"
+
+
+class ExportFile(BaseModel):
+    """함께 쓰는 파일 하나(UI-7 2.3 칩). name은 `data/export/` 안의 파일 이름."""
+
+    kind: Literal["note", "script", "frame", "infographic"]
+    name: str
+
+
 class ExportPreview(BaseModel):
-    """내보낼 마크다운 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`."""
+    """내보낼 마크다운 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`.
+
+    files는 파일로 저장할 때 함께 쓸 파일(노트 · 스크립트, 있으면 장면 · 인포그래픽).
+    복사는 빈 목록이다.
+    """
 
     filename: str
     path: str
     markdown: str
+    files: list[ExportFile]
 
 
 class ExportResult(BaseModel):
-    """쓴 파일 — path는 보일 경로, bytes는 쓴 바이트 수."""
+    """쓴 파일 — path는 노트의 보일 경로, bytes는 쓴 파일 전부의 바이트 합.
+
+    images는 쓴 그림 수(장면 + 인포그래픽) — 짧은 알림의 '· 그림 {n}장'. files는 쓴 파일.
+    """
 
     filename: str
     path: str
     bytes: int
+    images: int
+    files: list[ExportFile]
 
 
 class ExportRequest(BaseModel):

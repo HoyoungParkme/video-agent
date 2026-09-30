@@ -61,6 +61,16 @@ async def test_get_export(api, db, make, summarizer, env_file) -> None:
     )
     assert body["markdown"].startswith("# RAG 서비스 1년 운영기\n")
     assert "## 질문 기록" not in body["markdown"]  # 기본은 넣지 않는다
+    # 방법의 기본은 파일로 저장 — 스크립트 파일 링크와 함께 쓸 파일 둘
+    assert body["markdown"].endswith("## 스크립트\n[[RAG 서비스 1년 운영기 스크립트]]\n")
+    assert body["files"] == [
+        {"kind": "note", "name": "RAG 서비스 1년 운영기.md"},
+        {"kind": "script", "name": "RAG 서비스 1년 운영기 스크립트.md"},
+    ]
+    copy = (await api.get(f"/api/videos/{row.id}/export?method=clipboard")).json()
+    assert "## 스크립트" not in copy["markdown"] and copy["files"] == []
+    bad = await api.get(f"/api/videos/{row.id}/export?method=pdf")
+    assert (bad.status_code, bad.json()["type"]) == (422, "urn:va:validation")
     chat = (await api.get(f"/api/videos/{row.id}/export?with_chat=true")).json()["markdown"]
     assert (
         "## 질문 기록\n**Q.** 어떤 DB를 썼어?\n**A.** pgvector를 썼다고 합니다.\n근거: [01:00]("
@@ -81,6 +91,8 @@ async def test_post_export(api, db, make, summarizer, env_file, tmp_path, monkey
     )
     assert script.startswith("# 제목 — 스크립트\n")  # 스크립트는 따로(API-001 v10)
     assert r.json()["bytes"] == len(written.encode()) + len(script.encode())  # 두 파일 합
+    assert r.json()["images"] == 0
+    assert [f["name"] for f in r.json()["files"]] == ["제목.md", "제목 스크립트.md"]
 
 
 async def test_export_errors(api, db, make, summarizer, env_file, tmp_path, monkeypatch) -> None:

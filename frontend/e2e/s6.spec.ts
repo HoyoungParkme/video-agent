@@ -148,6 +148,8 @@ test("서버에 닿지 못함 — 판에 '…을 확인하지 못했어요 — �
   await expect(el(page, "3.4")).toHaveCount(0);
 
   plain = true;
+  // 목록을 받기 전에 누르면 고른 파일이 없어 요청이 나가지 않는다 — 맨 위 파일이 골라진 뒤에 누른다
+  await expect(el(page, "4.3")).toHaveAttribute("aria-pressed", "true");
   await el(page, "4.6").click();
   await expect(inDialog(page, "7.1")).toHaveText(
     "파일을 확인하지 못했어요 — 서버에 연결할 수 없음",

@@ -29,6 +29,8 @@
   --c-preview-ink: #EDEAE3;
   --c-overlay: rgba(27, 26, 23, 0.52);
   --c-shadow-color: rgba(27, 26, 23, 0.32);
+  --c-bar-2: #CFE6E1;
+  --c-band-2: #E6E1D6;
 
   /* 3.2 글꼴 — 파일은 layout.tsx의 next/font가 --font-hahmlet 등으로 준다 */
   --font-serif: var(--font-hahmlet), 'Noto Serif KR', serif;
@@ -50,6 +52,7 @@
   --text-14: 14px;
   --text-13: 13px;
   --text-12: 12px;
+  --text-11: 11px;
 
   /* 3.3 간격 · 모서리 · 그림자 */
   --space-2: 2px;
@@ -413,7 +416,7 @@ h1, h2, p { margin: 0; }
 .delete-box.is-gone .delete-box-text { color: var(--c-danger-deepest); }
 
 /* UI-7 내보내기 — 다이얼로그(폭 660, 위 80) */
-.export { display: flex; flex-direction: column; gap: var(--space-20); }
+.export { display: flex; flex-direction: column; gap: var(--space-18); }
 .export-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); }
 .export-method {
   min-height: 84px; padding: var(--space-14) var(--space-16); display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-6);
@@ -425,13 +428,28 @@ h1, h2, p { margin: 0; }
 .export-method-name { display: flex; align-items: center; gap: var(--space-8); font-size: var(--text-16); font-weight: 600; }
 .export-method-path { font-family: var(--font-mono); font-size: var(--text-12); color: var(--c-ink-3); overflow-wrap: anywhere; }
 .export-method-note { font-size: var(--text-13); color: var(--c-ink-3); }
+/* 2.3 함께 저장되는 파일 · 2.4 복사 안내 — 고른 방법에 따라 한쪽만(두 번째 캔버스) */
+.export-files { display: flex; flex-direction: column; gap: var(--space-8); }
+.export-files-label { font-size: var(--text-13); font-weight: 600; color: var(--c-ink-3); }
+.export-files-chips { min-height: 30px; display: flex; flex-wrap: wrap; gap: var(--space-6); }
+.export-file {
+  height: 30px; padding: 0 var(--space-10); display: flex; align-items: center; gap: var(--space-6);
+  border-radius: var(--radius-8); background: var(--c-chip); color: var(--c-ink); font-size: var(--text-13); font-weight: 600;
+}
+.export-file.is-image { background: var(--c-teal-soft); color: var(--c-teal-deep); }
+.export-file-ext { font-family: var(--font-mono); font-size: var(--text-12); font-weight: 500; opacity: 0.75; }
+.export-files-note { font-size: var(--text-13); line-height: 1.55; color: var(--c-ink-3); }
+.export-copy-note {
+  padding: var(--space-12) var(--space-14); display: flex; align-items: flex-start; gap: var(--space-8);
+  border-radius: var(--radius-10); background: var(--c-bg); font-size: var(--text-13); line-height: 1.6; color: var(--c-ink-2);
+}
 .export-chat { min-height: var(--tap); display: flex; align-items: center; gap: var(--space-10); font-size: var(--text-15); cursor: pointer; }
 .export-chat input { width: 18px; height: 18px; margin: 0; accent-color: var(--c-teal); }
 .export-preview { display: flex; flex-direction: column; gap: var(--space-8); }
 .export-preview-label { font-size: var(--text-13); font-weight: 600; color: var(--c-ink-3); }
-/* 앞부분만 — 최대 높이에서 잘리고 스크롤하지 않는다(UI-7 4.1) */
+/* 노트의 앞부분 — 높이 280px, 안에서 스크롤한다(UI-7 4.1, 두 번째 캔버스에서 220px → 280px) */
 .export-preview-box {
-  margin: 0; max-height: 220px; overflow: hidden; padding: var(--space-16) var(--space-18); border-radius: var(--radius-12);
+  margin: 0; height: 280px; overflow: auto; padding: var(--space-16) var(--space-18); border-radius: var(--radius-12);
   background: var(--c-ink); color: var(--c-preview-ink); font-family: var(--font-mono); font-size: var(--text-13); line-height: 1.7; white-space: pre-wrap;
 }
 
@@ -553,6 +571,89 @@ h1, h2, p { margin: 0; }
 .part-count { font-size: var(--text-13); color: var(--c-caption); }
 .part-range { font-size: var(--text-13); color: var(--c-ink-2); }
 .part-body { padding: 0 var(--space-10) var(--space-10); display: flex; flex-direction: column; gap: var(--space-4); }
+/* UI-4 한눈에 보기(12 ~ 14) — 점 26px · 점 줄 30px · 노드 크기 · 줄 높이 · 연결선은 그림 좌표라 간격 목록 밖이다(VA-UI-001 3.3) */
+.timeline { padding: var(--space-20) var(--space-20) var(--space-16); display: flex; flex-direction: column; gap: var(--space-10); border-radius: var(--radius-14); border: 1px solid var(--c-line); background: var(--c-card); }
+/* 칸은 점 · 눈금처럼 시작 시각 자리에 놓는다(left · width는 Glance.tsx) — 틈 2px는 폭에서 뺀다 */
+.timeline-band, .timeline-bars { position: relative; }
+.timeline-band { height: 30px; }
+.timeline-bars { height: var(--tap); }
+.band-cell, .bar-cell {
+  position: absolute; top: 0; bottom: 0; min-width: 0; padding: 0; display: flex; align-items: center; overflow: hidden;
+  border: 0; border-radius: var(--radius-6); font-size: var(--text-12); font-weight: 600; cursor: pointer;
+}
+.cell-label { flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.band-cell { background: var(--c-chip); color: var(--c-ink-2); text-align: left; }
+.band-cell .cell-label, .bar-cell.is-wide .cell-label { padding: 0 var(--space-8); }
+.band-cell.is-alt { background: var(--c-band-2); }
+.band-cell[aria-pressed="true"] { background: var(--c-ink-2); color: var(--c-card); }
+.bar-cell { background: var(--c-teal-soft); color: var(--c-teal-deep); text-align: center; }
+.bar-cell.is-alt { background: var(--c-bar-2); }
+.bar-cell.is-wide { text-align: left; }
+.bar-cell[aria-pressed="true"] { background: var(--c-teal); color: var(--c-card); }
+.timeline-dots { position: relative; }
+.dot {
+  position: absolute; width: 26px; height: 26px; margin-left: -13px; padding: 0; border: 2px solid var(--c-teal); border-radius: var(--radius-round);
+  background: var(--c-card); color: var(--c-teal); font-family: var(--font-mono); font-size: var(--text-11); font-weight: 600; cursor: pointer;
+}
+.dot[aria-pressed="true"] { background: var(--c-teal); color: var(--c-card); }
+.timeline-ticks { position: relative; height: 18px; font-size: var(--text-12); color: var(--c-caption); }
+.timeline-ticks > span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.timeline-ticks > .is-first { transform: none; }
+.timeline-ticks > .is-last { transform: translateX(-100%); }
+.timeline-legend { display: flex; flex-wrap: wrap; gap: var(--space-18); font-size: var(--text-13); color: var(--c-ink-3); }
+.legend-item { display: flex; align-items: center; gap: var(--space-6); }
+.legend-bar { width: 14px; height: 10px; border-radius: var(--radius-3); background: var(--c-bar-2); }
+.legend-dot { width: 12px; height: 12px; border: 2px solid var(--c-teal); border-radius: var(--radius-round); }
+.mindmap { padding: var(--space-24) var(--space-20); border-radius: var(--radius-14); border: 1px solid var(--c-line); background: var(--c-faint); overflow: hidden; }
+.mind-tree { display: flex; align-items: center; }
+.mind-root {
+  width: 150px; flex-shrink: 0; padding: var(--space-14); display: flex; flex-direction: column; gap: var(--space-6);
+  border-radius: var(--radius-14); background: var(--c-ink); color: var(--c-bg);
+}
+.mind-root-label { font-size: var(--text-12); font-weight: 600; color: var(--c-line-strong); }
+.mind-root-text { font-size: var(--text-13); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
+.mind-link { width: 20px; height: 2px; flex-shrink: 0; background: var(--c-line-strong); }
+.mind-link.is-short { width: 14px; }
+.mind-branches { position: relative; flex-grow: 1; min-width: 0; padding-left: 20px; display: flex; flex-direction: column; }
+/* 줄 높이 — 챕터 노드 64px, 파트는 56px 이상(펼치면 챕터마다 48px). 가지를 잇는 세로선은 줄마다 그리고
+   첫 줄은 가운데부터, 마지막 줄은 가운데까지 */
+.mind-row { position: relative; height: 64px; display: flex; align-items: center; gap: var(--space-8); }
+.mind-row.is-part { height: auto; min-height: 56px; gap: 0; }
+.mind-row::before, .mind-leaf-row::before { content: ""; position: absolute; left: -20px; top: 0; bottom: 0; width: 2px; background: var(--c-line-strong); }
+.mind-leaf-row::before { left: -14px; }
+.mind-row:first-child::before, .mind-leaf-row:first-child::before { top: 50%; }
+.mind-row:last-child::before, .mind-leaf-row:last-child::before { bottom: 50%; }
+.mind-stub { position: absolute; left: -20px; top: calc(50% - 1px); width: 20px; height: 2px; background: var(--c-line-strong); }
+.mind-stub.is-leaf { left: -14px; width: 14px; }
+.mind-node {
+  width: 208px; height: 52px; flex-shrink: 0; padding: 0 var(--space-12); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1px;
+  border-radius: var(--radius-10); border: 1px solid var(--c-line); background: var(--c-card); color: var(--c-ink); text-align: left; cursor: pointer;
+}
+.mind-node[aria-pressed="true"], .mind-leaf[aria-pressed="true"] { border: 2px solid var(--c-teal); background: var(--c-teal-soft); }
+.mind-node-time { font-size: var(--text-12); font-weight: 600; color: var(--c-teal); }
+.mind-node-title, .mind-leaf-title, .mind-part-title { max-width: 100%; min-width: 0; font-size: var(--text-14); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mind-tick { width: 12px; height: 2px; flex-shrink: 0; background: var(--c-line); }
+.mind-bullets { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-13); line-height: 1.45; color: var(--c-ink-2); }
+.mind-bullets > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mind-part {
+  width: 180px; min-height: 48px; flex-shrink: 0; padding: var(--space-6) var(--space-10); display: flex; align-items: center; gap: var(--space-8);
+  border-radius: var(--radius-10); border: 1px solid var(--c-line-strong); background: var(--c-chip); color: var(--c-ink); text-align: left; cursor: pointer;
+}
+.mind-part-arrow { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--c-ink-2); }
+.mind-part-arrow .icon { stroke-width: 2.4; }
+.mind-part[aria-expanded="true"] .mind-part-arrow { transform: rotate(90deg); }
+.mind-part-text { min-width: 0; display: flex; flex-direction: column; }
+.mind-part-meta { font-size: var(--text-12); color: var(--c-ink-3); }
+.mind-leaves { position: relative; flex-grow: 1; min-width: 0; padding-left: 14px; display: flex; flex-direction: column; }
+.mind-leaf-row { position: relative; height: 48px; display: flex; align-items: center; }
+.mind-leaf {
+  width: 100%; height: 40px; padding: 0 var(--space-10); display: flex; align-items: center; gap: var(--space-8);
+  border-radius: var(--radius-10); border: 1px solid var(--c-line); background: var(--c-card); color: var(--c-ink); text-align: left; cursor: pointer;
+}
+.mind-leaf-time {
+  height: 22px; flex-shrink: 0; padding: 0 var(--space-6); display: flex; align-items: center;
+  border-radius: var(--radius-6); background: var(--c-teal-soft); color: var(--c-teal); font-size: var(--text-12); font-weight: 600;
+}
 .panel { min-width: 0; border-left: 1px solid var(--c-line); background: var(--c-faint); }
 /* 배너가 떠 있으면 배너 · 헤더 아래에 붙고 그만큼 줄어든다 — 질문 입력 영역이 창 밖으로 밀리지 않게(UI-4 규칙) */
 .panel-inner { position: sticky; top: calc(var(--header-h) + var(--banner-h, 0px)); height: calc(100vh - var(--header-h) - var(--banner-h, 0px)); display: flex; flex-direction: column; }

@@ -22,11 +22,14 @@ from app.core.config import config
 from app.core.errors import ExportFailed, ResultNotReady
 from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
+from app.domains.analysis.export import SCRIPT_SUFFIX
 from app.domains.analysis.models import TranscriptSource
 from app.domains.analysis.ports import SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
+    ExportFile,
+    ExportMethod,
     ExportPreview,
     ExportResult,
     Insight,
@@ -56,8 +59,6 @@ _UNSAFE = re.compile(r'[\\/:*?"<>|\[\]#^\x00-\x1f\x7f]')
 # 이름 뒤에 ` 스크립트.md`(16바이트)가 붙는다 — 노트(`.md`)보다 긴 쪽에 맞춘다(MS-003 v8)
 NAME_MAX = 80
 NAME_BYTES_MAX = 238
-# 노트 곁에 따로 쓰는 스크립트 파일 — `{이름} 스크립트.md`. 노트가 `[[{이름} 스크립트]]`로 가리킨다
-SCRIPT_SUFFIX = " 스크립트"
 # 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
 # config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
 EXPORT_SHOWN = "data/export"
@@ -119,6 +120,14 @@ def _sample(segments: list[Segment], limit: int) -> list[Segment]:
     around = sorted(segments, key=lambda s: abs(s.seq - segments[mid].seq))
     picked = take(segments) + take(around) + take(segments[::-1])
     return sorted({s.seq: s for s in picked}.values(), key=lambda s: s.seq)
+
+
+def _files(name: str) -> list[ExportFile]:
+    # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다
+    return [
+        ExportFile(kind="note", name=f"{name}.md"),
+        ExportFile(kind="script", name=f"{name}{SCRIPT_SUFFIX}.md"),
+    ]
 
 
 def _write(folder: Path, name: str, data: bytes) -> None:
@@ -412,7 +421,13 @@ class AnalysisService:
                 parts.append((title, start))
         parts[0] = (parts[0][0], 0.0)  # 첫 챕터(0초)가 어느 파트에도 안 드는 것을 막는다
         used = {_part_of(parts, start) for start, _, _ in chapters}
-        return [p for i, p in enumerate(parts, 1) if i in used]  # 챕터 없는 파트는 뺀다
+        kept = [p for i, p in enumerate(parts, 1) if i in used]  # 챕터 없는 파트는 뺀다
+        # 파트 시작을 그 파트 첫 챕터의 시작으로(이슈 #14) — 모델이 준 시작은 챕터 경계와 달라
+        # 파트 띠를 누르면 앞 파트의 챕터가 강조됐다. 챕터가 드는 파트는 그대로다
+        firsts: dict[int | None, float] = {}
+        for start, _, _ in chapters:  # 시각순
+            firsts.setdefault(_part_of(kept, start), start)
+        return [(title, firsts[i]) for i, (title, _) in enumerate(kept, 1)]
 
     async def generate_questions(self, video: Video) -> None:
         """VA-MS-003#AnalysisService.generate_questions
@@ -505,28 +520,37 @@ class AnalysisService:
         )
 
     async def export_markdown(
-        self, video: Video, with_chat: bool, turns: list[ChatTurn]
+        self, video: Video, with_chat: bool, turns: list[ChatTurn], method: ExportMethod
     ) -> ExportPreview:
         """VA-MS-003#AnalysisService.export_markdown
 
-        내보낼 노트 전체와 파일 이름 — 미리 보기와 클립보드가 쓴다. 스크립트 줄도 스크립트 파일을
-        가리키는 절도 없다(복사한 노트에는 가리킬 파일이 없다). 결과는 읽기만 한다.
+        고른 방법의 노트 전체와 파일 이름 — 미리 보기와 클립보드가 쓴다. 파일로 저장(`file`)이면
+        저장할 노트와 같고(스크립트 파일 링크 절) 함께 쓸 파일 목록이 온다. 복사(`clipboard`)면
+        그 절도 목록도 없다 — 복사한 노트에는 가리킬 파일이 없다. 스크립트 줄은 어느 쪽에도 없다.
+        결과는 읽기만 한다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
             with_chat: 질문 기록을 맨 끝에 붙일지
             turns: 그 영상의 대화 턴(라우터가 ChatService.history로). with_chat이 거짓이면 안 쓴다
+            method: 내보내기 방법 — file · clipboard
 
         Returns:
-            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 노트 전체
+            파일 이름 · 보일 경로(`data/export/{이름}.md`) · 노트 전체 · 함께 쓸 파일
 
         Raises:
             ResultNotReady: 분석이 끝나지 않았다(result_of)
         """
         result = await self.result_of(video)
         name = self.filename_for(video)
-        md = export.build(result, turns if with_chat else None)
-        return ExportPreview(filename=name, path=f"{EXPORT_SHOWN}/{name}.md", markdown=md)
+        past = turns if with_chat else None
+        if method == ExportMethod.file:
+            md, files = export.build(result, past, name), _files(name)
+        else:
+            md, files = export.build(result, past, None), []
+        return ExportPreview(
+            filename=name, path=f"{EXPORT_SHOWN}/{name}.md", markdown=md, files=files
+        )
 
     async def export_to_file(
         self, video: Video, with_chat: bool, turns: list[ChatTurn]
@@ -544,7 +568,7 @@ class AnalysisService:
             turns: 그 영상의 대화 턴. with_chat이 거짓이면 안 쓴다
 
         Returns:
-            파일 이름 · 노트의 보일 경로 · 쓴 두 파일의 바이트 합
+            파일 이름 · 노트의 보일 경로 · 쓴 파일 전부의 바이트 합 · 쓴 그림 수 · 쓴 파일
 
         Raises:
             ResultNotReady: 분석이 끝나지 않았다
@@ -554,7 +578,7 @@ class AnalysisService:
         result = await self.result_of(video)
         name = self.filename_for(video)
         script = f"{name}{SCRIPT_SUFFIX}"
-        note = export.build(result, turns if with_chat else None, script).encode("utf-8")
+        note = export.build(result, turns if with_chat else None, name).encode("utf-8")
         text = export.build_script(result).encode("utf-8")
         for file, data in ((script, text), (name, note)):
             try:
@@ -563,5 +587,9 @@ class AnalysisService:
                 reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
                 raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}.md", reason=reason) from e
         return ExportResult(
-            filename=name, path=f"{EXPORT_SHOWN}/{name}.md", bytes=len(note) + len(text)
+            filename=name,
+            path=f"{EXPORT_SHOWN}/{name}.md",
+            bytes=len(note) + len(text),
+            images=0,
+            files=_files(name),
         )

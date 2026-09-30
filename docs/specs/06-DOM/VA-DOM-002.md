@@ -97,7 +97,7 @@ app/
 │   │   └── adapters/       youtube_info.py (infra/ytdlp) · media_probe.py (infra/ffmpeg)
 │   ├── job/                작업 — 시작 · 진행 · 재시도 · 조각
 │   │   ├── router.py       /api/videos/{id}/job · …/job/retry
-│   │   ├── schemas.py      Job · JobSummary · Chunks · Chunk · JobError · Estimate
+│   │   ├── schemas.py      Job · JobSummary · Chunks · Chunk · JobError · Estimate · FrameProgress · FrameProgressItem
 │   │   ├── service.py      JobService
 │   │   ├── pipeline.py     단계 순서와 재개, 대기열 워커. 함수 모듈 (4.2)
 │   │   ├── crud.py
@@ -108,7 +108,7 @@ app/
 │   │   ├── router.py       /api/videos/{id}/result · …/frames (GET · POST) · …/frames/{seq} · …/infographic (GET · POST) ·
 │   │   │                   …/infographic/image · …/export (GET · POST)
 │   │   ├── schemas.py      Result · Transcript · Segment · Summary · Insight · Part · Chapter · SuggestedQuestion ·
-│   │   │                   Frame · FrameSet · FrameProgress · FrameProgressItem · Infographic · InfographicImage ·
+│   │   │                   Frame · FrameSet · Infographic · InfographicImage ·
 │   │   │                   ExportRequest · ExportPreview · ExportResult · ExportFile
 │   │   ├── service.py      AnalysisService. 뒤 일(장면 채우기 · 인포그래픽 그리기) 태스크의 핸들도 여기 (4.3)
 │   │   ├── crud.py
@@ -213,6 +213,7 @@ frontend/
 - 다이얼로그 다섯(UI-2 · UI-6 · UI-7 · UI-8 · UI-9)은 주소가 없어 `app/`에 경로가 없고, 여는 화면이 `screens/`의 파일을 부른다.
 - **`screens/result/`가 있다.** 화면 하나 = 파일 하나인데, UI-4는 한눈에 보기(막대 · 파트 띠 · 점 · 마인드맵)와 인포그래픽 카드를 더하면 한 파일이 1,300줄을 넘는다(지금 약 780줄). 화면은 여전히 `Result.tsx` 하나이고 고른 시각 · 강조한 챕터 같은 상태도 거기 있다. `result/`는 그것을 받아 그리기만 하는 UI-4 전용 부분이다 — 두 화면이 쓰게 되면 `components/`로 간다.
 - **화면이 아닌 라우트가 하나 있다 — `app/api/uploads/route.ts`.** 다른 `/api/*`는 넘기기(rewrites)가 api로 보내는데, 그 앞의 Host 확인(proxy)이 도는 요청은 Next가 본문을 메모리에 쌓고 10MB에서 자른다. 그래서 올리기 한 경로만 proxy에서 빼고 이 라우트 핸들러가 받는다 — 같은 Host 판정(`host.ts`)을 한 뒤 본문을 스트림 그대로 넘기고 응답을 그대로 돌려준다([[VA-INFRA-001#C4]]). 판단은 없다. Next는 파일 경로의 라우트를 넘기기보다 먼저 찾으므로 이 경로만 여기로 온다.
+- **장면 칸(`FrameProgress` · `FrameProgressItem`)은 `job/schemas.py`에 있다.** 작업 폴링 응답(`Job.frames`)의 일부다. 만드는 쪽은 `AnalysisService.frame_progress`지만 결과 스키마에 두면 `analysis/schemas.py`(결과가 `Video`를 품는다) → `video/schemas.py`(영상이 작업 요약을 품는다) → `job/schemas.py` → `analysis/schemas.py`로 import가 한 바퀴 돈다(카드 D2에서 찾았다). 결과 묶음은 이 타입만 가져오고 작업 서비스를 부르지 않는다 — 서비스 호출 방향(3.2)은 그대로다
 - 빌드 결과는 web 컨테이너에 남는다(standalone 출력). 백엔드는 JSON과 장면 · 인포그래픽 그림만 내고 화면의 정적 파일을 서빙하지 않는다([[VA-INFRA-001#C10]]).
 
 ---

@@ -20,7 +20,13 @@ from app.domains.analysis.models import (
     TranscriptRow,
     TranscriptSource,
 )
-from app.domains.analysis.schemas import CaptionLine, ChapterDraft, Segment, SummaryDraft
+from app.domains.analysis.schemas import (
+    CaptionLine,
+    ChapterDraft,
+    ExportMethod,
+    Segment,
+    SummaryDraft,
+)
 from app.domains.analysis.service import SCRIPT_SUFFIX, AnalysisService
 from app.domains.chat.schemas import ChatTurn
 from app.domains.job.models import JobStatus
@@ -278,9 +284,31 @@ async def test_generate_chapters_150_minutes_model_parts(db, make, summarizer, e
     )
     await AnalysisService(db, summarizer).generate_chapters(video)
     parts, chapters = await _parts_and_chapters(db, summarizer, video.id)
-    # 시각순 · 첫 파트 0초로 당김 · 챕터가 없는 파트(8900초)는 빠진다
-    assert parts == [(1, "오전 1", 0), (2, "오전 2", 2400), (3, "오후", 5400)]
+    # 시각순 · 첫 파트 0초로 당김 · 챕터가 없는 파트(8900초)는 빠진다 · 파트 시작은 그 파트 첫 챕터의
+    # 시작(2400 → 2500, 5400 → 6000 — 이슈 #14). 챕터가 드는 파트는 그대로다
+    assert parts == [(1, "오전 1", 0), (2, "오전 2", 2500), (3, "오후", 6000)]
     assert chapters == [(1, 0), (1, 1200), (2, 2500), (2, 3600), (3, 6000)]
+
+
+async def test_generate_chapters_part_start_is_its_first_chapter(
+    db, make, summarizer, env_file
+) -> None:
+    # 모델이 둘째 파트를 1:15:00에 두고 챕터가 1:14:30 · 1:16:30이면 — 1:14:30은 첫 파트에 남고
+    # 둘째 파트는 1:16:30에서 시작한다(이슈 #14)
+    video = await _video(db, make, duration_sec=9000)
+    await make.transcript(video.id, ["x"] * 90, step=100)
+    summarizer.chapter_draft = ChapterDraft(
+        parts=[("앞", 0.0), ("뒤", 4500.0)],
+        chapters=[
+            (1, 0.0, "시작", ["a", "b"]),
+            (1, 4470.0, "앞의 끝", ["a", "b"]),
+            (2, 4590.0, "뒤의 처음", ["a", "b"]),
+        ],
+    )
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    parts, chapters = await _parts_and_chapters(db, summarizer, video.id)
+    assert parts == [(1, "앞", 0), (2, "뒤", 4590)]
+    assert chapters == [(1, 0), (1, 4470), (2, 4590)]
 
 
 async def test_generate_chapters_one_model_part_groups_by_hour(
@@ -467,23 +495,34 @@ async def test_export_markdown(db, make, summarizer, youtube, env_file) -> None:
     svc = AnalysisService(db)  # 읽기만 — 요약 포트 없이
     at = video.analyzed_at
     turns = [ChatTurn(id=1, question="왜?", answer="그래서.", cited_secs=[], asked_at=at)]
-    pre = await svc.export_markdown(video, False, turns)
+    pre = await svc.export_markdown(video, False, turns, ExportMethod.file)
     assert (pre.filename, pre.path) == (
         "RAG 서비스 1년 운영기",
         "data/export/RAG 서비스 1년 운영기.md",  # 보일 경로 — 컨테이너 안 경로가 아니다
     )
     assert pre.markdown.startswith("# RAG 서비스 1년 운영기\n원본: [https://")
     assert "## 질문 기록" not in pre.markdown  # with_chat이 거짓이면 턴을 받아도 없다
-    empty = await svc.export_markdown(video, True, [])
+    # 파일로 저장 — 저장할 노트와 같다(스크립트 파일 링크) · 함께 쓸 파일은 노트 · 스크립트
+    assert pre.markdown.endswith("## 스크립트\n[[RAG 서비스 1년 운영기 스크립트]]\n")
+    assert pre.markdown == export.build(await svc.result_of(video), None, pre.filename)
+    assert [(f.kind, f.name) for f in pre.files] == [
+        ("note", "RAG 서비스 1년 운영기.md"),
+        ("script", "RAG 서비스 1년 운영기 스크립트.md"),
+    ]
+    # 복사 — 가리킬 파일이 없어 스크립트 절도 파일 목록도 없다. 한눈에 보기는 들어간다
+    copy = await svc.export_markdown(video, False, turns, ExportMethod.clipboard)
+    assert "## 스크립트" not in copy.markdown and copy.files == []
+    assert "## 한눈에 보기\n```mermaid\ngantt" in copy.markdown
+    empty = await svc.export_markdown(video, True, [], ExportMethod.clipboard)
     assert empty.markdown.endswith("## 질문 기록\n질문 기록이 없습니다\n")
-    chat = await svc.export_markdown(video, True, turns)
+    chat = await svc.export_markdown(video, True, turns, ExportMethod.clipboard)
     assert chat.markdown.endswith("## 질문 기록\n**Q.** 왜?\n**A.** 그래서.\n")
 
 
 async def test_export_markdown_needs_result(db, make) -> None:
     video = await _video(db, make, JobStatus.running)
     with pytest.raises(ResultNotReady):
-        await AnalysisService(db).export_markdown(video, False, [])
+        await AnalysisService(db).export_markdown(video, False, [], ExportMethod.file)
 
 
 async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path, monkeypatch):
@@ -496,15 +535,18 @@ async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path,
     note = folder / "RAG 서비스 1년 운영기.md"
     script = folder / "RAG 서비스 1년 운영기 스크립트.md"
     # 노트는 스크립트 파일을 가리키는 절이 붙고, 스크립트는 따로(MS-003 v8)
-    assert note.read_text(encoding="utf-8") == export.build(
-        result, None, "RAG 서비스 1년 운영기 스크립트"
-    )
+    assert note.read_text(encoding="utf-8") == export.build(result, None, "RAG 서비스 1년 운영기")
     assert script.read_text(encoding="utf-8") == export.build_script(result)
     assert (done.filename, done.path, done.bytes) == (
         "RAG 서비스 1년 운영기",
         "data/export/RAG 서비스 1년 운영기.md",
         note.stat().st_size + script.stat().st_size,  # 두 파일 합
     )
+    # 쓴 파일 — 미리 보기(file)의 files와 같은 목록이고 실제로 쓴 파일과 같다. 그림은 장면 ·
+    # 인포그래픽 카드(D2 · D3)부터
+    assert done.images == 0
+    assert done.files == (await svc.export_markdown(video, False, [], ExportMethod.file)).files
+    assert sorted(f.name for f in done.files) == sorted(p.name for p in folder.iterdir())
     for f in (note, script):
         assert oct(f.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
     await svc.export_to_file(video, True, [])  # 두 번 저장하면 둘 다 덮어쓴다
