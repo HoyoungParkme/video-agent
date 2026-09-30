@@ -1,6 +1,6 @@
 """결과 묶음의 응답 형태(VA-API-001 4장)와 내부 타입(VA-DOM-002 2.6).
 
-내부 타입 — CaptionLine · SummaryDraft · ChapterDraft. 포트와 서비스 사이에서만 오간다.
+내부 타입 — CaptionLine · SummaryDraft · ChapterDraft · FrameShot. 포트와 서비스 사이에서만 오간다.
 """
 
 from __future__ import annotations
@@ -150,3 +150,21 @@ class ChapterDraft:
 
     parts: list[tuple[str, float]]
     chapters: list[tuple[int | None, float, str, list[str]]]
+
+
+class FrameSource(StrEnum):
+    """장면을 어디서 얻었나 — YouTube 스토리보드 칸 · 로컬 원본 프레임(VA-API-001 FrameSource)."""
+
+    storyboard = "storyboard"
+    local_frame = "local_frame"
+
+
+@dataclass(frozen=True)
+class FrameShot:
+    """얻은 장면 한 장 — 실제 칸의 시각(챕터 시작과 몇 초 다를 수 있다) · 크기 · 임시 파일 경로."""
+
+    sec: float
+    source: FrameSource
+    width: int
+    height: int
+    path: str

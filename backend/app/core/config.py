@@ -117,6 +117,9 @@ class Config(BaseSettings):
     LLM_RETRY: int = 1
     NOT_COVERED_TEXT: str = "이 영상에서는 다루지 않습니다."
     QUESTION_COUNT: int = 3
+    # 장면 — 스토리보드 가운데 가장 큰 칸(1080p 영상 320×180) · 로컬 프레임 폭(높이는 비율대로)
+    STORYBOARD_FORMAT: str = "sb0"
+    FRAME_WIDTH: int = 640
 
     # infra — MS-007
     PROC_TIMEOUT_SEC: float = 1800
