@@ -138,5 +138,10 @@ class Config(BaseSettings):
         """내보낸 마크다운을 쓰는 곳 — data 폴더 안 export/(MS-003)."""
         return f"{self.DATA_DIR}/export"
 
+    @property
+    def UPLOAD_DIR(self) -> str:
+        """브라우저로 올린 사본의 자리 — data 폴더 안 uploads/(MS-001, INFRA C4)."""
+        return f"{self.DATA_DIR}/uploads"
+
 
 config = Config()
