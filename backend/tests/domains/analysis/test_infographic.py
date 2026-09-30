@@ -11,6 +11,7 @@ import pytest
 from app.core.config import ImageQuality, config
 from app.core.db import SessionLocal
 from app.core.errors import (
+    ExportFailed,
     InfographicBusy,
     KeyMissing,
     LlmUnavailable,
@@ -335,3 +336,34 @@ async def test_export_file_lists_infographic_last(db, make, env_file, data_dir) 
     assert "![[RAG 서비스 1년 운영기 인포그래픽.png]]" in got.markdown
     copied = await svc.export_markdown(video, False, [], ExportMethod.clipboard)
     assert copied.files == [] and "인포그래픽" not in copied.markdown
+
+
+async def test_export_to_file_copies_infographic(db, make, env_file, data_dir) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.done, **_picture(data_dir, video.id))
+    got = await AnalysisService(db).export_to_file(video, False, [])
+    folder = data_dir / "export"
+    name = "RAG 서비스 1년 운영기"
+    assert (folder / f"{name} 인포그래픽.png").read_bytes() == b"png"
+    assert got.images == 1
+    assert sorted(f.name for f in got.files) == sorted(p.name for p in folder.iterdir())
+    assert f"![[{name} 인포그래픽.png]]" in (folder / f"{name}.md").read_text(encoding="utf-8")
+
+
+async def test_export_infographic_gone_meanwhile_is_export_failed(
+    db, make, env_file, data_dir, monkeypatch
+) -> None:
+    video = await _analyzed(db, make)
+    await _row(db, video.id, InfographicState.done, **_picture(data_dir, video.id))
+    svc = AnalysisService(db)
+
+    async def gone(video_id: int) -> str:
+        raise NotFound(resource="infographic", id=video_id)
+
+    monkeypatch.setattr(svc, "infographic_file", gone)
+    with pytest.raises(ExportFailed) as e:
+        await svc.export_to_file(video, False, [])
+    assert e.value.extra == {
+        "path": "data/export/RAG 서비스 1년 운영기 인포그래픽.png",
+        "reason": "그림 파일을 찾을 수 없음",
+    }

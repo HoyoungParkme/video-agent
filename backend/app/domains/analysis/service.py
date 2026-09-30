@@ -10,11 +10,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import errno
+import functools
 import logging
 import os
 import re
 import tempfile
 import unicodedata
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar
@@ -1067,10 +1069,10 @@ class AnalysisService:
     ) -> ExportResult:
         """VA-MS-003#AnalysisService.export_to_file
 
-        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓰고, 장면이 있는 챕터의 그림을 곁에
-        복사한다 — 화면이 보낸 본문을 쓰지 않고 다시 만든다. 노트는 장면 그림 줄과 스크립트 파일을
-        가리키는 절(`[[{이름} 스크립트]]`)을 갖는다. 스크립트를 먼저 써 노트의 링크가 헛돌지 않게
-        한다. 같은 이름이 있으면 모두 덮어쓰고, 폴더가 없으면 만든다.
+        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓰고, 장면이 있는 챕터의 그림과
+        인포그래픽 그림을 곁에 복사한다 — 화면이 보낸 본문을 쓰지 않고 다시 만든다. 노트는 그림
+        줄과 스크립트 파일을 가리키는 절(`[[{이름} 스크립트]]`)을 갖는다. 스크립트를 먼저 써
+        노트의 링크가 헛돌지 않게 한다. 같은 이름이 있으면 모두 덮어쓰고, 폴더가 없으면 만든다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
@@ -1093,21 +1095,22 @@ class AnalysisService:
         written = [(f"{script}.md", text), (f"{name}.md", note)]
         for file, data in written:
             await self._write_export(file, data)
-        images = 0
-        for c in result.chapters:  # 장면이 있는 챕터의 그림을 노트의 그림 줄이 가리키는 이름으로
-            if c.frame is None:
-                continue
-            file = export.frame_name(name, c.start_sec, video.duration_sec)
-            try:
-                src = await self.frame_file(video.id, c.seq)
-                data = await asyncio.to_thread(Path(src).read_bytes)
-            except (NotFound, OSError) as e:  # 결과를 읽은 뒤 다시 채우기 · 지우기로 없어졌다
-                raise ExportFailed(
-                    path=f"{EXPORT_SHOWN}/{file}", reason="그림 파일을 찾을 수 없음"
-                ) from e
-            await self._write_export(file, data)
-            written.append(("", data))
-            images += 1
+        # 그림은 노트의 그림 줄이 가리키는 이름으로 — 장면이 있는 챕터마다, 인포그래픽이 있으면 그것
+        pictures = [
+            (
+                export.frame_name(name, c.start_sec, video.duration_sec),
+                functools.partial(self.frame_file, video.id, c.seq),
+            )
+            for c in result.chapters
+            if c.frame is not None
+        ]
+        if result.infographic.image:
+            pictures.append(
+                (export.infographic_name(name), functools.partial(self.infographic_file, video.id))
+            )
+        for file, source in pictures:
+            written.append(("", await self._export_picture(file, source)))
+        images = len(pictures)
         return ExportResult(
             filename=name,
             path=f"{EXPORT_SHOWN}/{name}.md",
@@ -1115,6 +1118,18 @@ class AnalysisService:
             images=images,
             files=_files(result, name),
         )
+
+    async def _export_picture(self, file: str, source: Callable[[], Awaitable[str]]) -> bytes:
+        """그림 한 장을 노트 곁에 쓴다. 결과를 읽은 뒤 다시 채우기 · 다시 그리기 · 지우기로
+        그림이 없어졌으면 export-failed('그림 파일을 찾을 수 없음') — 없음(404)이 아니라 저장
+        실패로 알린다."""
+        try:
+            data = await asyncio.to_thread(Path(await source()).read_bytes)
+        except (NotFound, OSError) as e:
+            reason = "그림 파일을 찾을 수 없음"
+            raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}", reason=reason) from e
+        await self._write_export(file, data)
+        return data
 
     async def _write_export(self, file: str, data: bytes) -> None:
         """내보낼 파일 하나를 EXPORT_DIR에 쓴다. 실패는 보일 경로와 errno로 고른 이유로."""
