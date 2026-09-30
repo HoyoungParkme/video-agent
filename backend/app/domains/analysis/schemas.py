@@ -99,6 +99,22 @@ class FrameSet(BaseModel):
     frames: list[Frame]
 
 
+class FrameProgressItem(BaseModel):
+    """진행 화면(UI-3)의 장면 칸 하나. missing = 얻지 못함(장면 없이 넘어감)."""
+
+    chapter_seq: int
+    state: Literal["waiting", "in_flight", "done", "missing"]
+    url: str | None
+
+
+class FrameProgress(BaseModel):
+    """장면 단계의 칸들 — done / total이 '{n} / {m}'."""
+
+    done: int
+    total: int
+    items: list[FrameProgressItem]
+
+
 class FramesState(StrEnum):
     """결과의 장면 상태 — absent: 장면 단계 전 결과(채울 수 있다) · making: 만드는 중 · done: 끝남 ·
     unavailable: 음성 파일 · 원본 없음(VA-API-001 FramesState)."""

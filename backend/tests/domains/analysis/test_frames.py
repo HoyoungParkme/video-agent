@@ -268,3 +268,44 @@ async def test_frames_of_while_analyzing_is_not_ready(db, make) -> None:
     video = VideoService.to_dto(row, await JobService(db).latest(row.id), 0)
     with pytest.raises(ResultNotReady):
         await AnalysisService(db).frames_of(video)
+
+
+# --- frame_progress
+
+
+async def _four_with_two_rows(db, make):
+    row = await make.video()
+    await make.job(row.id, JobStatus.running)
+    await make.chapters(row.id, [(i * 600.0, f"챕터 {i}", []) for i in range(4)])
+    first, second, *_ = await crud.chapter_rows(db, row.id)
+    await crud.add_frame(db, first.id, 1.0, FrameSource.storyboard, 320, 180, "/d/1.jpg")
+    await crud.add_frame(db, second.id)  # 얻지 못함
+    await db.commit()
+    return row.id
+
+
+async def test_progress_cells_while_running(db, make, queries) -> None:
+    video_id = await _four_with_two_rows(db, make)
+    AnalysisService._making.add(video_id)
+    queries.clear()
+    got = await AnalysisService(db).frame_progress(video_id)
+    assert [(i.state, i.url) for i in got.items] == [
+        ("done", f"/api/videos/{video_id}/frames/1"),
+        ("missing", None),
+        ("in_flight", None),
+        ("waiting", None),
+    ]
+    assert (got.done, got.total) == (1, 4)
+    assert len(queries) == 2
+
+
+async def test_progress_not_running_has_no_in_flight(db, make) -> None:
+    video_id = await _four_with_two_rows(db, make)
+    got = await AnalysisService(db).frame_progress(video_id)
+    assert [i.state for i in got.items] == ["done", "missing", "waiting", "waiting"]
+
+
+async def test_progress_without_chapters_is_zero(db, make) -> None:
+    row = await make.video()
+    got = await AnalysisService(db).frame_progress(row.id)
+    assert (got.done, got.total, got.items) == (0, 0, [])

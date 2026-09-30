@@ -35,6 +35,8 @@ from app.domains.analysis.schemas import (
     ExportPreview,
     ExportResult,
     Frame,
+    FrameProgress,
+    FrameProgressItem,
     FrameSet,
     FramesState,
     Insight,
@@ -464,6 +466,37 @@ class AnalysisService:
             state=self.frames_state(video, chapters, frames),
             frames=_frame_list(video.id, chapters, frames),
         )
+
+    async def frame_progress(self, video_id: int) -> FrameProgress:
+        """VA-MS-003#AnalysisService.frame_progress
+
+        진행 화면의 장면 칸 — 1초 폴링이라 쿼리 둘. 챕터마다 그림이 있으면 done, 그림 없는 행이면
+        missing, 행이 없으면 도는 중인 첫 칸만 in_flight이고 나머지는 waiting. 챕터가 아직
+        없으면(받아쓰기 중) 0 / 0 — 싣는지는 JobService.progress가 단계 목록을 보고 정한다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            받은 장면 수 · 챕터 수 · 칸들
+        """
+        chapters = await crud.chapter_rows(self.session, video_id)
+        by_chapter = {f.chapter_id: f for f in await crud.frames(self.session, video_id)}
+        running = video_id in AnalysisService._making
+        items: list[FrameProgressItem] = []
+        for c in chapters:
+            f = by_chapter.get(c.id)
+            if f is not None and f.path is not None:
+                url = f"/api/videos/{video_id}/frames/{c.seq}"
+                items.append(FrameProgressItem(chapter_seq=c.seq, state="done", url=url))
+            elif f is not None:
+                items.append(FrameProgressItem(chapter_seq=c.seq, state="missing", url=None))
+            else:
+                first = running and all(i.state != "in_flight" for i in items)
+                state = "in_flight" if first else "waiting"
+                items.append(FrameProgressItem(chapter_seq=c.seq, state=state, url=None))
+        done = sum(1 for i in items if i.state == "done")
+        return FrameProgress(done=done, total=len(chapters), items=items)
 
     async def save_transcript(
         self,
