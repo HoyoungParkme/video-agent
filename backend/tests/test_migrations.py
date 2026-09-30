@@ -266,7 +266,7 @@ NO_PICTURE = dict.fromkeys(PICTURE)
 
 async def test_infographic_checks(conn: AsyncConnection) -> None:
     """그림은 모두 있거나 모두 없다 · done이면 그림이 있다 · failed일 때만 이유가 있다(DOM-003 3장)."""
-    first, again, fail, bad = [await _insert_video(conn, f"vid{i:08d}") for i in range(4)]
+    first, again, fail, bad = [await _insert_video(conn, c * 11) for c in "efgh"]
     await conn.execute(text(INFOGRAPHIC_SQL), {"v": first, "st": "making", "e": None, **NO_PICTURE})
     # 다시 그리는 중 · 다시 그리기가 실패한 뒤에도 이전 그림이 그대로 있다
     await conn.execute(text(INFOGRAPHIC_SQL), {"v": again, "st": "making", "e": None, **PICTURE})
