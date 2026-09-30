@@ -8,25 +8,34 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import hashlib
 import os
 import re
 import shutil
+import unicodedata
+import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, BinaryIO
 from urllib.parse import parse_qs, urlsplit
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import ClientDisconnect
 
 from app.core.config import config
 from app.core.errors import (
     Internal,
     NoAudioTrack,
+    NoSpace,
     NotFound,
     PathOutsideInbox,
     UnsupportedFile,
+    UploadIncomplete,
     UrlInvalid,
+    Validation,
     VideoTooLong,
 )
 from app.core.settings import settings
@@ -52,6 +61,8 @@ from app.shared import sources
 
 ACCEPTED_URLS = ["watch", "youtu.be", "shorts"]
 _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+NAME_MAX = 300  # 올린 파일 이름 — 제목 칸(videos.title varchar(300))에 그대로 들어간다
 
 
 def _youtube_id(url: str) -> str | None:
@@ -95,6 +106,53 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _append(f: BinaryIO, sha: Any, block: bytes) -> None:
+    # 받은 조각 묶음 — 해시와 쓰기를 스레드에서(수 GB도 이벤트 루프를 막지 않게)
+    sha.update(block)
+    f.write(block)
+
+
+def _no_space(size: int, free: int) -> NoSpace:
+    return NoSpace(needed_bytes=size + config.UPLOAD_SPARE_BYTES, free_bytes=free)
+
+
+async def _free(folder: Path) -> int:
+    return (await asyncio.to_thread(shutil.disk_usage, folder)).free
+
+
+async def _receive(part: Path, size: int, body: AsyncIterator[bytes]) -> str:
+    # 본문을 part에 쓰며 SHA-256(inbox 등록과 같은 해시). Content-Length보다 많이 오면 거기서 멈춘다
+    sha = hashlib.sha256()
+    got = 0
+    buf = bytearray()
+    f = await asyncio.to_thread(part.open, "wb")
+    try:
+        async for chunk in body:
+            got += len(chunk)
+            if got > size:
+                break
+            buf += chunk
+            if len(buf) >= config.UPLOAD_WRITE_BYTES:
+                await asyncio.to_thread(_append, f, sha, bytes(buf))
+                buf.clear()
+        if buf:
+            await asyncio.to_thread(_append, f, sha, bytes(buf))
+        await asyncio.to_thread(f.close)  # 남은 버퍼를 내보낸다 — 디스크가 차면 여기서도 난다
+    except ClientDisconnect as e:  # 올리다 끊겼다 — 응답은 닿지 않는다
+        raise UploadIncomplete(received_bytes=got, expected_bytes=size) from e
+    except OSError as e:
+        if e.errno == errno.ENOSPC:
+            raise _no_space(size, await _free(part.parent)) from e
+        raise
+    finally:
+        if not f.closed:
+            with contextlib.suppress(OSError):
+                await asyncio.to_thread(f.close)
+    if got != size:
+        raise UploadIncomplete(received_bytes=got, expected_bytes=size)
+    return sha.hexdigest()
+
+
 def _check_inbox_name(name: str) -> None:
     # inbox 바로 아래 파일 이름만 — 하위 폴더 · 절대 경로 · 숨김 · ..는 막는다
     if "/" in name or "\\" in name or name.startswith(".") or ".." in name:
@@ -116,6 +174,7 @@ class VideoService:
 
     - list_inbox(): inbox 파일 목록(길이까지)
     - register(): 키 확인 → 형식 → 정보 → 길이 상한 → 중복 → 생성 또는 덮어쓰기
+    - upload(): 키 → 이름 · 형식 → 디스크 → 받으며 해시 → 판정 → 중복 → 사본(원본 자리)
     - list() · get(): 작업이 있는 영상 목록(최근 순) · 영상 하나와 최근 작업
     - delete(): 영상과 딸린 것 전부 — 행은 cascade, 임시 폴더는 커밋 뒤
     - info_of() · to_dto(): 출처별 정보 조회 · 행 → Video
@@ -314,6 +373,84 @@ class VideoService:
         else:
             row = await self._insert(info)
             job = await self.jobs.latest(row.id)
+        count = (await self.chats.count_by_videos([row.id])).get(row.id, 0)
+        return self.to_dto(row, job, count)
+
+    async def upload(self, name: str, size: int, body: AsyncIterator[bytes]) -> Video:
+        """VA-MS-001#VideoService.upload
+
+        브라우저가 올린 파일 하나를 등록한다 — 사전 안내 전까지. 키 · 이름 · 디스크는 본문을 읽기
+        전에 본다(큰 파일을 다 받은 뒤 멈추지 않게). 본문은 data/uploads/.part-*에 쓰며 SHA-256을
+        재고, 로컬 판정(inbox 등록과 같은 _probed)을 지나면 같은 영상을 찾는다. 작업이 있는 영상이면
+        그것을 돌려주고 사본은 두지 않는다. 없으면 사본을 {sha}{확장자}로 옮겨 원본 자리로 삼는다
+        (작업이 없던 영상이면 올린 정보로 덮어쓴다). 옮기지 못한 채 끝나는 모든 길에서 .part를
+        지운다.
+
+        Args:
+            name: 원래 파일 이름 — 라우터가 X-File-Name의 퍼센트 인코딩을 푼 것. 제목 · origin에만
+                쓰고 사본 이름은 해시다
+            size: Content-Length
+            body: 본문 조각(request.stream())
+
+        Returns:
+            영상. 새로 · 덮어쓰기면 registered, 작업이 있는 영상이면 그 작업을 따른다
+
+        Raises:
+            KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다 — 본문을 읽지 않는다
+            Validation: 이름이 비었거나 이상하다 · 크기가 없다
+            UnsupportedFile: 받지 않는 확장자(본문을 읽지 않는다) · 열 수 없는 파일
+            NoSpace: 디스크 여유가 크기 + 여유분보다 작다 · 받다가 찼다
+            UploadIncomplete: 받은 크기가 Content-Length와 다르다 · 연결이 끊겼다
+            NoAudioTrack · VideoTooLong: 음성 트랙이 없다 · 3시간을 넘는다
+        """
+        await settings.check_stored_key()  # 큰 파일을 다 받은 뒤 키 때문에 멈추지 않게 먼저
+        await settings.require_key()
+        name = unicodedata.normalize("NFC", name).strip()
+        if not name or _CONTROL.search(name) or len(name) > NAME_MAX:
+            message = f"파일 이름이 비었거나 제어 문자가 있거나 {NAME_MAX}자를 넘어요"
+            raise Validation(errors=[{"field": "X-File-Name", "message": message}])
+        if size <= 0:
+            raise Validation(errors=[{"field": "Content-Length", "message": "크기가 없어요"}])
+        if _ext(name) not in accepted():
+            raise UnsupportedFile(reason="받지 않는 형식이에요", accepted=accepted())
+        folder = Path(config.UPLOAD_DIR)
+        await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
+        free = await _free(folder)
+        if free < size + config.UPLOAD_SPARE_BYTES:
+            raise _no_space(size, free)
+        # 확장자를 붙여 두면 ffprobe가 형식을 덜 헤맨다
+        part = folder / f".part-{uuid.uuid4().hex}{Path(name).suffix.lower()}"
+        moved = False
+        try:
+            sha = await _receive(part, size, body)
+            info = SourceInfo(
+                source_kind=SourceKind.local,
+                source_id=sha,
+                title=name,
+                channel=None,
+                duration_sec=await self._probed(str(part)),
+                origin=name,
+                uploaded=True,
+                has_captions=False,
+                caption_language=None,
+                caption_kind=None,
+            )
+            row = await crud.by_source_id(self.session, sha)
+            job = await self.jobs.latest(row.id) if row is not None else None
+            if job is None:  # 새 영상이거나 작업이 없던 영상 — 이 사본이 원본 자리다
+                copy = sources.local_path(name, sha, True)
+                await asyncio.to_thread(os.replace, part, copy)
+                moved = True
+                if row is not None:  # 사전 안내에서 멈췄던 영상 — 올린 정보로 덮어쓴다
+                    crud.overwrite(row, info)
+                    await self.session.commit()
+                else:
+                    row = await self._insert(info)
+                    job = await self.jobs.latest(row.id)
+            # 작업이 있는 영상이면 그 영상 그대로 — 행 · 그 원본은 건드리지 않는다
+        finally:
+            if not moved:
+                await asyncio.to_thread(part.unlink, missing_ok=True)
         count = (await self.chats.count_by_videos([row.id])).get(row.id, 0)
         return self.to_dto(row, job, count)
 

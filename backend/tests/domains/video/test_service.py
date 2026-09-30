@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import errno
 import hashlib
 import os
+from collections import namedtuple
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select, text
+from starlette.requests import ClientDisconnect
 
 from app.core.config import config
 from app.core.db import SessionLocal
@@ -18,11 +21,14 @@ from app.core.errors import (
     Internal,
     KeyMissing,
     NoAudioTrack,
+    NoSpace,
     NotFound,
     PathOutsideInbox,
     SourceUnavailable,
     UnsupportedFile,
+    UploadIncomplete,
     UrlInvalid,
+    Validation,
     VideoTooLong,
 )
 from app.domains.analysis import crud as analysis_crud
@@ -35,6 +41,7 @@ from app.domains.video.schemas import LocalSource, YouTubeSource
 from app.domains.video.service import VideoService
 
 APP = Path(__file__).resolve().parents[3] / "app"
+shutil_usage = namedtuple("shutil_usage", "total used free", defaults=(0, 0, 0))
 WATCH = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 T0 = datetime(2026, 9, 23, 3, 0, tzinfo=UTC)
 
@@ -465,6 +472,178 @@ async def test_register_twice_at_once_makes_one_row(db, youtube, key, probe) -> 
     ids = await asyncio.gather(one(), one())
     assert ids[0] == ids[1]
     assert await _count(db) == 1
+
+
+# --- upload
+
+
+class Body:
+    """request.stream() 자리 — 조각을 차례로 주고 읽힌 조각 수를 센다. error면 조각 뒤에 던진다."""
+
+    def __init__(self, *chunks: bytes, error: BaseException | None = None) -> None:
+        self.chunks, self.error, self.read = chunks, error, 0
+
+    def __aiter__(self):
+        return self._gen()
+
+    async def _gen(self):
+        for chunk in self.chunks:
+            self.read += 1
+            yield chunk
+        if self.error is not None:
+            raise self.error
+
+
+@pytest.fixture
+def uploads(tmp_path, monkeypatch) -> Path:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path / "inbox"))
+    return tmp_path / "data" / "uploads"
+
+
+def _left(folder: Path) -> list[str]:
+    return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
+
+
+async def test_upload_new(db, youtube, probe, key, uploads, monkeypatch) -> None:
+    monkeypatch.setattr(config, "UPLOAD_WRITE_BYTES", 4)  # 조각을 모아 여러 번 쓴다
+    body = Body(b"rec", b"ord", b"ing")
+    video = await VideoService(db, youtube, probe).upload("Talk.MOV", 9, body)
+    sha = hashlib.sha256(b"recording").hexdigest()
+    assert (video.source_kind, video.source_id, video.uploaded) == ("local", sha, True)
+    assert (video.title, video.origin, video.status, video.upload_bytes) == (
+        "Talk.MOV",
+        "Talk.MOV",
+        "registered",
+        9,
+    )
+    assert _left(uploads) == [f"{sha}.mov"]  # 사본 이름은 해시 · 확장자는 소문자
+    assert (uploads / f"{sha}.mov").read_bytes() == b"recording"
+    # inbox로 등록한 같은 파일과 source_id가 같다
+    inbox = Path(config.INBOX_DIR)
+    inbox.mkdir()
+    (inbox / "talk.mp4").write_bytes(b"recording")
+    info = await VideoService(db, youtube, probe).info_of(local("talk.mp4"))
+    assert info.source_id == sha
+
+
+async def test_upload_without_key_reads_nothing(
+    db, youtube, probe, env_file, verify, uploads
+) -> None:
+    body = Body(b"recording")
+    with pytest.raises(KeyMissing):
+        await VideoService(db, youtube, probe).upload("talk.mp4", 9, body)
+    assert body.read == 0 and not uploads.exists() and await _count(db) == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "size", "error"),
+    [
+        ("notes.txt", 9, UnsupportedFile),  # 받지 않는 형식 — 읽지 않는다
+        ("  ", 9, Validation),
+        ("a\x07.mp4", 9, Validation),  # 제어 문자
+        ("가" * 297 + ".mp4", 9, Validation),  # 300자를 넘는다
+        ("talk.mp4", 0, Validation),
+    ],
+)
+async def test_upload_rejects_before_reading(
+    db, youtube, probe, key, uploads, name, size, error
+) -> None:
+    body = Body(b"recording")
+    with pytest.raises(error):
+        await VideoService(db, youtube, probe).upload(name, size, body)
+    assert body.read == 0 and _left(uploads) == []
+
+
+async def test_upload_no_space(db, youtube, probe, key, uploads, monkeypatch) -> None:
+    gib = 1 << 30
+    monkeypatch.setattr(service_module.shutil, "disk_usage", lambda _: shutil_usage(free=5 * gib))
+    body = Body(b"x")
+    with pytest.raises(NoSpace) as e:  # 4 GiB 파일 + 여유 1 GiB > 남은 5 GiB
+        await VideoService(db, youtube, probe).upload("talk.mp4", 4 * gib + 1, body)
+    assert e.value.extra == {"needed_bytes": 5 * gib + 1, "free_bytes": 5 * gib}
+    assert body.read == 0 and _left(uploads) == []
+
+
+async def test_upload_disk_fills_while_writing(db, youtube, probe, key, uploads, monkeypatch):
+    def full(*_):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(service_module, "_append", full)
+    with pytest.raises(NoSpace):
+        await VideoService(db, youtube, probe).upload("talk.mp4", 9, Body(b"recording"))
+    assert _left(uploads) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        Body(b"record"),  # Content-Length보다 짧다
+        Body(b"recording", b"!"),  # 길다
+        Body(b"rec", error=ClientDisconnect()),  # 올리다 끊겼다
+    ],
+)
+async def test_upload_incomplete_leaves_no_part(db, youtube, probe, key, uploads, body) -> None:
+    with pytest.raises(UploadIncomplete) as e:
+        await VideoService(db, youtube, probe).upload("talk.mp4", 9, body)
+    assert e.value.extra["expected_bytes"] == 9
+    assert _left(uploads) == [] and await _count(db) == 0
+
+
+async def test_upload_without_audio(db, youtube, probe, key, uploads) -> None:
+    probe.default = (1800, False)
+    with pytest.raises(NoAudioTrack) as e:
+        await VideoService(db, youtube, probe).upload("silent.mp4", 9, Body(b"recording"))
+    assert e.value.extra == {"duration_sec": 1800}
+    assert _left(uploads) == [] and await _count(db) == 0
+
+
+async def test_upload_too_long(db, youtube, probe, key, uploads) -> None:
+    probe.default = (14400, True)  # 4시간
+    with pytest.raises(VideoTooLong):
+        await VideoService(db, youtube, probe).upload("all_day.mp4", 9, Body(b"recording"))
+    assert _left(uploads) == [] and await _count(db) == 0  # 행 · 사본이 없다
+
+
+async def test_upload_same_as_video_with_job(db, youtube, probe, key, make, uploads) -> None:
+    row = await _uploaded(make, b"recording", origin="first.mp4")
+    await make.job(row.id, JobStatus.failed)
+    video = await VideoService(db, youtube, probe).upload("again.mp4", 9, Body(b"recording"))
+    assert (video.id, video.origin, video.status) == (row.id, "first.mp4", "failed")
+    assert _left(uploads) == []  # 새 사본도 .part도 없다
+
+
+async def test_upload_again_after_cancel(db, youtube, probe, key, make, uploads) -> None:
+    # 작업 없는 올린 영상(사본은 이미 없다)을 다시 올린다 — 같은 행, 사본이 다시 생긴다
+    row = await _uploaded(make, b"recording", origin="first.MP4")
+    video = await VideoService(db, youtube, probe).upload("second.mp4", 9, Body(b"recording"))
+    assert (video.id, video.origin, video.uploaded, video.status) == (
+        row.id,
+        "second.mp4",
+        True,
+        "registered",
+    )
+    assert _left(uploads) == [f"{row.source_id}.mp4"]
+
+
+async def test_upload_same_as_inbox_video_without_job(
+    db, youtube, probe, key, make, uploads
+) -> None:
+    sha = hashlib.sha256(b"recording").hexdigest()
+    row = await make.video(source_kind="local", source_id=sha, origin="talk.mp4")
+    video = await VideoService(db, youtube, probe).upload("talk.mp4", 9, Body(b"recording"))
+    assert (video.id, video.uploaded) == (row.id, True)  # 이 사본이 원본 자리가 된다
+    assert _left(uploads) == [f"{sha}.mp4"]
+
+
+async def test_upload_twice_at_once_makes_one_row(db, youtube, probe, key, uploads) -> None:
+    async def one():
+        async with SessionLocal() as s:
+            return await VideoService(s, youtube, probe).upload("t.mp4", 9, Body(b"recording"))
+
+    a, b = await asyncio.gather(one(), one())
+    assert a.id == b.id and await _count(db) == 1
+    assert _left(uploads) == [f"{a.source_id}.mp4"]
 
 
 # --- list

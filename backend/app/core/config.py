@@ -90,6 +90,10 @@ class Config(BaseSettings):
     # 영상 — MS-001
     MAX_DURATION_SEC: int = 10800
     PROBE_CONCURRENCY: int = 4
+    # 올리기(MS-001 upload) — 파일 크기에 더해 남아 있어야 할 여유(분석이 뒤에 쓰는 음성 · 조각 ·
+    # 장면을 넉넉히 덮는 고정값) · 받은 조각을 이만큼 모아 스레드에서 쓴다(이벤트 루프를 막지 않게)
+    UPLOAD_SPARE_BYTES: int = 1 << 30
+    UPLOAD_WRITE_BYTES: int = 1 << 20
     # 받는 확장자(ACCEPTED) — 영상 등록 · inbox 목록 · 파일 재기 · 단계 목록이 같이 쓴다
     VIDEO_EXTS: list[str] = ["mp4", "mkv", "mov", "webm"]
     AUDIO_EXTS: list[str] = ["mp3", "m4a", "wav"]
