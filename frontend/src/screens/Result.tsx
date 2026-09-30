@@ -1,15 +1,17 @@
 /**
  * VA-UI-002#UI-4 결과 — 왼쪽 본문: 1 머리 줄(1.1 뒤로 링크) · 2 제목 블록(2.1 칩 셋 · 2.2 제목 · 2.3 메타 줄 ·
- * 2.4 원본 영상 열기) · 3 한 줄 요약 · 4 핵심 인사이트(4.1 · 4.2 · 4.3 시각 칩) · 5 추천 질문(5.1 알약) ·
+ * 2.4 원본 영상 열기) · 3 한 줄 요약 · 12 한눈에 보기(13 타임라인 · 14 마인드맵 — screens/result/Glance) ·
+ * 4 핵심 인사이트(4.1 · 4.2 · 4.3 시각 칩) · 5 추천 질문(5.1 알약) ·
  * 6 챕터(6.1 · 6.2 · 6.3 카드, 1시간 넘으면 6.4 파트 카드 · 6.5 파트 머리 · 6.6 파트 안 챕터 카드).
  * 오른쪽 7 패널 — 7.1 스크립트 탭 · 7.2 질문하기 탭(7.3 질문 수 배지) · 8 스크립트(8.1 출처 · 8.2 선택한 시각 ·
  * 8.3 구간) · 9 대화 목록(9.1 빈 상태 · 9.2 턴 · 9.3 질문 말풍선 · 9.4 답 · 9.5 근거 칩 · 9.6 영상에 없는 내용 ·
  * 9.7 답 대기 · 9.8 답변 실패 · 9.9 다시 시도) · 10 질문 입력(10.1 추천 칩 · 10.2 키 없음 안내 · 10.3 입력칸 ·
  * 10.4 보내기 · 10.5 전송 안내). 11 짧은 알림 — UI-1에서 이미 분석한 영상을 넣어 열렸을 때.
- * 시각을 누르는 곳(4.3 · 6.3 · 6.6 · 8.3 · 9.5)은 모두 같은 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와
- * 스크롤 · 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
+ * 시각을 누르는 곳(4.3 · 6.3 · 6.6 · 8.3 · 9.5와 한눈에 보기의 13.1 · 13.2 · 13.3 · 14.2 · 14.5)은 모두 같은
+ * 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤 · 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
  * 서버에 잠깐 닿지 못하면 2초 뒤 다시 받는다.
- * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다.
+ * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다. 마인드맵의 파트
+ * 노드(14.4)와 챕터 목록의 파트 머리(6.5)는 같은 펼침 상태를 쓴다.
  * 질문 기록은 질문하기 탭을 처음 열 때 받는다. 추천 질문(5.1 · 10.1)을 누르면 그 탭으로 바뀌고 바로 보낸다.
  * 기록과 답은 id로 합친다 — 기록을 받는 사이에 온 답도 한 번씩 보인다.
  * 답을 기다리는 동안이나 키가 막혔을 때는 보내지 않는다(알약은 탭만 바꾼다). 실패한 질문은 저장되지 않아
@@ -41,6 +43,7 @@ import TimeChip, { durationLabel, isLong, timeLabel } from "@/components/TimeChi
 import Toast, { takeFlash } from "@/components/Toast";
 import Delete, { markListFocus, TrashIcon } from "@/screens/Delete";
 import Export, { DownloadIcon } from "@/screens/Export";
+import Glance from "@/screens/result/Glance";
 import { analyzedLabel, languageName } from "@/labels";
 
 // 결과를 받지 못했는데 서버에 잠깐 닿지 못한 것이면 다시 받는 간격(UI-4 규칙)
@@ -417,6 +420,15 @@ export default function Result({ id }: { id: number }) {
           </h2>
           <p className="result-one-liner">{result.summary.one_liner}</p>
         </section>
+
+        <Glance
+          result={result}
+          long={long}
+          selected={selected}
+          open={open}
+          onSelect={select}
+          onToggle={toggle}
+        />
 
         <section aria-labelledby="insight-title" className="result-section" data-el="4">
           <div className="result-section-head">
