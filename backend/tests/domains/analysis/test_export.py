@@ -10,6 +10,7 @@ from app.domains.analysis import export
 from app.domains.analysis.models import TranscriptSource
 from app.domains.analysis.schemas import (
     Chapter,
+    FramesState,
     Insight,
     Part,
     Result,
@@ -116,6 +117,7 @@ def youtube_50m() -> Result:
         suggested_questions=[],
         models=Models(stt="whisper-1", text="gpt-5-mini"),
         analyzed_at=T0,
+        frames_state=FramesState.done,
     )
 
 
@@ -160,6 +162,7 @@ def local_150m() -> Result:
         suggested_questions=[],
         models=Models(stt="whisper-1", text="gpt-5-mini"),
         analyzed_at=T0,
+        frames_state=FramesState.done,
     )
 
 
@@ -215,6 +218,7 @@ def glance_42m(chapter_count: int = 8) -> Result:
         suggested_questions=[],
         models=Models(stt=None, text="gpt-5-mini"),
         analyzed_at=T0,
+        frames_state=FramesState.done,
     )
 
 

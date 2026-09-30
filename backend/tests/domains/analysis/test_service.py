@@ -395,7 +395,7 @@ async def test_result_of(db, make, summarizer, youtube, env_file, queries) -> No
     done = (await VideoService(db, youtube, None).get(video.id)).video
     queries.clear()
     result = await svc.result_of(done)
-    assert len(queries) <= 6  # 쿼리 여섯을 넘지 않는다
+    assert len(queries) <= 8  # 쿼리 여덟을 넘지 않는다(장면 · 인포그래픽까지)
     assert len(result.transcript.segments) == 30
     assert (result.transcript.source, result.models.stt, result.models.text) == (
         "caption_manual",
@@ -407,6 +407,8 @@ async def test_result_of(db, make, summarizer, youtube, env_file, queries) -> No
     assert [q.text for q in result.suggested_questions] == summarizer.question_list
     assert result.analyzed_at == done.analyzed_at
     assert result.video == done
+    assert result.frames_state == "absent"  # 장면 단계 전 결과 — 채우기는 시작하지 않는다
+    assert all(c.frame is None for c in result.chapters)
 
 
 async def test_result_of_parts_end_and_counts(db, make, summarizer, env_file) -> None:

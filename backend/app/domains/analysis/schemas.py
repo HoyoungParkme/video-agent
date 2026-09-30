@@ -55,30 +55,14 @@ class Part(BaseModel):
     chapter_count: int
 
 
-class Chapter(BaseModel):
-    seq: int
-    part_seq: int | None
-    start_sec: float
-    title: str
-    bullets: list[str]
+class FramesState(StrEnum):
+    """결과의 장면 상태 — absent: 장면 단계 전 결과(채울 수 있다) · making: 만드는 중 · done: 끝남 ·
+    unavailable: 음성 파일 · 원본 없음(VA-API-001 FramesState)."""
 
-
-class SuggestedQuestion(BaseModel):
-    seq: int
-    text: str
-
-
-class Result(BaseModel):
-    """결과 화면(UI-4)이 받는 것 전부 — 구간을 나누지 않는다."""
-
-    video: Video
-    transcript: Transcript
-    summary: Summary
-    parts: list[Part]
-    chapters: list[Chapter]
-    suggested_questions: list[SuggestedQuestion]
-    models: Models
-    analyzed_at: datetime
+    absent = "absent"
+    making = "making"
+    done = "done"
+    unavailable = "unavailable"
 
 
 class Frame(BaseModel):
@@ -115,14 +99,32 @@ class FrameProgress(BaseModel):
     items: list[FrameProgressItem]
 
 
-class FramesState(StrEnum):
-    """결과의 장면 상태 — absent: 장면 단계 전 결과(채울 수 있다) · making: 만드는 중 · done: 끝남 ·
-    unavailable: 음성 파일 · 원본 없음(VA-API-001 FramesState)."""
+class Chapter(BaseModel):
+    seq: int
+    part_seq: int | None
+    start_sec: float
+    title: str
+    bullets: list[str]
+    frame: Frame | None = None  # 대표 장면 — 없으면 null(UI-4 6.7이 없다)
 
-    absent = "absent"
-    making = "making"
-    done = "done"
-    unavailable = "unavailable"
+
+class SuggestedQuestion(BaseModel):
+    seq: int
+    text: str
+
+
+class Result(BaseModel):
+    """결과 화면(UI-4)이 받는 것 전부 — 구간을 나누지 않는다."""
+
+    video: Video
+    transcript: Transcript
+    summary: Summary
+    parts: list[Part]
+    chapters: list[Chapter]
+    suggested_questions: list[SuggestedQuestion]
+    models: Models
+    analyzed_at: datetime
+    frames_state: FramesState
 
 
 class ExportMethod(StrEnum):

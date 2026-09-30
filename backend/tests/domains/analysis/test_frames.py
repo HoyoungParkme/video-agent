@@ -10,7 +10,7 @@ import pytest
 from app.core.config import config
 from app.core.errors import FramesUnavailable, NotFound, ResultNotReady
 from app.domains.analysis import crud
-from app.domains.analysis.models import FrameSource
+from app.domains.analysis.models import FrameSource, SummaryRow
 from app.domains.analysis.schemas import FramesState
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
@@ -355,3 +355,25 @@ async def test_cancel_stops_only_that_videos_fill(db, make, storyboard, local_fr
 
 async def test_cancel_without_task_is_quiet(db, make) -> None:
     await AnalysisService(db).cancel_tasks(12345)
+
+
+# --- result_of의 장면
+
+
+async def test_result_has_frame_only_where_picture_and_file(
+    db, make, storyboard, local_frames, youtube, env_file
+) -> None:
+    video = await _video(db, make)
+    await make.transcript(video.id, ["x"] * 30, step=100)
+    db.add(SummaryRow(video_id=video.id, one_liner="한 줄", model="gpt-5-mini"))
+    await db.commit()
+    storyboard.none_at = {1}
+    svc = _svc(db, storyboard, local_frames)
+    await svc.make_frames(video)
+    Path((await crud.frames(db, video.id))[2].path).unlink()  # 셋째 파일이 지워졌다
+    result = await svc.result_of(video)
+    assert result.frames_state == FramesState.done
+    first, second, third = result.chapters
+    assert first.frame is not None and first.frame.url == f"/api/videos/{video.id}/frames/1"
+    assert (first.frame.sec, first.frame.source) == (1.0, FrameSource.storyboard)
+    assert second.frame is None and third.frame is None  # 그림 없는 행 · 파일 없는 행
