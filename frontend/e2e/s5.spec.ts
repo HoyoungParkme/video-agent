@@ -1,8 +1,9 @@
 /**
- * S5 — 며칠 뒤 다시 열어 질문하고 노트로 옮기고 지운다(VA-SCN-001 S5, VA-CODE-001 B4 · D1).
+ * S5 — 며칠 뒤 다시 열어 질문하고 노트로 옮기고 지운다(VA-SCN-001 S5, VA-CODE-001 B4 · D1 · D2).
  * 브라우저 시각을 7일 뒤로 두고 목록에서 연다 — 다시 분석하지 않는다(OpenAI 호출 없음). 내보낸 파일은
  * api의 데이터 폴더(e2e/.tmp/data/export)에서 읽어 GET 본문과 대 본다. 노트는 한눈에 보기 절(Mermaid 둘)을
- * 갖고, 파일 노트에만 스크립트 절이 있다. 대기열에서 지우는 두 경우와 저장 실패 · 지우기 취소도 본다.
+ * 갖고, 파일 노트에만 스크립트 절과 장면 그림 줄이 있다 — 장면 그림은 노트 곁에 함께 쓴다.
+ * 대기열에서 지우는 두 경우와 저장 실패 · 지우기 취소도 본다.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -20,6 +21,12 @@ interface Preview {
   path: string;
   markdown: string;
   files: { kind: string; name: string }[];
+}
+
+/** 장면 그림 파일 이름 — `{노트 이름} {MM-SS}.jpg`(1시간 이하 영상, 쌍점은 하이픈). */
+function frameName(filename: string, sec: number): string {
+  const two = (n: number) => String(Math.floor(n)).padStart(2, "0");
+  return `${filename} ${two(sec / 60)}-${two(sec % 60)}.jpg`;
 }
 
 /** 고른 방법의 노트 — 파일이면 스크립트 절과 함께 쓸 파일 목록, 클립보드면 둘 다 없다. */
@@ -82,26 +89,43 @@ test("S5 — 며칠 뒤 목록에서 열어 묻고, 파일로 저장 · 복사�
   await expect(inDialog(page, "4.1")).toContainText("## 한눈에 보기\n```mermaid\ngantt\n");
   await expect(inDialog(page, "4.1")).toContainText("```mermaid\nmindmap\n  root(");
   await expect(inDialog(page, "4.1")).toContainText(`## 스크립트\n[[${plain.filename} 스크립트]]`);
-  // 함께 저장되는 파일(2.3) — 노트 · 스크립트 두 칩. 복사 안내(2.4)는 없다
+  // 함께 저장되는 파일(2.3) — 노트 · 스크립트 · 장면 칩과 그림 안내. 복사 안내(2.4)는 없다
   await expect(inDialog(page, "2.3").locator(".export-file")).toHaveText([
     "노트.md",
     "스크립트.md",
+    "장면 5장.jpg",
   ]);
+  await expect(inDialog(page, "2.3")).toContainText("그림은 노트 곁에 저장되고 노트가 가리켜요");
   await expect(inDialog(page, "2.4")).toHaveCount(0);
+  const result = await (await request.get(`/api/videos/${id}/result`)).json();
+  const frames = (result.chapters as { start_sec: number }[]).map((c) =>
+    frameName(plain.filename, c.start_sec),
+  );
+  expect(frames).toHaveLength(5);
   expect(plain.files).toEqual([
     { kind: "note", name: `${plain.filename}.md` },
     { kind: "script", name: `${plain.filename} 스크립트.md` },
+    ...frames.map((name) => ({ kind: "frame", name })),
   ]);
+  // 챕터 제목 줄 바로 다음에 장면 그림 줄
+  expect(plain.markdown).toContain(`![[${frames[0]}]]`);
   await expect(inDialog(page, "3")).toHaveText("질문 기록 1개도 넣기");
   await inDialog(page, "5.3").click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(el(page, "11")).toHaveText(`${plain.path}에 저장했어요 · 스크립트는 따로`);
+  await expect(el(page, "11")).toHaveText(
+    `${plain.path}에 저장했어요 · 스크립트는 따로 · 그림 5장`,
+  );
   await expect(el(page, "1.2")).toBeFocused();
   // 노트는 파일 미리 보기 그대로다 — 스크립트는 따로(UI-7 규칙)
   const file = path.join(DATA, "export", `${plain.filename}.md`);
   expect(readFileSync(file, "utf-8")).toBe(plain.markdown);
   const script = path.join(DATA, "export", `${plain.filename} 스크립트.md`);
   expect(readFileSync(script, "utf-8")).toMatch(/^# 벡터 DB 운영 노트 — 스크립트\n원본: \[https:/);
+  for (const name of frames) {
+    expect(readFileSync(path.join(DATA, "export", name)).subarray(0, 2)).toEqual(
+      Buffer.from([0xff, 0xd8]), // JPEG
+    );
+  }
 
   // 클립보드에 복사 — 질문 기록을 넣으면 맨 끝에 붙은 마크다운 전체
   await el(page, "1.2").click();
@@ -120,6 +144,7 @@ test("S5 — 며칠 뒤 목록에서 열어 묻고, 파일로 저장 · 복사�
   const chat = await exported(request, id, true, "clipboard");
   expect(chat.markdown).toContain("## 질문 기록\n**Q.** 청킹은 어떻게 바꿨어?\n**A.** ");
   expect(chat.markdown).not.toContain("## 스크립트");
+  expect(chat.markdown).not.toContain("![["); // 복사에는 그림 줄이 없다
   expect(chat.files).toEqual([]);
   await expect(inDialog(page, "5.3")).not.toHaveAttribute("aria-disabled", "true"); // 받은 뒤
   await inDialog(page, "5.3").click();
@@ -205,7 +230,9 @@ test("저장 실패 — 실패 한 줄을 보이고 열린 채, 치우고 다시
   }
   await inDialog(page, "5.3").click(); // 다시 누르면 다시 시도 — 5.1이 사라진다
   const plain = await exported(request, id);
-  await expect(el(page, "11")).toHaveText(`${plain.path}에 저장했어요 · 스크립트는 따로`);
+  await expect(el(page, "11")).toHaveText(
+    `${plain.path}에 저장했어요 · 스크립트는 따로 · 그림 5장`,
+  );
   expect(readFileSync(path.join(folder, `${plain.filename}.md`), "utf-8")).toBe(plain.markdown);
   expect(existsSync(path.join(folder, `${plain.filename} 스크립트.md`))).toBe(true);
 });

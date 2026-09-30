@@ -49,7 +49,7 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
   );
   await inDialog(page, "6.3").click();
 
-  // UI-3 — 단계 다섯(음성 추출 → 받아쓰기 → 핵심 요약 → 챕터 → 추천 질문)
+  // UI-3 — 단계 여섯(음성 추출 → 받아쓰기 → 핵심 요약 → 챕터 → 추천 질문 → 장면)
   await expect(page).toHaveURL(/\/videos\/\d+\/progress$/);
   await expect(el(page, "2.3")).toHaveText("로컬 파일 · 2:30:00 · 자막 없음");
   await expect(page.locator(".step-name")).toHaveText([
@@ -58,6 +58,7 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
     "핵심 요약",
     "챕터",
     "추천 질문",
+    "장면",
   ]);
 
   // 받아쓰기 — 15칸 격자가 차오르고, 3개씩 동시에 보낸다
