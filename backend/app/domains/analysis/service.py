@@ -679,6 +679,20 @@ class AnalysisService:
             raise NotFound(resource="infographic", id=video_id)
         return row.path
 
+    async def fail_orphans(self) -> int:
+        """VA-MS-003#AnalysisService.fail_orphans
+
+        서버가 다시 시작될 때 그리던(making) 인포그래픽을 failed('서버가 다시 시작됨')로 — 핸들이
+        없어 영영 그리는 중으로 보이기 때문이다. 이전 그림 컬럼은 그대로다. 장면의 「도는 중」은
+        메모리에만 있어 되돌릴 것이 없다.
+
+        Returns:
+            되돌린 행 수
+        """
+        count = await crud.fail_making_infographics(self.session, "서버가 다시 시작됨")
+        await self.session.commit()
+        return count
+
     async def draw_infographic(self, video_id: int, choice: ChosenModels) -> None:
         """VA-MS-003#AnalysisService.draw_infographic
 

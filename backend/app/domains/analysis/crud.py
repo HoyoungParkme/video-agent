@@ -315,3 +315,13 @@ async def fail_infographic(session: AsyncSession, video_id: int, reason: str) ->
         .where(InfographicRow.video_id == video_id)
         .values(state=InfographicState.failed, error_reason=reason)
     )
+
+
+async def fail_making_infographics(session: AsyncSession, reason: str) -> int:
+    """그리는 중(making)인 행 전부를 failed와 이유로 — 그림 컬럼은 그대로. 바꾼 행 수."""
+    result = await session.execute(
+        update(InfographicRow)
+        .where(InfographicRow.state == InfographicState.making)
+        .values(state=InfographicState.failed, error_reason=reason)
+    )
+    return result.rowcount

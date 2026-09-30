@@ -263,7 +263,7 @@ async def test_start_before_result_is_not_ready(db, make, image_maker, key) -> N
         await AnalysisService(db, image_maker=image_maker).start_infographic(video)
 
 
-# --- infographic_file
+# --- infographic_file · fail_orphans
 
 
 async def test_infographic_file(db, make, image_maker, key, data_dir) -> None:
@@ -286,3 +286,17 @@ async def test_infographic_file(db, make, image_maker, key, data_dir) -> None:
     image_maker.gate.set()
     await AnalysisService._image_tasks[video.id]
 
+
+async def test_fail_orphans(db, make, data_dir) -> None:
+    drawing, again, done = [await _video(db, make) for _ in range(3)]
+    await _row(db, drawing.id, InfographicState.making)
+    await _row(db, again.id, InfographicState.making, **_picture(data_dir, again.id))
+    await _row(db, done.id, InfographicState.done, **_picture(data_dir, done.id))
+    assert await AnalysisService(db).fail_orphans() == 2
+    rows = {v.id: await crud.infographic(db, v.id) for v in (drawing, again, done)}
+    assert (rows[drawing.id].state, rows[drawing.id].error_reason) == (
+        "failed",
+        "서버가 다시 시작됨",
+    )
+    assert (rows[again.id].state, rows[again.id].created_at) == ("failed", T1)  # 이전 그림 그대로
+    assert (rows[done.id].state, rows[done.id].error_reason) == ("done", None)
