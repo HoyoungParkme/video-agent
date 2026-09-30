@@ -367,3 +367,25 @@ async def test_export_infographic_gone_meanwhile_is_export_failed(
         "path": "data/export/RAG 서비스 1년 운영기 인포그래픽.png",
         "reason": "그림 파일을 찾을 수 없음",
     }
+
+
+# --- cancel_tasks
+
+
+async def test_cancel_stops_drawing_and_leaves_no_temp(
+    db, make, image_maker, key, data_dir
+) -> None:
+    one, other = await _analyzed(db, make), await _analyzed(db, make)
+    image_maker.gate = asyncio.Event()  # 둘 다 그리는 중에 멈춰 있다
+    svc = AnalysisService(db, image_maker=image_maker)
+    await svc.start_infographic(one)
+    await svc.start_infographic(other)
+    drawing = AnalysisService._image_tasks[one.id]
+    await asyncio.sleep(0)
+    await svc.cancel_tasks(one.id)
+    assert drawing.cancelled() and one.id not in AnalysisService._image_tasks
+    assert not (data_dir / "infographics" / f"{one.id}.png.part").exists()
+    assert other.id in AnalysisService._image_tasks  # 다른 영상은 그대로
+    image_maker.gate.set()
+    await AnalysisService._image_tasks[other.id]
+    await svc.cancel_tasks(12345)  # 뒤 일이 없는 영상 — 조용히 끝
