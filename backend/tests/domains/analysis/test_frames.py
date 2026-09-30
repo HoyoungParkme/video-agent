@@ -10,6 +10,7 @@ import pytest
 from app.core.config import config
 from app.domains.analysis import crud
 from app.domains.analysis.models import FrameSource
+from app.domains.analysis.schemas import FramesState
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
@@ -117,3 +118,61 @@ async def test_making_while_running_and_cleared_on_cancel(
     with pytest.raises(asyncio.CancelledError):
         await task
     assert video.id not in AnalysisService._making  # 취소돼도 빠진다
+
+
+# --- frames_state
+
+
+async def _state(db, video) -> FramesState:
+    chapters, frames = await crud.chapter_rows(db, video.id), await crud.frames(db, video.id)
+    return AnalysisService.frames_state(video, chapters, frames)
+
+
+async def test_state_making_while_running(db, make) -> None:
+    video = await _video(db, make)
+    first = (await crud.chapter_rows(db, video.id))[0]
+    await crud.add_frame(db, first.id)
+    await db.commit()
+    AnalysisService._making.add(video.id)
+    assert await _state(db, video) == FramesState.making  # 행이 일부여도
+
+
+async def test_state_done_when_every_chapter_tried(db, make) -> None:
+    video = await _video(db, make)
+    for c in await crud.chapter_rows(db, video.id):
+        await crud.add_frame(db, c.id)  # 그림 없는 행도 「해 봤다」
+    await db.commit()
+    assert await _state(db, video) == FramesState.done
+
+
+async def test_state_youtube_without_or_partial_rows_is_absent(db, make) -> None:
+    video = await _video(db, make)
+    assert await _state(db, video) == FramesState.absent
+    first = (await crud.chapter_rows(db, video.id))[0]
+    await crud.add_frame(db, first.id)  # 채우다 죽었다
+    await db.commit()
+    assert await _state(db, video) == FramesState.absent
+
+
+async def test_state_audio_file_is_unavailable(db, make, data_dir: Path) -> None:
+    (data_dir / "inbox").mkdir()
+    (data_dir / "inbox" / "memo.m4a").write_bytes(b"audio")
+    video = await _video(db, make, source_kind=SourceKind.local, origin="memo.m4a", channel=None)
+    assert await _state(db, video) == FramesState.unavailable
+
+
+async def test_state_moved_original_is_unavailable(db, make, data_dir: Path) -> None:
+    video = await _video(db, make, source_kind=SourceKind.local, origin="옮긴 파일.mp4")
+    assert await _state(db, video) == FramesState.unavailable
+    (data_dir / "inbox").mkdir()
+    (data_dir / "inbox" / "옮긴 파일.mp4").write_bytes(b"video")
+    assert await _state(db, video) == FramesState.absent  # 원본이 있으면 채울 수 있다
+
+
+async def test_state_done_even_if_original_is_gone(db, make) -> None:
+    # 원본이 없어도 챕터마다 행이 있으면 끝난 것이다(올린 사본을 지운 영상도 같다)
+    video = await _video(db, make, source_kind=SourceKind.local, origin="없는 파일.mp4")
+    for c in await crud.chapter_rows(db, video.id):
+        await crud.add_frame(db, c.id)
+    await db.commit()
+    assert await _state(db, video) == FramesState.done

@@ -81,6 +81,16 @@ class Result(BaseModel):
     analyzed_at: datetime
 
 
+class FramesState(StrEnum):
+    """결과의 장면 상태 — absent: 장면 단계 전 결과(채울 수 있다) · making: 만드는 중 · done: 끝남 ·
+    unavailable: 음성 파일 · 원본 없음(VA-API-001 FramesState)."""
+
+    absent = "absent"
+    making = "making"
+    done = "done"
+    unavailable = "unavailable"
+
+
 class ExportMethod(StrEnum):
     """내보내기 방법(미리 보기의 쿼리 `method`). 파일로 저장한 노트에만 스크립트 절 · 그림 줄."""
 

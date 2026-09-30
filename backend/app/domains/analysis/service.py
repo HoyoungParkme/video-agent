@@ -24,7 +24,7 @@ from app.core.errors import ExportFailed, ResultNotReady
 from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.export import SCRIPT_SUFFIX
-from app.domains.analysis.models import TranscriptSource
+from app.domains.analysis.models import ChapterFrameRow, ChapterRow, TranscriptSource
 from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
@@ -33,6 +33,7 @@ from app.domains.analysis.schemas import (
     ExportMethod,
     ExportPreview,
     ExportResult,
+    FramesState,
     Insight,
     Part,
     Result,
@@ -339,6 +340,35 @@ class AnalysisService:
             await shots.aclose()
         finally:
             AnalysisService._making.discard(video.id)
+
+    @staticmethod
+    def frames_state(
+        video: Video, chapters: list[ChapterRow], frames: list[ChapterFrameRow]
+    ) -> FramesState:
+        """VA-MS-003#AnalysisService.frames_state
+
+        결과의 장면 상태. 위에서부터 — 만드는 중 → 챕터마다 행이 있다(그림 없는 행 포함, 챕터가
+        없어도) → 로컬인데 음성 파일이거나 원본이 없다 → 채울 수 있다.
+
+        Args:
+            video: 영상
+            chapters: 그 영상의 챕터 행
+            frames: 그 영상의 장면 행
+
+        Returns:
+            making · done · unavailable · absent
+        """
+        if video.id in AnalysisService._making:
+            return FramesState.making
+        tried = {f.chapter_id for f in frames}
+        if all(c.id in tried for c in chapters):
+            return FramesState.done
+        if video.source_kind == "local":
+            ext = Path(video.origin).suffix.lower().lstrip(".")
+            original = sources.local_path(video.origin, video.source_id, False)
+            if ext in config.AUDIO_EXTS or not original.is_file():
+                return FramesState.unavailable
+        return FramesState.absent
 
     async def save_transcript(
         self,
