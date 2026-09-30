@@ -109,7 +109,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 근거: [[VA-SEQ-001#SEQ-15]] · [[VA-API-001#POST/api/uploads]] 1~7번 · [[VA-UC-001#UC-H2]] 1~2번, 1a · 1c · 1d · 2a · 2c · [[VA-UC-001#UC-S5]] 1b · [[VA-INFRA-001#C4]] · [[VA-DOM-002]] 5장 15
 
-**입력** `name` — 라우터가 `X-File-Name`의 퍼센트 인코딩을 푼 원래 파일 이름(헤더가 없으면 라우터가 `validation`). `size` — `Content-Length`(없으면 라우터가 `validation`). `body` — `request.stream()`, 본문 조각의 비동기 반복자. 라우터는 헤더를 읽어 넘길 뿐이다
+**입력** `name` — 라우터가 `X-File-Name`의 퍼센트 인코딩을 푼 원래 파일 이름(헤더가 없으면 라우터가 `validation`). `size` — `Content-Length`(없으면 라우터가 `validation`). `body` — `request.stream()`, 본문 조각의 비동기 반복자. 라우터는 헤더를 읽어 넘길 뿐이다 · 이 함수가 예외로 끝나면(어느 판정이든) 라우터가 남은 본문을 끝까지 읽어 버린 뒤 오류를 돌려준다 — 브라우저는 본문을 다 보내야 답을 읽는다. 읽지 않으면 올리기가 멈춘 채 끝나지 않는다([[VA-SEQ-001]] 3장, 카드 D4 실측). 끊겼으면(`ClientDisconnect`) 그만 읽는다
 
 **처리** — 걸리는 곳에서 멈춘다. 1~3은 본문을 읽기 전이다
 1. `SettingsService.check_stored_key()` · `SettingsService.require_key()` — [[#VideoService.register]] 1번과 같다. 큰 파일을 다 받은 뒤 키 때문에 멈추지 않게 먼저 본다
@@ -138,7 +138,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **호출하는 것** `SettingsService.check_stored_key` · `SettingsService.require_key` · `MediaProbePort.probe` · `sources.local_path` · `JobService.latest` · `ChatService.count_by_videos` · [[#VideoService.to_dto]]
 
-**테스트 관점** 가짜 본문 조각으로: 조각 셋 → 사본 `data/uploads/{sha}.mp4`, `source_id`가 같은 파일을 inbox로 등록한 것과 같다, `uploaded=true`, `title=origin=원래 이름` · 키 없음 → `key-missing`이고 본문을 한 조각도 읽지 않는다 · `notes.txt` → `unsupported-file`, 읽지 않는다 · 여유가 모자라면 `no-space`, `needed_bytes = size + 1 GiB` · 본문이 `Content-Length`보다 짧다 · 길다 · 중간에 예외 → `upload-incomplete`이고 `.part`가 없다 · 음성 없는 mp4 → `no-audio-track`, `.part`가 없다 · 4시간 → `video-too-long`, 행 · 사본이 없다 · 작업이 있는 영상과 같은 내용 → 그 영상, 새 사본도 `.part`도 없다 · 사전 안내에서 취소한 올린 영상을 다시 올림 → 같은 행, 사본이 다시 생긴다 · 작업 없는 inbox 영상과 같은 내용 → 같은 행이 `uploaded=true`로 · 동시에 같은 파일 둘 → 행 하나
+**테스트 관점** 가짜 본문 조각으로: 조각 셋 → 사본 `data/uploads/{sha}.mp4`, `source_id`가 같은 파일을 inbox로 등록한 것과 같다, `uploaded=true`, `title=origin=원래 이름` · 키 없음 → `key-missing`이고 본문을 한 조각도 읽지 않는다 · `notes.txt` → `unsupported-file`, 읽지 않는다 · 여유가 모자라면 `no-space`, `needed_bytes = size + 1 GiB` · 본문이 `Content-Length`보다 짧다 · 길다 · 중간에 예외 → `upload-incomplete`이고 `.part`가 없다 · 음성 없는 mp4 → `no-audio-track`, `.part`가 없다 · 4시간 → `video-too-long`, 행 · 사본이 없다 · 작업이 있는 영상과 같은 내용 → 그 영상, 새 사본도 `.part`도 없다 · 사전 안내에서 취소한 올린 영상을 다시 올림 → 같은 행, 사본이 다시 생긴다 · 작업 없는 inbox 영상과 같은 내용 → 같은 행이 `uploaded=true`로 · 동시에 같은 파일 둘 → 행 하나 · (라우터) 키 없음으로 본문 전에 거절해도 본문을 끝까지 읽은 뒤 `key-missing`
 
 ---
 
