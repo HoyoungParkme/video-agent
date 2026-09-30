@@ -371,7 +371,7 @@ CHECK: `path`가 null이면 `sec` · `source` · `width` · `height`도 모두 n
 | quality | varchar(10) | null 허용, ImageQuality | low · medium | `low` |
 | width | smallint | null 허용, > 0 | 지금 그림의 폭 | `1024` |
 | height | smallint | null 허용, > 0 | 높이 | `1536` |
-| cost_usd | numeric(8,4) | null 허용, ≥ 0 | 그 그림을 맡긴 때의 한 장 값(설정값) | `0.0060` |
+| cost_usd | numeric(8,4) | null 허용, ≥ 0 | 그 그림을 맡긴 때의 한 장 값(설정값) | `0.0100` |
 | path | varchar(500) | null 허용 | `data/infographics/{video_id}.png` | `data/infographics/12.png` |
 | error_reason | text | null 허용 | `failed`일 때 한 줄(한국어). UI-4 '인포그래픽을 만들지 못했어요 — {이유}' | `OpenAI 연결 시간 초과` |
 | created_at | timestamptz | null 허용 | 지금 그림을 다 그린 때 — 행이 생긴 때가 아니다. UI-4 '{시각} 만듦'과 그림 주소의 `?v=` | |

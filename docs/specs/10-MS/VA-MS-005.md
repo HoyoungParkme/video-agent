@@ -31,7 +31,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 | `config.ENV_PATH` | `/app/.env` | compose가 호스트 `.env`를 마운트하는 컨테이너 안 경로. 환경 변수 `ENV_PATH`로 바꿀 수 있다(테스트) |
 | `config.MODEL_OPTIONS` | 받아쓰기 `whisper-1`(분당 $0.006) · 텍스트 `gpt-5-mini`(입력 $0.25 · 출력 $2.00), `gpt-5.4-mini`(입력 $0.75 · 출력 $4.50), `gpt-5.4`(입력 $2.50 · 출력 $15.00) — 텍스트는 100만 토큰당, 표준 요금. 2026-09-23 OpenAI 가격표 값 | [[VA-INFRA-001]] 3절, [[VA-UI-002#UI-5]] 3.1 · 3.3. 받아쓰기 목록은 구간 시각을 주는 모델만([[VA-INFRA-001#C3]]) |
 | `config.DEFAULT_MODELS` | `whisper-1` · `gpt-5-mini` | 파일에 선택이 없을 때 |
-| `config.IMAGE_OPTIONS` | 모델 `gpt-image-2` · 품질 `low`('낮음', 한 장 $0.006) · `medium`('중간', 한 장 $0.05) | 인포그래픽([[VA-INFRA-001#C11]], [[VA-PRD-001#R13]]). 값은 외부 가격 정리의 1024×1024 기준 첫 값이다 — 세로 1024×1536은 조금 더 들 수 있어 카드 D3에서 실제 한 장의 사용량으로 고친다([[VA-API-001]] 6장 미결). UI-4 카드 · UI-5 · UI-8이 같은 값을 쓴다 |
+| `config.IMAGE_OPTIONS` | 모델 `gpt-image-2` · 품질 `low`('낮음', 한 장 $0.01) · `medium`('중간', 한 장 $0.05) | 인포그래픽([[VA-INFRA-001#C11]], [[VA-PRD-001#R13]]). `low`는 실측이다 — 카드 D3에서 세로 1024×1536 한 장이 입력 962 · 출력 158토큰, 1M당 $5 · $30으로 $0.0096. `medium`은 외부 가격 정리(1024×1024)의 첫 값 그대로다(3장 미결). UI-4 카드 · UI-5 · UI-8이 같은 값을 쓴다 |
 | `config.DEFAULT_IMAGE` | `gpt-image-2` · `low` | 파일에 선택이 없을 때(사용자 결정 2026-09-29 — 「좀 비싸다, 싼 걸로」) |
 | `config.KEY_CHECK_TIMEOUT_SEC` | 10 | 키 확인 요청 시간 제한 |
 
@@ -179,7 +179,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 
 **호출하는 것** [[#SettingsService.read_env]]
 
-**테스트 관점** 줄 없음 → 기본값 · 목록에 없는 id → 기본값 · 단가가 `MODEL_OPTIONS`의 값 · 이미지 줄 없음 → `gpt-image-2` · `low`($0.006) · `IMAGE_QUALITY=medium` → 한 장 값 $0.05
+**테스트 관점** 줄 없음 → 기본값 · 목록에 없는 id → 기본값 · 단가가 `MODEL_OPTIONS`의 값 · 이미지 줄 없음 → `gpt-image-2` · `low`($0.01) · `IMAGE_QUALITY=medium` → 한 장 값 $0.05
 
 ---
 
@@ -241,7 +241,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 - [x] 키 확인이 네트워크로 실패했을 때의 배너 문구 — 결정: 문구를 가르고 버튼을 막지 않는다. 그래서 `require_key`가 마지막 결과가 `network`면 한 번 다시 확인한다([[VA-API-001]] 5장 11 · [[VA-UI-002]] 2장 되먹임 반영)
 - [x] 화면에서 모델을 바꾸는 유스케이스 — 반영: [[VA-UC-001#UC-H8]] 5번
 - [x] 텍스트 모델 `gpt-5.4-mini` · `gpt-5.4`의 단가 — 채움: 0장 설정값(2026-09-23 가격표)
-- [ ] 인포그래픽 한 장 값(`IMAGE_OPTIONS`) — 첫 값 low $0.006 · medium $0.05는 1024×1024 기준 외부 가격 정리다. 세로 1024×1536 한 장을 카드 D3에서 실제로 만들어 사용량(출력 이미지 토큰 × 단가)으로 고친다([[VA-API-001]] 6장 · [[VA-INFRA-001]] 9절과 같은 항목)
+- [x] 인포그래픽 `low` 한 장 값(`IMAGE_OPTIONS`) — 결정: $0.01. 카드 D3에서 세로 1024×1536 한 장이 입력 텍스트 962 · 출력 이미지 158토큰, $0.0096이었다(1M당 $5 · $30)
+- [ ] 인포그래픽 `medium` 한 장 값 — 재지 않아 첫 값 $0.05(1024×1024 외부 가격 정리) 그대로다. 처음 `medium`으로 만들 때 `openai.image` 로그의 토큰으로 고친다([[VA-API-001]] 6장 · [[VA-INFRA-001]] 9절과 같은 항목)
 - [ ] 새 모델 `gpt-5.6-sol` · `gpt-5.6-terra` · `gpt-5.6-luna`가 가격표에 있다. 선택지에 더할지 사용자 결정 — 더하려면 [[VA-UI-002#UI-5]] 3.3 선택지부터
 - [x] (반영: 클래스 명세 v12 · 시퀀스 v3 SEQ-12) **되먹임** — `.env`를 rename으로 바꿔치기할 수 없다(0장). [[VA-DOM-002#SettingsService]] 규칙과 [[VA-SEQ-001#SEQ-12]]의 「임시 파일 → rename」을 「제자리 쓰기」로 고친다. 폴더를 마운트하면 rename이 되지만 저장소 뿌리 전체를 api 컨테이너에 쓰기로 여는 것이라 택하지 않았다
 - [x] (반영: 클래스 명세 v12) **되먹임** — `require_key`가 `async`가 됐다(OpenAI를 부를 수 있다). 부르는 네 곳(`VideoService.register` · `JobService.start` · `retry` · `ChatService.ask`)은 이미 `async`라 `await`만 붙는다. `read_env` · `write_env` 둘을 [[VA-DOM-002#SettingsService]]에 private 메서드로 더한다
