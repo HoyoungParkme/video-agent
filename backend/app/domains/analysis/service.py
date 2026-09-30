@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import logging
 import os
 import re
 import tempfile
 import unicodedata
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +25,7 @@ from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.export import SCRIPT_SUFFIX
 from app.domains.analysis.models import TranscriptSource
-from app.domains.analysis.ports import SummarizerPort
+from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
@@ -41,11 +42,13 @@ from app.domains.analysis.schemas import (
     SummaryDraft,
     Transcript,
 )
-from app.shared import tokens
+from app.shared import sources, tokens
 
 if TYPE_CHECKING:
     from app.domains.chat.schemas import ChatTurn  # 타입만 — chat을 import하지 않는다
     from app.domains.video.schemas import Video
+
+log = logging.getLogger(__name__)
 
 # 인사이트 수 상한 — 1시간 이하 8, 넘으면 10(PRD R4). 5개보다 적으면 있는 만큼 둔다
 INSIGHTS_MAX, INSIGHTS_MAX_LONG = 8, 10
@@ -152,14 +155,29 @@ class AnalysisService:
     - save_transcript(): 자막 · 받아쓰기 결과를 스크립트로
     - generate_summary() · generate_chapters() · generate_questions(): 파이프라인 단계 셋
     - result_of(): 결과 화면 응답 전부
+    - make_frames(): 챕터마다 장면 한 장(파이프라인 장면 단계 · 채우기 태스크)
 
-    요약 포트는 생성 단계 셋만 쓴다 — 구간 · 챕터만 읽는 곳(대화 맥락)은 포트 없이 만든다
-    (VA-DOM-002 6장).
+    포트는 그 메서드가 쓸 때만 필요하다 — 요약 포트는 생성 단계 셋, 장면 포트 둘(스토리보드 ·
+    로컬 프레임)은 장면 만들기만 쓴다. 읽기만 하는 곳(대화 맥락 · 진행의 장면 칸)은 포트 없이
+    만든다(VA-DOM-002 6장).
     """
 
-    def __init__(self, session: AsyncSession, summarizer: SummarizerPort | None = None) -> None:
+    # 뒤 일 — 장면을 만드는 중인 영상(파이프라인 장면 단계도 넣는다)과 채우기 태스크.
+    # 요청이 끝난 뒤에도 돌아 프로세스에 하나다(VA-MS-003 0장)
+    _making: ClassVar[set[int]] = set()
+    _frame_tasks: ClassVar[dict[int, asyncio.Task[None]]] = {}
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        summarizer: SummarizerPort | None = None,
+        storyboard: FrameSourcePort | None = None,
+        local_frames: FrameSourcePort | None = None,
+    ) -> None:
         self.session = session
         self._port = summarizer
+        self._storyboard = storyboard
+        self._local_frames = local_frames
 
     @property
     def summarizer(self) -> SummarizerPort:
@@ -167,6 +185,20 @@ class AnalysisService:
         if self._port is None:
             raise RuntimeError("요약 포트 없이 만든 AnalysisService로 생성 단계를 불렀다")
         return self._port
+
+    def _frame_source(self, video: Video) -> tuple[FrameSourcePort, str]:
+        """영상의 장면 포트와 그 포트에 줄 것 — YouTube는 영상 ID, 로컬은 원본 경로."""
+        if video.source_kind == "youtube":
+            port, source = self._storyboard, video.source_id
+        else:
+            # 올린 영상은 카드 D4가 더한다 — 그 전에는 모두 inbox 파일이다
+            port, source = (
+                self._local_frames,
+                str(sources.local_path(video.origin, video.source_id, False)),
+            )
+        if port is None:  # 코드 실수 — 앱 수준에서 internal(500)
+            raise RuntimeError("장면 포트 없이 만든 AnalysisService로 장면을 만들려 했다")
+        return port, source
 
     async def segments_of(self, video_id: int) -> list[Segment]:
         """VA-MS-003#AnalysisService.segments_of
@@ -256,6 +288,57 @@ class AnalysisService:
         while len(name.encode()) > NAME_BYTES_MAX:
             name = name[:-1]
         return name.strip(" .") or f"video-{video.id}"
+
+    async def make_frames(self, video: Video) -> None:
+        """VA-MS-003#AnalysisService.make_frames
+
+        장면 행이 없는 챕터마다 장면 한 장. 받는 대로 행을 쓰고 커밋한다 — 진행 폴링이 한 장씩
+        본다. 포트가 통째로 실패하면(스토리보드 없음 · 원본 없음 · yt-dlp · ffmpeg) 남은 챕터에
+        그림 없는 행을 쓰고 로그만 남긴다 — 「해 봤다」를 남겨 옛 결과를 다시 채우지 않는다.
+
+        Args:
+            video: 장면을 만들 영상(출처 종류 · 영상 ID · 원본 이름)
+
+        Raises:
+            DB 오류 · 취소(CancelledError)는 그대로 올린다 — 포트 실패만 삼킨다
+        """
+        AnalysisService._making.add(video.id)
+        try:
+            tried = {f.chapter_id for f in await crud.frames(self.session, video.id)}
+            todo = [c for c in await crud.chapter_rows(self.session, video.id) if c.id not in tried]
+            if not todo:  # 다시 시도 · 이어 채우기는 해 본 챕터를 건너뛴다
+                return
+            port, source = self._frame_source(video)
+            dest = Path(config.FRAMES_DIR) / str(video.id)
+            await asyncio.to_thread(dest.mkdir, parents=True, exist_ok=True)
+            shots = port.frames(source, [c.start_sec for c in todo], str(dest))
+            failed = False
+            for c in todo:
+                shot = None
+                if not failed:
+                    try:
+                        shot = await anext(shots, None)
+                    except Exception as e:  # 포트 실패 — 남은 챕터는 그림 없이
+                        failed = True
+                        log.warning("영상 %s의 장면을 얻지 못했다: %s", video.id, e)
+                if shot is None:
+                    await crud.add_frame(self.session, c.id)
+                else:
+                    path = dest / f"{c.seq}.jpg"
+                    await asyncio.to_thread(os.replace, shot.path, path)
+                    await crud.add_frame(
+                        self.session,
+                        c.id,
+                        shot.sec,
+                        shot.source,
+                        shot.width,
+                        shot.height,
+                        str(path),
+                    )
+                await self.session.commit()
+            await shots.aclose()
+        finally:
+            AnalysisService._making.discard(video.id)
 
     async def save_transcript(
         self,

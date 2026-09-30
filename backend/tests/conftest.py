@@ -56,9 +56,12 @@ from app.domains.analysis.models import TranscriptSource  # noqa: E402
 from app.domains.analysis.schemas import (  # noqa: E402
     CaptionLine,
     ChapterDraft,
+    FrameShot,
+    FrameSource,
     Segment,
     SummaryDraft,
 )
+from app.domains.analysis.service import AnalysisService  # noqa: E402
 from app.domains.chat.models import ChatTurnRow  # noqa: E402
 from app.domains.chat.schemas import AnswerDraft, ChatTurn  # noqa: E402
 from app.domains.job.models import (  # noqa: E402
@@ -169,6 +172,8 @@ async def db(migrated: None) -> AsyncIterator[AsyncSession]:
         await s.commit()
         JobService.work_event.clear()
         JobService.tasks.clear()
+        AnalysisService._making.clear()
+        AnalysisService._frame_tasks.clear()
         yield s
 
 
@@ -430,6 +435,46 @@ class FakeSummarizer:
 @pytest.fixture
 def summarizer() -> FakeSummarizer:
     return FakeSummarizer()
+
+
+@dataclass
+class FakeFrames:
+    """FrameSourcePort 자리 — 시각마다 작은 그림 파일을 쓰고 FrameShot을 낸다. 받은 것을 적는다.
+
+    none_at: 그 차례(0부터)는 None · fail_at: 그 차례에서 통째로 실패 · gate: 첫 장 앞에서 기다린다.
+    """
+
+    source: FrameSource = FrameSource.storyboard
+    none_at: set[int] = field(default_factory=set)
+    fail_at: int | None = None
+    gate: asyncio.Event | None = None
+    calls: list[tuple[str, list[float], str]] = field(default_factory=list)
+
+    async def frames(
+        self, source: str, secs: list[float], dest_dir: str
+    ) -> AsyncIterator[FrameShot | None]:
+        self.calls.append((source, secs, dest_dir))
+        if self.gate is not None:
+            await self.gate.wait()
+        for i, sec in enumerate(secs):
+            if i == self.fail_at:
+                raise RuntimeError("스토리보드가 없음")
+            if i in self.none_at:
+                yield None
+                continue
+            path = Path(dest_dir) / f"shot-{i}.jpg"
+            path.write_bytes(b"jpeg")
+            yield FrameShot(sec + 1, self.source, 320, 180, str(path))
+
+
+@pytest.fixture
+def storyboard() -> FakeFrames:
+    return FakeFrames()
+
+
+@pytest.fixture
+def local_frames() -> FakeFrames:
+    return FakeFrames(source=FrameSource.local_frame)
 
 
 @dataclass
