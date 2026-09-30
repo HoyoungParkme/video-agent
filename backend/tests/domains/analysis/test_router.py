@@ -176,3 +176,59 @@ async def test_frames_errors(api, make, tmp_path, monkeypatch) -> None:
         "urn:va:not-found",
         "frame",
     )
+
+
+# --- 인포그래픽(카드 D3)
+
+
+async def _drawn(api, row_id: int) -> dict:
+    for _ in range(200):  # 화면처럼 폴링한다
+        body = (await api.get(f"/api/videos/{row_id}/infographic")).json()
+        if body["state"] != "making":
+            return body
+        await asyncio.sleep(0.01)
+    raise AssertionError("다 그리지 못했다")
+
+
+async def test_infographic_make_poll_and_picture(
+    api, db, make, summarizer, image_maker, key, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    row = await _analyzed(db, make, summarizer, title="RAG 서비스 1년 운영기")
+    r = await api.get(f"/api/videos/{row.id}/infographic")
+    assert (r.status_code, r.json()) == (
+        200,
+        {"state": "none", "image": None, "error_reason": None},
+    )
+    assert (await api.get(f"/api/videos/{row.id}/infographic/image")).status_code == 404
+    image_maker.gate = asyncio.Event()
+    r = await api.post(f"/api/videos/{row.id}/infographic")
+    assert (r.status_code, r.json()["state"]) == (202, "making")
+    busy = await api.post(f"/api/videos/{row.id}/infographic")  # 그리는 중에 또
+    assert (busy.status_code, busy.json()["type"]) == (409, "urn:va:infographic-busy")
+    image_maker.gate.set()
+    body = await _drawn(api, row.id)
+    assert body["state"] == "done"
+    assert (body["image"]["width"], body["image"]["height"], body["image"]["cost_usd"]) == (
+        1024,
+        1536,
+        0.006,
+    )
+    r = await api.get(body["image"]["url"])
+    assert (r.status_code, r.headers["content-type"], r.content) == (200, "image/png", b"png-new")
+    result = (await api.get(f"/api/videos/{row.id}/result")).json()
+    assert result["infographic"] == body  # 결과에도 같은 모양
+
+
+async def test_infographic_errors(api, db, make, summarizer, env_file, verify) -> None:
+    row = await _analyzed(db, make, summarizer)
+    r = await api.post(f"/api/videos/{row.id}/infographic")  # 키가 없다
+    assert (r.status_code, r.json()["type"]) == (503, "urn:va:key-missing")
+    assert (await api.get(f"/api/videos/{row.id}/infographic")).json()["state"] == "none"
+    running = await make.video()
+    await make.job(running.id, JobStatus.running)
+    r = await api.get(f"/api/videos/{running.id}/infographic")
+    assert (r.status_code, r.json()["type"]) == (409, "urn:va:result-not-ready")
+    assert (await api.post("/api/videos/999/infographic")).status_code == 404
+    r = await api.get("/api/videos/999/infographic/image")
+    assert (r.status_code, r.json()["resource"]) == (404, "infographic")

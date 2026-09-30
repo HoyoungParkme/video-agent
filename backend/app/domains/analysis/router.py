@@ -1,8 +1,8 @@
-"""/api/videos/{id}/result · …/frames · …/export — HTTP 입출력만(VA-API-001 3.5).
+"""/api/videos/{id}/result · …/frames · …/infographic · …/export — HTTP 입출력만(VA-API-001 3.5).
 
 내보내기는 영상(VideoService.get)과, 질문 기록을 넣으면 대화 턴(ChatService.history)을 받아
 결과 서비스에 넘긴다 — 라우터가 서비스 둘을 차례로 부르는 곳이다(DOM-002 3.1). 장면 채우기는
-app.state의 장면 어댑터로 만든 서비스가 뒤에서 돈다.
+app.state의 장면 어댑터로, 인포그래픽 그리기는 이미지 어댑터로 만든 서비스가 뒤에서 돈다.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from app.domains.analysis.schemas import (
     ExportRequest,
     ExportResult,
     FrameSet,
+    Infographic,
     Result,
 )
 from app.domains.analysis.service import AnalysisService
@@ -63,6 +64,26 @@ async def get_frame(video_id: int, seq: int, analysis: Analysis) -> FileResponse
     """챕터 seq의 장면 JPEG. 없으면 404(frame). 다시 채우면 바뀔 수 있어 캐시는 매번 확인한다."""
     path = await analysis.frame_file(video_id, seq)
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/infographic")
+async def get_infographic(video_id: int, videos: Videos, analysis: Analysis) -> Infographic:
+    """인포그래픽 상태와 지금 그림 — 그리는 동안 화면이 3초마다 부른다. 끝나지 않았으면 409."""
+    detail = await videos.get(video_id)
+    return await analysis.infographic_of(detail.video)
+
+
+@router.post("/infographic", status_code=202)
+async def post_infographic(video_id: int, videos: Videos, analysis: Analysis) -> Infographic:
+    """그리기를 맡기고 making을 바로 준다. 그리는 중이면 409 infographic-busy, 키가 없으면 503."""
+    detail = await videos.get(video_id)
+    return await analysis.start_infographic(detail.video)
+
+
+@router.get("/infographic/image")
+async def get_infographic_image(video_id: int, analysis: Analysis) -> FileResponse:
+    """지금 쓰는 인포그래픽 PNG. 없으면 404(infographic). 주소의 ?v=가 그림마다 달라 새로 받는다."""
+    return FileResponse(await analysis.infographic_file(video_id), media_type="image/png")
 
 
 @router.get("/export")
