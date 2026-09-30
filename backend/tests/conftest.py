@@ -611,7 +611,7 @@ def stt() -> FakeStt:
 
 @pytest.fixture
 async def api(
-    db, youtube, probe, summarizer, answerer, monkeypatch
+    db, youtube, probe, summarizer, answerer, storyboard, local_frames, monkeypatch
 ) -> AsyncIterator[httpx.AsyncClient]:
     """앱에 바로 붙는 클라이언트 — 시작 이벤트(워커) 없이, 어댑터는 가짜로."""
     from app.main import app
@@ -620,6 +620,8 @@ async def api(
     monkeypatch.setattr(app.state, "media_probe", probe)
     monkeypatch.setattr(app.state, "summarizer", summarizer)
     monkeypatch.setattr(app.state, "answerer", answerer)
+    monkeypatch.setattr(app.state, "storyboard", storyboard)
+    monkeypatch.setattr(app.state, "local_frames", local_frames)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c
