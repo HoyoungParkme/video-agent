@@ -20,6 +20,7 @@ from app.core.errors import (
 from app.core.settings import settings
 from app.domains.analysis import crud
 from app.domains.analysis.models import InfographicRow, InfographicState, SummaryRow
+from app.domains.analysis.schemas import ExportMethod
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
@@ -315,3 +316,22 @@ async def test_result_carries_infographic(db, make, data_dir, queries) -> None:
     assert len(queries) <= 8  # 쿼리 여덟을 넘지 않는다
     assert got.infographic == await svc.infographic_of(video)  # 같은 모양
     assert got.infographic.image.url.endswith(f"?v={int(T1.timestamp())}")
+
+
+# --- 내보내기
+
+
+async def test_export_file_lists_infographic_last(db, make, env_file, data_dir) -> None:
+    video = await _analyzed(db, make)
+    svc = AnalysisService(db)
+    got = await svc.export_markdown(video, False, [], ExportMethod.file)
+    assert [f.kind for f in got.files] == ["note", "script"]  # 그림이 없으면 둘
+    await _row(db, video.id, InfographicState.done, **_picture(data_dir, video.id))
+    got = await svc.export_markdown(video, False, [], ExportMethod.file)
+    assert [(f.kind, f.name) for f in got.files][-1] == (
+        "infographic",
+        "RAG 서비스 1년 운영기 인포그래픽.png",
+    )
+    assert "![[RAG 서비스 1년 운영기 인포그래픽.png]]" in got.markdown
+    copied = await svc.export_markdown(video, False, [], ExportMethod.clipboard)
+    assert copied.files == [] and "인포그래픽" not in copied.markdown

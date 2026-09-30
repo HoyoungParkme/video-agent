@@ -218,7 +218,7 @@ def _unlink(path: Path) -> None:
 
 def _files(result: Result, name: str) -> list[ExportFile]:
     # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다.
-    # 노트 · 스크립트, 그리고 장면이 있는 챕터마다 장면 그림(챕터 순서)
+    # 노트 · 스크립트, 장면이 있는 챕터마다 장면 그림(챕터 순서), 인포그래픽 그림이 있으면 그것
     duration = result.video.duration_sec
     return [
         ExportFile(kind="note", name=f"{name}.md"),
@@ -227,6 +227,11 @@ def _files(result: Result, name: str) -> list[ExportFile]:
             ExportFile(kind="frame", name=export.frame_name(name, c.start_sec, duration))
             for c in result.chapters
             if c.frame is not None
+        ),
+        *(
+            [ExportFile(kind="infographic", name=export.infographic_name(name))]
+            if result.infographic.image
+            else []
         ),
     ]
 
