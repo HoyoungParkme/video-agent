@@ -1,7 +1,8 @@
 """마이그레이션 — 테이블 13개 · 인덱스 · 제약이 ERD(VA-DOM-003)대로인지, 올리고 내릴 수 있는지.
 
 0001_initial이 11개를 만들고 0002가 영상 하나에 기다리는 · 도는 작업 하나를, 0003이 챕터 대표
-장면(chapter_frames)을, 0004가 인포그래픽(infographics)을 더한다.
+장면(chapter_frames)을, 0004가 인포그래픽(infographics)을, 0005가 올린 사본 표시(videos.uploaded)를
+더한다.
 """
 
 from __future__ import annotations
@@ -279,6 +280,21 @@ async def test_infographic_checks(conn: AsyncConnection) -> None:
     await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "w": 0})
     await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "c": -0.1})
     await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "v": first})  # 영상마다 0..1
+
+
+async def test_uploaded_only_local(conn: AsyncConnection) -> None:
+    """있던 영상은 올린 것이 아니다(default false) · 올린 사본은 로컬 영상만(DOM-003 3장 videos)."""
+    v = await _insert_video(conn)
+    assert await conn.scalar(text("SELECT uploaded FROM videos WHERE id = :v"), {"v": v}) is False
+    await _expect_violation(conn, "UPDATE videos SET uploaded = true WHERE id = :v", {"v": v})
+    local = await conn.scalar(
+        text(
+            "INSERT INTO videos (source_kind, source_id, title, duration_sec, origin, has_captions,"
+            " uploaded) VALUES ('local', :s, 'talk.mp4', 3012, 'talk.mp4', false, true) RETURNING id"
+        ),
+        {"s": "a" * 64},
+    )
+    assert local is not None
 
 
 async def test_delete_video_cascades(conn: AsyncConnection) -> None:
