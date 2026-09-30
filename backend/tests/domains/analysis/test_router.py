@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from app.core.config import config
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
+from app.domains.video.models import SourceKind
 from app.domains.video.service import VideoService
 
 T0 = datetime(2026, 9, 28, 1, 0, tzinfo=UTC)
@@ -111,4 +113,66 @@ async def test_export_errors(api, db, make, summarizer, env_file, tmp_path, monk
         "urn:va:export-failed",
         "data/export/제목 스크립트.md",  # 먼저 쓰는 스크립트에서 멈춘다
         "저장 폴더를 만들 수 없음(그 자리에 파일이 있다)",
+    )
+
+
+# --- 장면(카드 D2)
+
+
+async def test_frames_fill_poll_and_picture(api, make, storyboard, tmp_path, monkeypatch) -> None:
+    """옛 결과 — absent → POST 202 making → 화면처럼 폴링하면 done과 장면, 그림은 JPEG · no-cache."""
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    row = await make.video()
+    await make.job(row.id, JobStatus.done)
+    await make.chapters(row.id, [(0.0, "하나", ["a"]), (600.0, "둘", ["b"])])
+    r = await api.get(f"/api/videos/{row.id}/frames")
+    assert (r.status_code, r.json()) == (200, {"state": "absent", "frames": []})
+    r = await api.post(f"/api/videos/{row.id}/frames")
+    assert (r.status_code, r.json()["state"]) == (202, "making")
+    for _ in range(200):
+        body = (await api.get(f"/api/videos/{row.id}/frames")).json()
+        if body["state"] != "making":
+            break
+        await asyncio.sleep(0.01)
+    assert body["state"] == "done"
+    urls = [f"/api/videos/{row.id}/frames/{seq}" for seq in (1, 2)]
+    assert [(f["chapter_seq"], f["url"], f["source"]) for f in body["frames"]] == [
+        (1, urls[0], "storyboard"),
+        (2, urls[1], "storyboard"),
+    ]
+    assert len(storyboard.calls) == 1
+    r = await api.get(urls[0])
+    assert (r.status_code, r.headers["content-type"], r.headers["cache-control"]) == (
+        200,
+        "image/jpeg",
+        "no-cache",
+    )
+    assert r.content == b"jpeg"
+    r = await api.post(f"/api/videos/{row.id}/frames")  # 끝난 뒤 다시 불러도 같은 상태
+    assert (r.status_code, r.json()["state"], len(storyboard.calls)) == (202, "done", 1)
+
+
+async def test_frames_errors(api, make, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path / "inbox"))
+    running = await make.video()
+    await make.job(running.id, JobStatus.running)
+    r = await api.get(f"/api/videos/{running.id}/frames")
+    assert (r.status_code, r.json()["type"]) == (409, "urn:va:result-not-ready")
+    assert (await api.get("/api/videos/999/frames")).status_code == 404
+    assert (await api.post("/api/videos/999/frames")).status_code == 404
+    audio = await make.video(source_kind=SourceKind.local, origin="memo.m4a", channel=None)
+    await make.job(audio.id, JobStatus.done)
+    await make.chapters(audio.id, [(0.0, "하나", ["a"])])
+    r = await api.post(f"/api/videos/{audio.id}/frames")
+    assert (r.status_code, r.json()["type"], r.json()["reason"]) == (
+        409,
+        "urn:va:frames-unavailable",
+        "음성 파일이라 장면이 없어요",
+    )
+    r = await api.get(f"/api/videos/{audio.id}/frames/1")
+    assert (r.status_code, r.json()["type"], r.json()["resource"]) == (
+        404,
+        "urn:va:not-found",
+        "frame",
     )
