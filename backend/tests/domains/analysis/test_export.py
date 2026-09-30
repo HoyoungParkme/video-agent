@@ -250,6 +250,41 @@ def test_gantt_zero_length_chapter_gets_one_second() -> None:
     assert "  pgvector 선택 : 00:50:00, 00:50:01\n" in export.gantt(result)
 
 
+def test_mindmap_matches_the_wireframe_block() -> None:
+    # 뿌리 = 한 줄 요약 → 챕터(시각 · 제목) → 요점, 괄호는 전각(와이어프레임은 셋째 챕터까지 보인다)
+    expected = (SNAP / "glance_42m_mindmap.md").read_text(encoding="utf-8")
+    assert export.mindmap(glance_42m(chapter_count=3)) + "\n" == expected
+
+
+def test_mindmap_long_video_goes_root_part_chapter_bullet() -> None:
+    assert export.mindmap(local_150m()) == (
+        "```mermaid\n"
+        "mindmap\n"
+        "  root(데이터 카탈로그를 처음부터 만드는 종일 워크숍.)\n"
+        "    0:00:00 1부 — 기초\n"
+        "      0:00:00 소개\n"
+        "        목표와 일정\n"
+        "      0:06:20 카탈로그란\n"
+        "        메타데이터\n"
+        "        검색\n"
+        "    1:00:00 2부 — 운영\n"
+        "      1:00:00 두 번째 세션\n"
+        "        운영 이야기\n"
+        "      1:30:00 소유자 정하기\n"
+        "        팀마다 한 명\n"
+        "```"
+    )
+
+
+def test_mindmap_brackets_do_not_close_nodes() -> None:
+    result = youtube_50m()
+    result.summary.one_liner = "요약 (a) [b] {c} `d`\n끝"
+    result.chapters[0].bullets = ["괄호 ) 하나"]
+    md = export.mindmap(result)
+    assert "  root(요약 （a） ［b］ ｛c｝ 'd' 끝)\n" in md
+    assert "      괄호 ） 하나\n" in md
+
+
 def turn(i: int, question: str, answer: str, cited: list[float]) -> ChatTurn:
     return ChatTurn(id=i, question=question, answer=answer, cited_secs=cited, asked_at=T0)
 

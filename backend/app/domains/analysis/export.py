@@ -34,6 +34,8 @@ LANGUAGES = {
 NO_CHAT = "질문 기록이 없습니다"
 # Mermaid gantt가 구분자로 읽는 글자 → 비슷해 보이는 다른 글자(MS-003 export.gantt)
 GANTT_CHARS = str.maketrans({":": "∶", ";": "；", "#": "＃", "`": "'", "\n": " "})
+# Mermaid mindmap이 노드 모양으로 읽는 괄호 → 전각(MS-003 export.mindmap)
+MIND_CHARS = str.maketrans("()[]{}`\n", "（）［］｛｝' ")
 
 
 def timecode(sec: float, duration_sec: int) -> str:
@@ -102,6 +104,39 @@ def gantt(result: Result) -> str:
         for i in result.summary.insights
         if i.source_secs
     ]
+    lines.append("```")
+    return "\n".join(lines)
+
+
+def mindmap(result: Result) -> str:
+    """VA-MS-003#export.mindmap
+
+    한눈에 보기 — 마인드맵. Mermaid `mindmap` 블록(울타리 포함). 뿌리는 한 줄 요약, 그 아래
+    파트(있으면) → 챕터(시각과 제목) → 요점. 들여쓰기 두 칸이 한 단계다. mindmap은 괄호를 노드
+    모양으로 읽어 글 속 괄호를 전각으로 바꾼다.
+
+    Args:
+        result: 결과 화면이 받는 것 전부
+
+    Returns:
+        ```` ```mermaid ````로 시작해 ```` ``` ````로 끝나는 블록(끝에 줄바꿈 없음)
+    """
+    v = result.video
+
+    def chapter(c: Chapter, pad: str) -> list[str]:
+        head = f"{pad}{timecode(c.start_sec, v.duration_sec)} {_mind_text(c.title)}"
+        return [head] + [f"{pad}  {_mind_text(b)}" for b in c.bullets]
+
+    lines = ["```mermaid", "mindmap", f"  root({_mind_text(result.summary.one_liner)})"]
+    if result.parts:
+        for p in result.parts:
+            lines.append(f"    {timecode(p.start_sec, v.duration_sec)} {_mind_text(p.title)}")
+            for c in result.chapters:
+                if c.part_seq == p.seq:
+                    lines += chapter(c, "      ")
+    else:
+        for c in result.chapters:
+            lines += chapter(c, "    ")
     lines.append("```")
     return "\n".join(lines)
 
@@ -205,6 +240,11 @@ def _gantt_name(text: str, fallback: str) -> str:
     # gantt가 구분자로 읽는 글자를 바꾼다(쌍점은 이름과 시각을 가른다) · 비면 번호로
     name = text.translate(GANTT_CHARS).strip()
     return name or fallback
+
+
+def _mind_text(text: str) -> str:
+    # mindmap이 노드 모양으로 읽는 괄호 셋을 전각으로 · 줄바꿈은 공백
+    return text.translate(MIND_CHARS).strip()
 
 
 def _source(t: Transcript) -> str:
