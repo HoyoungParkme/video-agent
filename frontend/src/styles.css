@@ -615,10 +615,14 @@ h1, h2, p { margin: 0; }
 .mind-link { width: 20px; height: 2px; flex-shrink: 0; background: var(--c-line-strong); }
 .mind-link.is-short { width: 14px; }
 .mind-branches { position: relative; flex-grow: 1; min-width: 0; padding-left: 20px; display: flex; flex-direction: column; }
-.mind-spine { position: absolute; left: 0; width: 2px; background: var(--c-line-strong); }
-.mind-spine.is-leaves { top: 24px; bottom: 24px; }
-.mind-row { position: relative; display: flex; align-items: center; gap: var(--space-8); }
-.mind-row.is-part { gap: 0; }
+/* 줄 높이 — 챕터 노드 64px, 파트는 56px 이상(펼치면 챕터마다 48px). 가지를 잇는 세로선은 줄마다 그리고
+   첫 줄은 가운데부터, 마지막 줄은 가운데까지 */
+.mind-row { position: relative; height: 64px; display: flex; align-items: center; gap: var(--space-8); }
+.mind-row.is-part { height: auto; min-height: 56px; gap: 0; }
+.mind-row::before, .mind-leaf-row::before { content: ""; position: absolute; left: -20px; top: 0; bottom: 0; width: 2px; background: var(--c-line-strong); }
+.mind-leaf-row::before { left: -14px; }
+.mind-row:first-child::before, .mind-leaf-row:first-child::before { top: 50%; }
+.mind-row:last-child::before, .mind-leaf-row:last-child::before { bottom: 50%; }
 .mind-stub { position: absolute; left: -20px; top: calc(50% - 1px); width: 20px; height: 2px; background: var(--c-line-strong); }
 .mind-stub.is-leaf { left: -14px; width: 14px; }
 .mind-node {

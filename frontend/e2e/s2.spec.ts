@@ -125,7 +125,9 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
   await expect(page.locator(".chapter")).toHaveCount(6);
   await page.locator(".mind-leaf", { hasText: "메타데이터 채우기" }).click();
   await expect(el(page, "8.2")).toHaveText("1:50:00");
-  await expect(page.locator('.mind-leaf[aria-pressed="true"]')).toContainText("메타데이터 채우기");
+  await expect(page.locator('.mind-leaf[aria-pressed="true"]')).toHaveAccessibleName(
+    "챕터 5 · 1:50:00 메타데이터 채우기",
+  );
   await expect(page.locator('.bar-cell[aria-pressed="true"]')).toHaveAccessibleName(
     "챕터 5 · 1:50:00 메타데이터 채우기",
   );

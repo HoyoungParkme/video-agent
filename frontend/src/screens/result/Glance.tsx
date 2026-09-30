@@ -30,10 +30,6 @@ const DOT_ROWS = 3;
 const TICK_SEC = 600;
 const TICK_LONG_SEC = 1800;
 const TICK_NEAR_END = 0.35;
-// 마인드맵 줄 높이 — 챕터 노드 64px, 접힌 파트 56px, 펼친 파트는 그 파트의 챕터마다 48px
-const NODE_ROW_PX = 64;
-const PART_ROW_PX = 56;
-const LEAF_ROW_PX = 48;
 const MAX_BULLETS = 3;
 
 type Part = Result["parts"][number];
@@ -230,18 +226,15 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
   );
 }
 
-/** 14 마인드맵 카드 — 뿌리에서 오른쪽으로. 파트가 없으면 챕터 노드와 요점, 있으면 파트 노드와 펼친 파트의 챕터. */
+/**
+ * 14 마인드맵 카드 — 뿌리에서 오른쪽으로. 파트가 없으면 챕터 노드와 요점, 있으면 파트 노드와 펼친 파트의 챕터.
+ * 줄 높이와 가지를 잇는 세로선은 CSS가 정한다(.mind-row · .mind-leaf-row) — 높이를 여기서 셈하지 않는다.
+ */
 function MindMap({ result, long, selected, open, onSelect, onToggle }: Props) {
   const { chapters, parts } = result;
   const chapter = holding(chapters, selected);
   const inPart = (p: Part) => chapters.filter((c) => c.part_seq === p.seq);
-  const heights = parts.length
-    ? parts.map((p) =>
-        open.has(p.seq) ? Math.max(inPart(p).length * LEAF_ROW_PX, PART_ROW_PX) : PART_ROW_PX,
-      )
-    : chapters.map(() => NODE_ROW_PX);
-  // 가지를 잇는 세로선 — 첫 줄 가운데에서 마지막 줄 가운데까지
-  const spine = { top: (heights[0] ?? 0) / 2, bottom: (heights[heights.length - 1] ?? 0) / 2 };
+  const name = (c: Chapter) => `챕터 ${c.seq} · ${timeLabel(c.start_sec, long)} ${c.title}`;
 
   return (
     <div className="mindmap" data-el="14">
@@ -252,14 +245,14 @@ function MindMap({ result, long, selected, open, onSelect, onToggle }: Props) {
         </div>
         <span className="mind-link" aria-hidden="true" />
         <div className="mind-branches">
-          <span className="mind-spine" style={spine} aria-hidden="true" />
           {parts.length === 0
             ? chapters.map((c, i) => (
-                <div key={c.seq} className="mind-row" style={{ height: heights[i] }}>
+                <div key={c.seq} className="mind-row">
                   <span className="mind-stub" aria-hidden="true" />
                   <button
                     type="button"
                     className="mind-node"
+                    aria-label={name(c)}
                     aria-pressed={chapter?.seq === c.seq}
                     data-el={i === 0 ? "14.2" : undefined}
                     onClick={() => onSelect(c.start_sec)}
@@ -284,7 +277,7 @@ function MindMap({ result, long, selected, open, onSelect, onToggle }: Props) {
             : parts.map((p, i) => {
                 const expanded = open.has(p.seq);
                 return (
-                  <div key={p.seq} className="mind-row is-part" style={{ height: heights[i] }}>
+                  <div key={p.seq} className="mind-row is-part">
                     <span className="mind-stub" aria-hidden="true" />
                     <button
                       type="button"
@@ -311,13 +304,13 @@ function MindMap({ result, long, selected, open, onSelect, onToggle }: Props) {
                       <>
                         <span className="mind-link is-short" aria-hidden="true" />
                         <div className="mind-leaves">
-                          <span className="mind-spine is-leaves" aria-hidden="true" />
                           {inPart(p).map((c, j) => (
                             <div key={c.seq} className="mind-leaf-row">
                               <span className="mind-stub is-leaf" aria-hidden="true" />
                               <button
                                 type="button"
                                 className="mind-leaf"
+                                aria-label={name(c)}
                                 aria-pressed={chapter?.seq === c.seq}
                                 data-el={i === 0 && j === 0 ? "14.5" : undefined}
                                 onClick={() => onSelect(c.start_sec)}

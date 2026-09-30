@@ -114,11 +114,12 @@ test("자막 있는 YouTube — 사전 안내부터 결과와 시각 이동까�
   await expect(dot).toHaveText("02");
 
   // 막대 칸 → 그 챕터 시작 시각. 같은 챕터가 막대 · 마인드맵 · 챕터 카드 세 곳에서 함께
-  await page.getByRole("button", { name: "챕터 3 · 20:00 pgvector 선택" }).click();
+  // 마인드맵 노드도 같은 이름이라(14.2 aria-label) 타임라인 카드 안에서 찾는다
+  await el(page, "13").getByRole("button", { name: "챕터 3 · 20:00 pgvector 선택" }).click();
   await expect(el(page, "8.2")).toHaveText("20:00");
   await expect(selected).toContainText("13번째 문장");
   await expect(bar).toHaveAccessibleName("챕터 3 · 20:00 pgvector 선택");
-  await expect(node).toContainText("pgvector 선택");
+  await expect(node).toHaveAccessibleName("챕터 3 · 20:00 pgvector 선택");
   await expect(page.locator('.chapter[aria-pressed="true"]')).toHaveText(/pgvector 선택/);
   await expect(dot).toHaveText("04");
 
