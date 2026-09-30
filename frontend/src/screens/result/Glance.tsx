@@ -1,7 +1,8 @@
 /**
  * VA-UI-002#UI-4 12 ~ 14 한눈에 보기 — 한 줄 요약(3)과 핵심 인사이트(4) 사이. 12.1 개수 · 12.2 안내,
  * 13 타임라인 카드(13.1 파트 띠 · 13.2 인사이트 점 · 13.3 챕터 막대 · 13.4 시각 눈금 · 13.5 범례),
- * 14 마인드맵 카드(14.1 뿌리 → 14.2 챕터 노드 · 14.3 요점, 파트가 있으면 14.4 파트 노드 → 14.5 파트 안 챕터 노드).
+ * 14 마인드맵 카드(14.1 뿌리 → 14.2 챕터 노드 · 14.3 요점, 파트가 있으면 14.4 파트 노드 → 14.5 파트 안 챕터 노드),
+ * 맨 아래 15 인포그래픽 카드(Result.tsx가 children으로 넘긴다 — screens/result/InfographicCard).
  * 이미 받은 결과로만 그리고 서버에 묻지 않는다. 고른 시각과 펼친 파트는 Result.tsx가 갖고 여기는 그리기만 한다
  * (VA-DOM-002 1장). 막대 · 점 · 파트 띠 · 챕터 노드는 시각 누르기(공통 1.3)다 — 고른 시각이 든 챕터의 칸 · 노드와
  * 그 시각이 든 파트 띠가 강조되고, 그 시각이 근거인 점이 채워진다(VA-UI-001 4.4). 파트 노드는 펴고 접기이고
@@ -11,7 +12,7 @@
  */
 "use client";
 
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { Chapter, Result } from "@/api/client";
 import { timeLabel } from "@/components/TimeChip";
@@ -43,6 +44,8 @@ interface Props {
   open: Set<number>;
   onSelect: (sec: number) => void;
   onToggle: (partSeq: number) => void;
+  /** 한눈에 보기 맨 아래 — 인포그래픽 카드(15) */
+  children?: ReactNode;
 }
 
 /** 두 자리 번호 — 인사이트 번호(01, 02 …). */
@@ -359,6 +362,7 @@ export default function Glance(props: Props) {
         onSelect={props.onSelect}
       />
       <MindMap {...props} />
+      {props.children}
     </section>
   );
 }

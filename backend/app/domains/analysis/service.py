@@ -8,12 +8,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import errno
+import functools
 import logging
 import os
 import re
 import tempfile
 import unicodedata
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar
 
@@ -21,12 +25,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import config
 from app.core.db import SessionLocal
-from app.core.errors import ExportFailed, FramesUnavailable, NotFound, ResultNotReady
-from app.core.settings import Models, settings
+from app.core.errors import (
+    ExportFailed,
+    FramesUnavailable,
+    InfographicBusy,
+    KeyMissing,
+    LlmUnavailable,
+    NotFound,
+    ResultNotReady,
+)
+from app.core.settings import ChosenModels, Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.export import SCRIPT_SUFFIX
-from app.domains.analysis.models import ChapterFrameRow, ChapterRow, TranscriptSource
-from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
+from app.domains.analysis.models import (
+    ChapterFrameRow,
+    ChapterRow,
+    InfographicRow,
+    InfographicState,
+    TranscriptSource,
+)
+from app.domains.analysis.ports import FrameSourcePort, ImageMakerPort, SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
     Chapter,
@@ -37,6 +55,9 @@ from app.domains.analysis.schemas import (
     Frame,
     FrameSet,
     FramesState,
+    Infographic,
+    InfographicBrief,
+    InfographicImage,
     Insight,
     Part,
     Result,
@@ -63,10 +84,11 @@ BULLETS_MAX = 3
 # 뜻이 있는 `[ ] # ^` — 노트가 `[[{이름} 스크립트]]`로 스크립트 파일을 가리키는데 Obsidian은
 # 링크 안의 `#`를 제목, `^`를 블록으로 읽는다(MS-003 v9)
 _UNSAFE = re.compile(r'[\\/:*?"<>|\[\]#^\x00-\x1f\x7f]')
-# 파일 이름 상한 — 글자 수, 그리고 UTF-8 바이트. 파일 이름 한도는 255바이트이고 스크립트 파일은
-# 이름 뒤에 ` 스크립트.md`(16바이트)가 붙는다 — 노트(`.md`)보다 긴 쪽에 맞춘다(MS-003 v8)
+# 파일 이름 상한 — 글자 수, 그리고 UTF-8 바이트. 파일 이름 한도는 255바이트이고 이름 뒤에 붙는
+# 꼬리 가운데 가장 긴 것이 인포그래픽의 ` 인포그래픽.png`(20바이트)다 — 스크립트 ` 스크립트.md`
+# 16바이트 · 장면 ` 1-05-26.jpg` 12바이트(MS-003 v14)
 NAME_MAX = 80
-NAME_BYTES_MAX = 238
+NAME_BYTES_MAX = 235
 # 사용자에게 보일 저장 위치 — 저장소 폴더 기준(compose가 ./data를 붙인다). 쓰는 곳은
 # config.EXPORT_DIR이고 컨테이너 안 경로라 화면에 보이지 않는다(MS-003 v5)
 EXPORT_SHOWN = "data/export"
@@ -153,9 +175,55 @@ def _frame_list(
     return out
 
 
+def _infographic(video_id: int, row: InfographicRow | None) -> Infographic:
+    """인포그래픽 행 → 응답. 행이 없으면 none, 그림은 컬럼이 있고 파일도 있을 때만."""
+    if row is None:
+        return Infographic(state=InfographicState.none, image=None, error_reason=None)
+    image = None
+    if row.path is not None and row.created_at is not None and os.path.isfile(row.path):
+        image = InfographicImage(
+            url=f"/api/videos/{video_id}/infographic/image?v={int(row.created_at.timestamp())}",
+            model=row.model,
+            quality=row.quality,
+            width=row.width,
+            height=row.height,
+            created_at=row.created_at,
+            cost_usd=row.cost_usd,
+        )
+    return Infographic(state=row.state, image=image, error_reason=row.error_reason)
+
+
+async def _brief(session: AsyncSession, video_id: int) -> InfographicBrief:
+    """인포그래픽 재료 — 제목 · 한 줄 요약 · 인사이트 · 챕터 제목. 스크립트는 읽지 않는다."""
+    summary, insights = await crud.summary_with_insights(session, video_id)
+    return InfographicBrief(
+        title=await crud.video_title(session, video_id) or "",
+        one_liner=summary.one_liner if summary else "",
+        insights=[i.text for i in insights],
+        chapter_titles=[c.title for c in await crud.chapter_rows(session, video_id)],
+    )
+
+
+def _draw_reason(video_id: int, e: Exception) -> str:
+    """그리기 실패 → 화면에 보일 한 줄. 알 수 없는 오류는 원인을 로그에 남긴다."""
+    if isinstance(e, LlmUnavailable):
+        return str(e.extra.get("reason") or "OpenAI 오류")
+    if isinstance(e, KeyMissing):  # 그리는 사이 .env에서 키가 빠져 클라이언트를 못 만든다
+        return "OpenAI API 키 없음"
+    if isinstance(e, OSError):
+        return "그림 파일을 저장하지 못함"
+    log.error("영상 %s의 인포그래픽을 그리지 못했다", video_id, exc_info=e)
+    return "알 수 없는 오류"
+
+
+def _unlink(path: Path) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        path.unlink()
+
+
 def _files(result: Result, name: str) -> list[ExportFile]:
     # 파일로 저장할 때 함께 쓰는 파일 — UI-7 2.3 칩. export_to_file이 쓰는 목록과 같다.
-    # 노트 · 스크립트, 그리고 장면이 있는 챕터마다 장면 그림(챕터 순서)
+    # 노트 · 스크립트, 장면이 있는 챕터마다 장면 그림(챕터 순서), 인포그래픽 그림이 있으면 그것
     duration = result.video.duration_sec
     return [
         ExportFile(kind="note", name=f"{name}.md"),
@@ -164,6 +232,11 @@ def _files(result: Result, name: str) -> list[ExportFile]:
             ExportFile(kind="frame", name=export.frame_name(name, c.start_sec, duration))
             for c in result.chapters
             if c.frame is not None
+        ),
+        *(
+            [ExportFile(kind="infographic", name=export.infographic_name(name))]
+            if result.infographic.image
+            else []
         ),
     ]
 
@@ -201,6 +274,7 @@ class AnalysisService:
     # 요청이 끝난 뒤에도 돌아 프로세스에 하나다(VA-MS-003 0장)
     _making: ClassVar[set[int]] = set()
     _frame_tasks: ClassVar[dict[int, asyncio.Task[None]]] = {}
+    _image_tasks: ClassVar[dict[int, asyncio.Task[None]]] = {}
 
     def __init__(
         self,
@@ -208,11 +282,13 @@ class AnalysisService:
         summarizer: SummarizerPort | None = None,
         storyboard: FrameSourcePort | None = None,
         local_frames: FrameSourcePort | None = None,
+        image_maker: ImageMakerPort | None = None,
     ) -> None:
         self.session = session
         self._port = summarizer
         self._storyboard = storyboard
         self._local_frames = local_frames
+        self._image_maker = image_maker
 
     @property
     def summarizer(self) -> SummarizerPort:
@@ -309,9 +385,9 @@ class AnalysisService:
 
         Returns:
             쓸 수 없는 글자와 위키링크 글자(`[ ] # ^`)는 `_`, 연속 공백 · 밑줄은 하나,
-            앞뒤 공백 · 점 없이 80자까지. UTF-8로 238바이트를 넘으면 더 자른다 — 스크립트
-            파일 이름(` 스크립트.md`)까지 255바이트 안에 들게. 한글 80자(240바이트)는
-            79자가 되고, 이모지처럼 4바이트 글자가 많으면 더 짧다.
+            앞뒤 공백 · 점 없이 80자까지. UTF-8로 235바이트를 넘으면 더 자른다 — 가장 긴
+            꼬리인 인포그래픽 파일 이름(` 인포그래픽.png`)까지 255바이트 안에 들게. 한글 80자
+            (240바이트)는 78자가 되고, 이모지처럼 4바이트 글자가 많으면 더 짧다.
             비면 `video-{id}`
         """
         name = video.title
@@ -527,18 +603,172 @@ class AnalysisService:
     async def cancel_tasks(self, video_id: int) -> None:
         """VA-MS-003#AnalysisService.cancel_tasks
 
-        지우기 전에 그 영상의 뒤 일(장면 채우기)을 멈추고 끝나기를 기다린다 — 지운 폴더에 다시 쓰지
-        않게. 파이프라인의 장면 단계는 작업 태스크의 일부라 JobService.cancel이 멈춘다.
+        지우기 전에 그 영상의 뒤 일(장면 채우기 · 인포그래픽 그리기)을 멈추고 끝나기를 기다린다 —
+        지운 폴더에 다시 쓰지 않게. 파이프라인의 장면 단계는 작업 태스크의 일부라
+        JobService.cancel이 멈춘다.
 
         Args:
             video_id: 영상 id. 도는 뒤 일이 없으면 아무것도 하지 않는다
         """
-        task = AnalysisService._frame_tasks.pop(video_id, None)
-        if task is not None:
+        tasks = {
+            task
+            for handles in (AnalysisService._frame_tasks, AnalysisService._image_tasks)
+            if (task := handles.pop(video_id, None)) is not None
+        }
+        for task in tasks:
             task.cancel()
+        if tasks:
             # wait는 태스크의 CancelledError를 올리지 않는다 — 부른 쪽 자신의 취소는 그대로 전해진다
-            await asyncio.wait({task})
+            await asyncio.wait(tasks)
         AnalysisService._making.discard(video_id)
+
+    async def infographic_of(self, video: Video) -> Infographic:
+        """VA-MS-003#AnalysisService.infographic_of
+
+        인포그래픽 상태와 지금 쓰는 그림 — 그리는 동안 화면이 3초마다 부른다. 다시 그리는 중이거나
+        다시 그리기가 실패해도 이전 그림이 그대로 있다.
+
+        Args:
+            video: 결과를 연 영상
+
+        Returns:
+            상태 · 그림(없으면 None) · 실패 이유
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        return _infographic(video.id, await crud.infographic(self.session, video.id))
+
+    async def start_infographic(self, video: Video) -> Infographic:
+        """VA-MS-003#AnalysisService.start_infographic
+
+        인포그래픽 그리기를 맡긴다 — 뒤에서 그리고 바로 돌려준다(202). 키는 누를 때 확인한다(분석
+        버튼 · 올리기와 같다). 행은 한 문장으로 making이 된다 — 겹친 요청은 하나만 맡는다. 그림
+        컬럼은 그대로라 다시 그리는 동안 이전 그림이 보인다.
+
+        Args:
+            video: 결과를 연 영상
+
+        Returns:
+            making과 이전 그림(있으면)
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+            InfographicBusy: 이미 그리는 중이다(겹친 요청이 먼저 맡은 것도)
+            KeyMissing · KeyInvalid: 키가 없거나 확인에 실패했다 — 행을 만들지 않는다
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        row = await crud.infographic(self.session, video.id)
+        if row is not None and row.state == InfographicState.making:
+            raise InfographicBusy()
+        await settings.check_stored_key()  # 누를 때 확인한다(UI-5 규칙)
+        await settings.require_key()
+        if not await crud.claim_infographic(self.session, video.id):
+            raise InfographicBusy()  # 겹친 요청이 먼저 making으로 바꿨다
+        await self.session.commit()  # 태스크는 자기 세션으로 이 행을 고친다
+        choice = settings.current_models()  # 맡긴 때의 모델 · 품질로 끝까지 그린다
+        AnalysisService._image_tasks[video.id] = asyncio.create_task(
+            self.draw_infographic(video.id, choice)
+        )
+        return await self.infographic_of(video)
+
+    async def infographic_file(self, video_id: int) -> str:
+        """VA-MS-003#AnalysisService.infographic_file
+
+        지금 쓰는 인포그래픽 그림 파일 경로 — 라우터가 image/png로 준다. 다시 그리는 중이면
+        이전 그림이다.
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            파일 경로
+
+        Raises:
+            NotFound: 행이 없거나 그림이 없는 행이거나 파일이 없다(resource=infographic)
+        """
+        row = await crud.infographic(self.session, video_id)
+        if row is None or row.path is None or not os.path.isfile(row.path):
+            raise NotFound(resource="infographic", id=video_id)
+        return row.path
+
+    async def fail_orphans(self) -> int:
+        """VA-MS-003#AnalysisService.fail_orphans
+
+        서버가 다시 시작될 때 그리던(making) 인포그래픽을 failed('서버가 다시 시작됨')로 — 핸들이
+        없어 영영 그리는 중으로 보이기 때문이다. 이전 그림 컬럼은 그대로다. 장면의 「도는 중」은
+        메모리에만 있어 되돌릴 것이 없다.
+
+        Returns:
+            되돌린 행 수
+        """
+        count = await crud.fail_making_infographics(self.session, "서버가 다시 시작됨")
+        await self.session.commit()
+        return count
+
+    async def draw_infographic(self, video_id: int, choice: ChosenModels) -> None:
+        """VA-MS-003#AnalysisService.draw_infographic
+
+        뒤에서 인포그래픽을 그린다 — 요청이 끝난 뒤에도 돌아 자기 세션을 연다. 재료는 제목 · 한 줄
+        요약 · 인사이트 · 챕터 제목뿐이다(스크립트는 없다). 임시 이름에 다 그린 뒤 한 번에
+        `{id}.png`로 바꾼다 — 실패해도 이전 그림이 그대로다. 실패 이유는 어댑터가 준 한 줄
+        (llm-unavailable) · 키 없음 · 파일 오류 · 알 수 없는 오류(DB 오류 포함) 넷이다. 실패는
+        세션을 되돌린 뒤 적는다 — 그것마저 못 하면 로그만 남기고 다음 시작의 fail_orphans에 맡긴다.
+
+        Args:
+            video_id: 영상 id — 행은 start_infographic이 making으로 만들어 두었다
+            choice: 맡긴 때의 이미지 모델 · 품질(한 장 값)
+
+        Raises:
+            CancelledError: 취소만 올린다 — 행은 둔다(영상 삭제면 cascade, 서버 종료면 다음
+                시작의 fail_orphans가 정리한다)
+        """
+        final = Path(config.INFOGRAPHICS_DIR) / f"{video_id}.png"
+        tmp = final.with_name(f"{video_id}.png.part")
+        try:
+            async with SessionLocal() as session:
+                try:
+                    brief = await _brief(session, video_id)
+                    await asyncio.to_thread(final.parent.mkdir, parents=True, exist_ok=True)
+                    shot = await self.image_maker.infographic(
+                        brief, choice.image_model, choice.image_quality.id, str(tmp)
+                    )
+                    await asyncio.to_thread(os.replace, shot.path, final)
+                    await crud.finish_infographic(
+                        session,
+                        video_id,
+                        model=choice.image_model,
+                        quality=choice.image_quality.id,
+                        width=shot.width,
+                        height=shot.height,
+                        cost_usd=choice.image_quality.price_usd,
+                        path=str(final),
+                        created_at=datetime.now(UTC),
+                    )
+                    await session.commit()
+                except Exception as e:  # 취소(CancelledError)는 Exception이 아니라 그대로 올라간다
+                    reason = _draw_reason(video_id, e)
+                    try:
+                        await session.rollback()  # DB 오류로 트랜잭션이 깨졌을 수 있다
+                        await crud.fail_infographic(session, video_id, reason)
+                        await session.commit()
+                    except Exception:  # 영영 making이면 만들기가 모두 busy — 다음 시작에 되돌린다
+                        log.exception("영상 %s의 인포그래픽 실패를 적지 못했다", video_id)
+        finally:
+            await asyncio.to_thread(_unlink, tmp)
+            # 제 핸들만 뺀다 — 끝낸 뒤 새로 맡긴 그리기의 핸들을 지우지 않게
+            if AnalysisService._image_tasks.get(video_id) is asyncio.current_task():
+                del AnalysisService._image_tasks[video_id]
+
+    @property
+    def image_maker(self) -> ImageMakerPort:
+        # 포트 없이 만든 서비스로 그리기를 부르면 코드 실수 — 앱 수준에서 internal(500)
+        if self._image_maker is None:
+            raise RuntimeError("이미지 포트 없이 만든 AnalysisService로 인포그래픽을 그리려 했다")
+        return self._image_maker
 
     async def save_transcript(
         self,
@@ -738,7 +968,8 @@ class AnalysisService:
         """VA-MS-003#AnalysisService.result_of
 
         결과 화면 응답 전부 — 구간을 나누지 않는다. 읽기만 한다 — 장면 채우기를 시작하지 않는다.
-        쿼리 일곱. 챕터의 장면은 그림이 있고 파일도 있을 때만 싣는다.
+        쿼리 여덟. 챕터의 장면은 그림이 있고 파일도 있을 때만 싣는다. 인포그래픽은
+        infographic_of와 같은 모양이다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상(상태 · 길이 · 대화 수)
@@ -760,6 +991,7 @@ class AnalysisService:
         chapter_rows = await crud.chapters_with_part_seq(self.session, video.id)
         questions = await crud.questions(self.session, video.id)
         frame_rows = await crud.frames(self.session, video.id)
+        infographic = await crud.infographic(self.session, video.id)
         frames = {
             f.chapter_seq: f
             for f in _frame_list(video.id, [c for c, _ in chapter_rows], frame_rows)
@@ -810,6 +1042,7 @@ class AnalysisService:
             models=Models(stt=t.model, text=s.model),
             analyzed_at=video.analyzed_at,
             frames_state=self.frames_state(video, [c for c, _ in chapter_rows], frame_rows),
+            infographic=_infographic(video.id, infographic),
         )
 
     async def export_markdown(
@@ -850,10 +1083,10 @@ class AnalysisService:
     ) -> ExportResult:
         """VA-MS-003#AnalysisService.export_to_file
 
-        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓰고, 장면이 있는 챕터의 그림을 곁에
-        복사한다 — 화면이 보낸 본문을 쓰지 않고 다시 만든다. 노트는 장면 그림 줄과 스크립트 파일을
-        가리키는 절(`[[{이름} 스크립트]]`)을 갖는다. 스크립트를 먼저 써 노트의 링크가 헛돌지 않게
-        한다. 같은 이름이 있으면 모두 덮어쓰고, 폴더가 없으면 만든다.
+        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓰고, 장면이 있는 챕터의 그림과
+        인포그래픽 그림을 곁에 복사한다 — 화면이 보낸 본문을 쓰지 않고 다시 만든다. 노트는 그림
+        줄과 스크립트 파일을 가리키는 절(`[[{이름} 스크립트]]`)을 갖는다. 스크립트를 먼저 써
+        노트의 링크가 헛돌지 않게 한다. 같은 이름이 있으면 모두 덮어쓰고, 폴더가 없으면 만든다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
@@ -876,21 +1109,22 @@ class AnalysisService:
         written = [(f"{script}.md", text), (f"{name}.md", note)]
         for file, data in written:
             await self._write_export(file, data)
-        images = 0
-        for c in result.chapters:  # 장면이 있는 챕터의 그림을 노트의 그림 줄이 가리키는 이름으로
-            if c.frame is None:
-                continue
-            file = export.frame_name(name, c.start_sec, video.duration_sec)
-            try:
-                src = await self.frame_file(video.id, c.seq)
-                data = await asyncio.to_thread(Path(src).read_bytes)
-            except (NotFound, OSError) as e:  # 결과를 읽은 뒤 다시 채우기 · 지우기로 없어졌다
-                raise ExportFailed(
-                    path=f"{EXPORT_SHOWN}/{file}", reason="그림 파일을 찾을 수 없음"
-                ) from e
-            await self._write_export(file, data)
-            written.append(("", data))
-            images += 1
+        # 그림은 노트의 그림 줄이 가리키는 이름으로 — 장면이 있는 챕터마다, 인포그래픽이 있으면 그것
+        pictures = [
+            (
+                export.frame_name(name, c.start_sec, video.duration_sec),
+                functools.partial(self.frame_file, video.id, c.seq),
+            )
+            for c in result.chapters
+            if c.frame is not None
+        ]
+        if result.infographic.image:
+            pictures.append(
+                (export.infographic_name(name), functools.partial(self.infographic_file, video.id))
+            )
+        for file, source in pictures:
+            written.append(("", await self._export_picture(file, source)))
+        images = len(pictures)
         return ExportResult(
             filename=name,
             path=f"{EXPORT_SHOWN}/{name}.md",
@@ -898,6 +1132,18 @@ class AnalysisService:
             images=images,
             files=_files(result, name),
         )
+
+    async def _export_picture(self, file: str, source: Callable[[], Awaitable[str]]) -> bytes:
+        """그림 한 장을 노트 곁에 쓴다. 결과를 읽은 뒤 다시 채우기 · 다시 그리기 · 지우기로
+        그림이 없어졌으면 export-failed('그림 파일을 찾을 수 없음') — 없음(404)이 아니라 저장
+        실패로 알린다."""
+        try:
+            data = await asyncio.to_thread(Path(await source()).read_bytes)
+        except (NotFound, OSError) as e:
+            reason = "그림 파일을 찾을 수 없음"
+            raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}", reason=reason) from e
+        await self._write_export(file, data)
+        return data
 
     async def _write_export(self, file: str, data: bytes) -> None:
         """내보낼 파일 하나를 EXPORT_DIR에 쓴다. 실패는 보일 경로와 errno로 고른 이유로."""

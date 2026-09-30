@@ -26,6 +26,8 @@ interface Props {
   initialFocus?: string;
   /** 요소 번호(data-el) — UI-6 · UI-7은 다이얼로그 자체가 1이다 */
   el?: string;
+  /** 짙은 덮개 — 그림을 보는 UI-9(VA-UI-001 3.1 크게 보기 덮개) */
+  dark?: boolean;
   children: ReactNode;
 }
 
@@ -43,6 +45,7 @@ export default function Dialog({
   closeOnOverlay = true,
   initialFocus,
   el,
+  dark = false,
   children,
 }: Props) {
   const box = useRef<HTMLDivElement>(null);
@@ -86,7 +89,7 @@ export default function Dialog({
 
   return createPortal(
     <div
-      className="dialog-overlay"
+      className={`dialog-overlay${dark ? " is-dark" : ""}`}
       style={{ paddingTop: top }}
       onMouseDown={(e) => {
         if (closeOnOverlay && e.target === e.currentTarget) onClose();

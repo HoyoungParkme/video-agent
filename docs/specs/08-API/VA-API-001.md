@@ -1826,7 +1826,8 @@ components:
 - [x] 분석이 도는 동안 새 분석 — 결정: 대기열(`status = queued`, `queue_position`). 409 `another-job-running`은 없앴다(5장 8, 사용자 결정 2026-09-21)
 - [x] 웹에서 받은 키의 저장 위치 — 결정: `.env` 파일 하나, 앱이 그 줄을 고친다. `KeyStatus.stored_in`은 '.env에 저장됨' 고정([[VA-INFRA-001#C6]], 사용자 결정 2026-09-21)
 - [ ] 예상 비용의 텍스트 모델 몫(`Estimate.text_cost_usd`) 추정식 — MINISPEC
-- [ ] 인포그래픽 한 장 값(`ImageQualityOption.price_usd`) — 첫 값 low $0.006 · medium $0.05는 외부 가격 정리다. 카드 D3에서 실제 한 장의 사용량으로 재어 고친다([[VA-INFRA-001]] 9장)
+- [x] 인포그래픽 `low` 한 장 값(`ImageQualityOption.price_usd`) — 결정: $0.01. 카드 D3에서 실제 한 장이 $0.0096이었다([[VA-INFRA-001]] 9장)
+- [ ] 인포그래픽 `medium` 한 장 값 — 재지 않아 첫 값 $0.05(외부 가격 정리) 그대로다. 처음 만들 때 사용량으로 고친다([[VA-INFRA-001]] 9장)
 - [ ] 올리기 요청의 시간 제한 — web 라우트 핸들러가 api로 넘기는 요청은 넘기기의 60초 제한을 받지 않지만, 넘기는 쪽(Node `fetch`)의 기본 대기가 300초다. 같은 PC라 수 GB도 그 안이지만 카드 D4에서 588MB 파일로 잰다(MINISPEC 영상 서비스 3장과 같은 항목)
 - [x] 디스크 판정의 여유분 — 결정: 고정 1 GiB. 파일 크기의 몇 %로 두면 작은 파일에 여유가 모자란다. 분석이 그 뒤에 쓰는 임시 음성 · 조각 · 장면을 넉넉히 덮는다(MINISPEC 영상 서비스 0장 `UPLOAD_SPARE_BYTES`)
 - [x] 조각이 없는 단계의 `Job.remaining_sec` 계산 — 결정: 예상 전체 시간 − 지난 시간, 0이면 화면이 비운다(MINISPEC 작업 서비스 `JobService.remaining_sec`). 바꿈(사용자 결정, 2026-09-23): 작업 전체가 끝날 때까지, 끝난 단계의 오차는 넘기지 않는다 — 받아쓰기에 요약 세 단계 몫을 더하고 요약 세 단계는 그 몫에서 뺀다([[VA-UI-001]] 8장)

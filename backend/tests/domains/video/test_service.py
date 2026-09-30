@@ -26,7 +26,7 @@ from app.core.errors import (
     VideoTooLong,
 )
 from app.domains.analysis import crud as analysis_crud
-from app.domains.analysis.models import FrameSource
+from app.domains.analysis.models import FrameSource, InfographicRow, InfographicState
 from app.domains.job.models import ChunkState, JobStatus
 from app.domains.job.service import JobService
 from app.domains.video import service as service_module
@@ -483,6 +483,7 @@ async def _owned(db, video_id: int, job_id: int, chapter_id: int) -> dict[str, i
         "transcripts": ("video_id", video_id),
         "chapters": ("video_id", video_id),
         "chapter_frames": ("chapter_id", chapter_id),
+        "infographics": ("video_id", video_id),
         "chat_turns": ("video_id", video_id),
     }
     counts = {}
@@ -512,6 +513,19 @@ async def test_delete_removes_everything_of_that_video(
     kept = tmp_path / "frames" / str(other.id) / "1.jpg"  # 다른 영상의 장면
     kept.parent.mkdir(parents=True)
     kept.write_bytes(b"jpeg")
+    picture = tmp_path / "infographics" / f"{row.id}.png"
+    picture.parent.mkdir(parents=True)
+    picture.write_bytes(b"png")
+    db.add(
+        InfographicRow(
+            video_id=row.id,
+            state=InfographicState.failed,
+            error_reason="OpenAI 서버 오류",
+        )
+    )
+    await db.commit()
+    other_picture = tmp_path / "infographics" / f"{other.id}.png"
+    other_picture.write_bytes(b"png")
     tmp = tmp_path / "tmp" / str(row.id)
     tmp.mkdir(parents=True)
     (tmp / "3.mp3").write_bytes(b"mp3")  # 실패한 작업이 보존한 조각
@@ -526,6 +540,7 @@ async def test_delete_removes_everything_of_that_video(
     assert not tmp.exists()
     assert not shot.parent.exists()  # 장면 폴더째
     assert kept.read_bytes() == b"jpeg"
+    assert not picture.exists() and other_picture.read_bytes() == b"png"  # 인포그래픽
     assert inbox.read_bytes() == b"wav"  # 원본 파일은 건드리지 않는다
     assert (await svc.get(other.id)).video.id == other.id  # 다른 영상은 그대로
     with pytest.raises(NotFound):

@@ -1,7 +1,7 @@
-"""마이그레이션 — 테이블 12개 · 인덱스 · 제약이 ERD(VA-DOM-003)대로인지, 올리고 내릴 수 있는지.
+"""마이그레이션 — 테이블 13개 · 인덱스 · 제약이 ERD(VA-DOM-003)대로인지, 올리고 내릴 수 있는지.
 
 0001_initial이 11개를 만들고 0002가 영상 하나에 기다리는 · 도는 작업 하나를, 0003이 챕터 대표
-장면(chapter_frames)을 더한다.
+장면(chapter_frames)을, 0004가 인포그래픽(infographics)을 더한다.
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ TABLES = {
     "suggested_questions",
     "chat_turns",
     "chapter_frames",
+    "infographics",
 }
 NOW = datetime(2026, 9, 23, tzinfo=UTC)
 
@@ -247,6 +248,39 @@ async def test_chapter_frame_is_got_or_tried(conn: AsyncConnection) -> None:
     await _expect_violation(conn, FRAME_SQL, {"c": got, **frame})  # 챕터마다 0..1
 
 
+INFOGRAPHIC_SQL = (
+    "INSERT INTO infographics (video_id, state, model, quality, width, height, cost_usd, path,"
+    " error_reason, created_at) VALUES (:v, :st, :m, :q, :w, :h, :c, :p, :e, :at)"
+)
+PICTURE = {
+    "m": "gpt-image-2",
+    "q": "low",
+    "w": 1024,
+    "h": 1536,
+    "c": 0.006,
+    "p": "data/infographics/1.png",
+    "at": NOW,
+}
+NO_PICTURE = dict.fromkeys(PICTURE)
+
+
+async def test_infographic_checks(conn: AsyncConnection) -> None:
+    """그림은 모두 있거나 모두 없다 · done이면 그림이 있다 · failed일 때만 이유가 있다(DOM-003 3장)."""
+    first, again, fail, bad = [await _insert_video(conn, c * 11) for c in "efgh"]
+    await conn.execute(text(INFOGRAPHIC_SQL), {"v": first, "st": "making", "e": None, **NO_PICTURE})
+    # 다시 그리는 중 · 다시 그리기가 실패한 뒤에도 이전 그림이 그대로 있다
+    await conn.execute(text(INFOGRAPHIC_SQL), {"v": again, "st": "making", "e": None, **PICTURE})
+    await conn.execute(text(INFOGRAPHIC_SQL), {"v": fail, "st": "failed", "e": "이유", **PICTURE})
+    ok = {"v": bad, "st": "done", "e": None, **PICTURE}
+    await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "p": None})  # 반쪽 그림
+    await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, **NO_PICTURE})  # 그림 없는 done
+    await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "st": "failed"})  # 이유 없는 실패
+    await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "e": "이유"})  # 실패가 아닌데 이유
+    await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "w": 0})
+    await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "c": -0.1})
+    await _expect_violation(conn, INFOGRAPHIC_SQL, {**ok, "v": first})  # 영상마다 0..1
+
+
 async def test_delete_video_cascades(conn: AsyncConnection) -> None:
     """영상 행 하나를 지우면 딸린 것이 전부 사라진다(DOM-003 4장 5)."""
     v = await _insert_video(conn)
@@ -282,6 +316,7 @@ async def test_delete_video_cascades(conn: AsyncConnection) -> None:
     await conn.execute(
         text(FRAME_SQL), {"c": ch, "sec": None, "src": None, "w": None, "h": None, "p": None}
     )
+    await conn.execute(text(INFOGRAPHIC_SQL), {"v": v, "st": "done", "e": None, **PICTURE})
     await conn.execute(text("DELETE FROM videos WHERE id = :v"), {"v": v})
     # 이 영상의 것만 센다 — 앞서 돈 테스트 · E2E가 같은 DB에 남긴 행과 섞이지 않게
     left = {
@@ -291,6 +326,7 @@ async def test_delete_video_cascades(conn: AsyncConnection) -> None:
         "insights": ("summary_id", s),
         "chat_turns": ("video_id", v),
         "chapter_frames": ("chapter_id", ch),
+        "infographics": ("video_id", v),
     }
     for table, (column, owner) in left.items():
         count = f"SELECT count(*) FROM {table} WHERE {column} = :o"
@@ -300,7 +336,7 @@ async def test_delete_video_cascades(conn: AsyncConnection) -> None:
 async def test_downgrade_then_upgrade(
     migrated: None, alembic: Callable[[str, str], Awaitable[None]]
 ) -> None:
-    """내리면 테이블이 없고, 다시 올리면 12개."""
+    """내리면 테이블이 없고, 다시 올리면 13개."""
     engine = create_async_engine(config.DATABASE_URL)
     try:
         await alembic("downgrade", "base")

@@ -3095,7 +3095,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 </div>
-<div data-el="15" style="width: 760px; box-sizing: border-box; padding: 16px 20px; border-radius: 14px; border: 1px dashed #CFC8BB; display: flex; align-items: center; gap: 16px;"><span style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"></path></svg></span><span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span data-el="15.1" style="font-size: 16px; font-weight: 600;">인포그래픽 한 장으로 보기</span><span data-el="15.2" style="font-size: 13px; line-height: 1.55; color: #5E5A52;">한 줄 요약 · 인사이트 · 챕터 제목으로 그림을 그려요. 한 장 약 $0.006 · 누를 때만 만들어요</span></span><button type="button" data-el="15.3" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 0 16px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600;">인포그래픽 만들기</button></div>
+<div data-el="15" style="width: 760px; box-sizing: border-box; padding: 16px 20px; border-radius: 14px; border: 1px dashed #CFC8BB; display: flex; align-items: center; gap: 16px;"><span style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: #EFECE5; color: #4A463F; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"></path></svg></span><span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span data-el="15.1" style="font-size: 16px; font-weight: 600;">인포그래픽 한 장으로 보기</span><span data-el="15.2" style="font-size: 13px; line-height: 1.55; color: #5E5A52;">한 줄 요약 · 인사이트 · 챕터 제목으로 그림을 그려요. 한 장 약 $0.01 · 누를 때만 만들어요</span></span><button type="button" data-el="15.3" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 0 16px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600;">인포그래픽 만들기</button></div>
 </section>
 </div>
 <div class="var"><b>한눈에 보기 · 파트 있음</b> — 2시간 30분 로컬(영상 3) · 그림 · ResultLong. 막대 위 파트 띠(13.1), 가까운 인사이트 점은 둘째 줄로. 마인드맵은 파트 노드(14.4)와 펼친 첫 파트의 챕터 노드(14.5). 요점은 없다</div>
@@ -3280,7 +3280,7 @@ button, input, select, textarea { font-family: inherit; }
 - 13.2는 첫 근거 시각 자리에 가운데를 맞춘다. 이미 놓인 점과 30px 안이면 한 줄 아래(최대 세 줄)로 내린다. 점 줄 높이는 줄 수로 정한다.
 - 13.4 눈금은 0에서 시작해 1시간 미만 영상은 10분, 이상은 30분 간격이고 끝에 영상 길이를 둔다. 끝 눈금과 간격의 35% 안으로 붙는 눈금은 뺀다. 형식은 VA-UI-001 4.4.
 - 14는 파트가 없으면 14.1 → 14.2 → 14.3, 있으면 14.1 → 14.4 → (펼친 파트의) 14.5다. 14.4의 펼침은 챕터 목록의 파트 머리(6.5)와 같은 상태를 쓴다 — 한쪽에서 펴면 다른 쪽도 펴진다. 처음에는 첫 파트만 펴져 있다.
-- **인포그래픽 카드(15)** — 상태는 서버의 인포그래픽 상태를 그대로 따른다. 없음 → 만들기 전(15.1 · 15.2 · 15.3), 그리는 중 → 15.4, 있음 → 다 됨(15.5 ~ 15.10), 실패 → 15.11과 15.10, 키 없음 또는 확인 실패 → 15.1 · 키 없음 설명 · 15.12. 인터넷이 없어 키를 확인하지 못한 상태는 만들기 전과 같다(공통 1.4).
+- **인포그래픽 카드(15)** — 상태는 서버의 인포그래픽 상태를 그대로 따른다. 없음 → 만들기 전(15.1 · 15.2 · 15.3), 그리는 중 → 15.4, 있음 → 다 됨(15.5 ~ 15.10), 실패 → 15.11과 15.10, 키 없음 또는 확인 실패 → 15.1 · 키 없음 설명 · 15.12. 인터넷이 없어 키를 확인하지 못한 상태는 만들기 전과 같다(공통 1.4). 맡기기가 거절된 이유(UI-8 규칙)는 서버에 행이 없어 화면이 들고 있다가 15.11에 보인다 — 서버의 이전 실패 이유보다 먼저다. 다음 맡기기가 받아들여지면 거둔다(카드 D3 코드 리뷰).
 - 15.3 · 15.10은 UI-8을 연다. UI-8에서 만들기를 누르면 곧바로 15.4 상태가 된다. 그리는 동안 이 화면은 몇 초마다 인포그래픽 상태를 다시 받는다. 다른 화면으로 가도 서버는 계속 그린다 — 돌아오면 그리는 중이거나 다 된 모습이다 (VA-UI-001 UI-4).
 - 이미 그림이 있는데 다시 만들기가 실패하면 다 됨 카드 위에 15.11 한 줄을 붙이고 이전 그림(15.5)은 그대로 둔다([[VA-UC-001#UC-H9]] 4a). 이 모양은 캔버스에 없다.
 - 15.5 · 15.9는 UI-9를 연다. UI-9가 닫히면 초점이 연 버튼으로 돌아온다.
@@ -3539,7 +3539,7 @@ button, input, select, textarea { font-family: inherit; }
 <div style="display: flex; flex-direction: column; gap: 8px;">
 <span id="img-quality-label" style="font-size: 14px; font-weight: 600; color: #4A463F;">품질</span>
 <div data-el="7.3" role="radiogroup" aria-labelledby="img-quality-label" style="display: flex; flex-direction: column; gap: 8px;">
-<label data-el="7.4" style="height: 48px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 10px; border-radius: 10px; border: 1px solid #0F6E68; background: #E1EFEC;"><input type="radio" name="img-quality" checked style="width: 18px; height: 18px; margin: 0; accent-color: #0F6E68;"><span style="font-size: 15px; font-weight: 600;">낮음 (기본)</span><span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F;">한 장 약 $0.006</span></label>
+<label data-el="7.4" style="height: 48px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 10px; border-radius: 10px; border: 1px solid #0F6E68; background: #E1EFEC;"><input type="radio" name="img-quality" checked style="width: 18px; height: 18px; margin: 0; accent-color: #0F6E68;"><span style="font-size: 15px; font-weight: 600;">낮음 (기본)</span><span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F;">한 장 약 $0.01</span></label>
 <label style="height: 48px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 10px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7;"><input type="radio" name="img-quality" style="width: 18px; height: 18px; margin: 0; accent-color: #0F6E68;"><span style="font-size: 15px; font-weight: 600;">중간</span><span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #4A463F;">한 장 약 $0.05</span></label>
 </div>
 <span data-el="7.5" style="font-size: 13px; line-height: 1.55; color: #6B665C;">값이 가장 싸요. 그림 속 작은 글자는 흐릴 수 있어요.</span>
@@ -3773,7 +3773,7 @@ button, input, select, textarea { font-family: inherit; }
 
 **S-7 인포그래픽 품질을 올린다** — [[VA-UC-001#UC-H9]] 기본 흐름 2 · [[VA-PRD-001#R13]]
 1. UI-8의 '설정에서 바꾸기'나 헤더 설정 아이콘으로 들어온다. 품질(7.3)은 '낮음 (기본)'이 골라져 있다
-2. '중간' 줄(7.4)을 누른다. 7.5가 '글자가 더 또렷해요. 값은 낮음의 약 8배예요.'로 바뀐다
+2. '중간' 줄(7.4)을 누른다. 7.5가 '글자가 더 또렷해요. 값은 낮음의 약 5배예요.'로 바뀐다
 3. 저장(6.2)을 누른다. 다음 인포그래픽부터 UI-4 카드와 UI-8의 값이 중간 품질의 값이다
 
 **S-6 키를 바꾼 뒤 취소한다** — [[VA-UC-001#UC-H8]] 기본 흐름 2~4
@@ -4751,7 +4751,7 @@ mindmap
 <div data-el="2" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
 <div style="box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #F6F4EF; display: flex; flex-direction: column; gap: 4px;">
 <span style="font-size: 13px; color: #5E5A52;">예상 비용</span>
-<span data-el="2.1" style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600;">약 $0.006</span>
+<span data-el="2.1" style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600;">약 $0.01</span>
 </div>
 <div style="box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #F6F4EF; display: flex; flex-direction: column; gap: 4px;">
 <span style="font-size: 13px; color: #5E5A52;">품질</span>
@@ -4766,7 +4766,7 @@ mindmap
 </div>
 <div data-el="4" style="display: flex; justify-content: flex-end; gap: 10px;">
 <button type="button" data-el="4.1" style="height: 44px; box-sizing: border-box; padding: 0 18px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600;">취소</button>
-<button type="button" data-el="4.2" style="height: 44px; box-sizing: border-box; padding: 0 22px; border: 0; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600;">만들기 · 약 $0.006</button>
+<button type="button" data-el="4.2" style="height: 44px; box-sizing: border-box; padding: 0 22px; border: 0; border-radius: 10px; background: #1B1A17; color: #F6F4EF; font-size: 15px; font-weight: 600;">만들기 · 약 $0.01</button>
 </div>
 </div>
 </div>
@@ -4810,6 +4810,7 @@ mindmap
 - 닫는 길은 1.3 · 4.1 · Esc · 덮개 누름 넷이고 모두 취소다. 아무것도 보내지 않고 비용도 들지 않는다([[VA-UC-001#UC-H9]] 3a). 닫히면 초점이 연 버튼(UI-4 15.3 또는 15.10)으로 돌아간다.
 - 4.2를 누르면 서버에 그리기를 맡기고 곧바로 닫힌다 — 다 그릴 때까지 기다리지 않는다. 카드가 그리는 중이 되고, 결과는 카드가 알린다(UI-4 규칙). 누르는 순간 서버가 키를 다시 확인한다. 실패하면(키 · 연결) 닫힌 뒤 카드가 실패 상태로 이유를 보인다.
 - 4.2를 누른 뒤 요청이 서버에 닿기까지 4.2에 대기 표시를 두고 다시 누를 수 없다. 닿지 못하면 다이얼로그를 닫지 않고 버튼 줄 왼쪽에 '인포그래픽을 맡기지 못했어요 — {이유}' 한 줄을 보인다 (VA-UI-001에 없음)
+- 다른 창에서 먼저 맡겨 서버가 이미 그리는 중이면(`infographic-busy`) 지금 인포그래픽 상태를 다시 받아 닫히고, 카드가 그리는 중이 된다. 다시 받지 못하면 닫지 않고 위 한 줄('인포그래픽을 맡기지 못했어요 — 서버에 연결할 수 없음')을 보인다 (카드 D3 코드 리뷰)
 - 이미 그림이 있으면(다시 만들기) 3.3을 보인다. 새 그림이 다 되면 이전 그림을 바꾼다. 새 그림이 실패하면 이전 그림은 그대로다([[VA-UC-001#UC-H9]] 4a · 5a).
 - 처음 초점은 4.2다(VA-UI-001 4.3).
 
@@ -4817,7 +4818,7 @@ mindmap
 
 **S-1 처음 만든다** — [[VA-UC-001#UC-H9]] 기본 흐름 1~4
 1. UI-4 인포그래픽 카드의 [인포그래픽 만들기](15.3)를 누르면 이 다이얼로그가 뜬다. 초점은 4.2에 있다
-2. 2.1 '약 $0.006'과 2.2 '낮음 · gpt-image-2', 3.1 보내는 내용을 확인한다
+2. 2.1 '약 $0.01'과 2.2 '낮음 · gpt-image-2', 3.1 보내는 내용을 확인한다
 3. 4.2를 누른다. 다이얼로그가 닫히고 카드가 그리는 중이 된다
 
 **S-2 비용을 보고 그만둔다** — [[VA-UC-001#UC-H9]] 확장 3a

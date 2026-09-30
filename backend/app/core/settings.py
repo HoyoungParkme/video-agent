@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from app.core.config import ModelOption, ModelOptions, config
+from app.core.config import ImageQuality, ImageQualityOption, ModelOption, ModelOptions, config
 from app.core.errors import (
     Internal,
     KeyInvalid,
@@ -28,8 +28,8 @@ from app.infra.openai import KeyCheck, KeyState, ReasonKind
 
 log = logging.getLogger(__name__)
 
-# 이 서비스가 읽고 쓰는 줄은 셋뿐이다. DB 비밀번호 같은 다른 줄은 건드리지 않는다
-NAMES = ("OPENAI_API_KEY", "STT_MODEL", "TEXT_MODEL")
+# 이 서비스가 읽고 쓰는 줄은 다섯뿐이다. DB 비밀번호 같은 다른 줄은 건드리지 않는다
+NAMES = ("OPENAI_API_KEY", "STT_MODEL", "TEXT_MODEL", "IMAGE_MODEL", "IMAGE_QUALITY")
 STORED_IN = ".env에 저장됨"
 
 
@@ -52,10 +52,21 @@ class Models(BaseModel):
 
 
 class ChosenModels(BaseModel):
-    """지금 고른 모델의 id와 단가(VA-DOM-002 2.6)."""
+    """지금 고른 모델의 id와 단가, 인포그래픽 이미지 모델과 품질 · 한 장 값(VA-DOM-002 2.6)."""
 
     stt: ModelOption
     text: ModelOption
+    image_model: str
+    image_quality: ImageQualityOption
+
+
+class ImageSettings(BaseModel):
+    """인포그래픽 이미지 설정 — 고른 모델 · 품질과 고를 수 있는 것(VA-API-001 4장)."""
+
+    model: str
+    quality: ImageQuality
+    models: list[str]
+    qualities: list[ImageQualityOption]
 
 
 class Settings(BaseModel):
@@ -64,6 +75,7 @@ class Settings(BaseModel):
     key: KeyStatus
     models: Models
     model_options: ModelOptions
+    image: ImageSettings
     inbox_path: str
 
 
@@ -113,7 +125,8 @@ class SettingsService:
     def read_env(self) -> dict[str, str]:
         """VA-MS-005#SettingsService.read_env
 
-        `.env`에서 세 값(키 · 받아쓰기 모델 · 텍스트 모델)만 읽는다. 같은 이름이 두 번이면 뒤의 것.
+        `.env`에서 다섯 값(키 · 받아쓰기 모델 · 텍스트 모델 · 이미지 모델 · 이미지 품질)만 읽는다.
+        같은 이름이 두 번이면 뒤의 것.
         던지지 않는다 — 파일을 읽을 수 없으면 경고 로그를 남기고 빈 dict다.
 
         Returns:
@@ -126,7 +139,7 @@ class SettingsService:
         except OSError as e:  # 권한 · 디렉터리 등 — 서버 시작과 GET이 멈추면 안 된다
             log.warning(".env를 읽지 못했다: %s", type(e).__name__)
             return {}
-        # 세 줄은 ASCII라 주석이 다른 인코딩이어도 읽힌다
+        # 다섯 줄은 ASCII라 주석이 다른 인코딩이어도 읽힌다
         out: dict[str, str] = {}
         for line in data.decode("utf-8", errors="replace").splitlines():
             parsed = _parse(line)
@@ -142,7 +155,8 @@ class SettingsService:
         바인드 마운트한 파일은 rename으로 바꿀 수 없다(EBUSY).
 
         Args:
-            values: OPENAI_API_KEY · STT_MODEL · TEXT_MODEL 중에서만. 다른 이름이면 ValueError
+            values: OPENAI_API_KEY · STT_MODEL · TEXT_MODEL · IMAGE_MODEL · IMAGE_QUALITY 중에서만.
+                다른 이름이면 ValueError
 
         Raises:
             OSError: 파일을 쓰지 못했다(읽기 전용 마운트 등). 부르는 쪽이 internal로 접는다
@@ -170,19 +184,26 @@ class SettingsService:
     def current_models(self) -> ChosenModels:
         """VA-MS-005#SettingsService.current_models
 
-        지금 고른 두 모델과 단가. 파일에 없거나 목록에 없는 값이면 기본값.
+        지금 고른 두 모델과 단가, 이미지 모델과 품질(한 장 값). 파일에 없거나 목록에 없는 값이면
+        기본값.
 
         Returns:
-            받아쓰기 · 텍스트 모델의 ModelOption 둘
+            받아쓰기 · 텍스트 모델의 ModelOption 둘과 이미지 모델 · 품질
         """
         return self._models(self.read_env())
 
     def _models(self, env: dict[str, str]) -> ChosenModels:
+        image = config.IMAGE_OPTIONS
+        qualities = {q.id.value: q for q in image.qualities}
+        wanted = env.get("IMAGE_MODEL") or ""
         return ChosenModels(
             stt=_pick(config.MODEL_OPTIONS.stt, env.get("STT_MODEL"), config.DEFAULT_MODELS["stt"]),
             text=_pick(
                 config.MODEL_OPTIONS.text, env.get("TEXT_MODEL"), config.DEFAULT_MODELS["text"]
             ),
+            image_model=wanted if wanted in image.models else config.DEFAULT_IMAGE["model"],
+            image_quality=qualities.get(env.get("IMAGE_QUALITY") or "")
+            or qualities[config.DEFAULT_IMAGE["quality"]],
         )
 
     def api_key(self) -> str | None:
@@ -202,7 +223,8 @@ class SettingsService:
         OpenAI에 아무것도 보내지 않는다.
 
         Returns:
-            키 상태(가린 키) · 고른 모델 id 둘 · 고를 수 있는 모델과 단가 · inbox 경로
+            키 상태(가린 키) · 고른 모델 id 둘 · 고를 수 있는 모델과 단가 · 이미지 설정(품질마다
+            한 장 값 — UI-4 · UI-5 · UI-8이 같이 쓴다) · inbox 경로
         """
         env = self.read_env()
         key = env.get("OPENAI_API_KEY") or None
@@ -221,6 +243,12 @@ class SettingsService:
             key=status,
             models=Models(stt=m.stt.id, text=m.text.id),
             model_options=config.MODEL_OPTIONS,
+            image=ImageSettings(
+                model=m.image_model,
+                quality=m.image_quality.id,
+                models=config.IMAGE_OPTIONS.models,
+                qualities=config.IMAGE_OPTIONS.qualities,
+            ),
             inbox_path=config.INBOX_DISPLAY_PATH,
         )
 
@@ -301,14 +329,23 @@ class SettingsService:
         self.last_check = check
         return self.get()
 
-    def set_models(self, stt_model: str, text_model: str) -> Settings:
+    def set_models(
+        self,
+        stt_model: str,
+        text_model: str,
+        image_model: str | None = None,
+        image_quality: ImageQuality | None = None,
+    ) -> Settings:
         """VA-MS-005#SettingsService.set_models
 
-        모델 선택을 `.env`에 저장한다. 다음 작업 · 질문부터 쓴다. 키 줄은 그대로.
+        모델 선택을 `.env`에 저장한다. 다음 작업 · 질문 · 인포그래픽부터 쓴다. 키 줄은 그대로.
+        이미지 값은 온 것만 쓰고, 안 오면 그 줄을 그대로 둔다(첫 화면은 두 값만 보냈다).
 
         Args:
             stt_model: 받아쓰기 모델 id
             text_model: 요약 · 챕터 · 질문 모델 id
+            image_model: 인포그래픽 이미지 모델 id. None이면 그대로
+            image_quality: 인포그래픽 품질. None이면 그대로
 
         Returns:
             갱신된 설정
@@ -325,10 +362,20 @@ class SettingsService:
             )
             if value not in {o.id for o in options}
         ]
+        image = config.IMAGE_OPTIONS
+        if image_model is not None and image_model not in image.models:
+            errors.append({"field": "image_model", "message": "목록에 없는 모델이에요"})
+        if image_quality is not None and image_quality not in {q.id for q in image.qualities}:
+            errors.append({"field": "image_quality", "message": "목록에 없는 품질이에요"})
         if errors:
             raise Validation(errors=errors)
+        values = {"STT_MODEL": stt_model, "TEXT_MODEL": text_model}
+        if image_model is not None:
+            values["IMAGE_MODEL"] = image_model
+        if image_quality is not None:
+            values["IMAGE_QUALITY"] = str(image_quality)
         try:
-            self.write_env({"STT_MODEL": stt_model, "TEXT_MODEL": text_model})
+            self.write_env(values)
         except (OSError, UnicodeError) as e:
             raise Internal("모델 선택을 .env에 쓰지 못했어요") from e
         return self.get()

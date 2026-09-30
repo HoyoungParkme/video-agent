@@ -137,6 +137,12 @@ class ExportFailed(Problem):
     kind, status, title = "export-failed", 500, "파일을 저장하지 못했어요"
 
 
+class InfographicBusy(Problem):
+    """이 영상의 인포그래픽을 이미 그리는 중인데 또 시킴."""
+
+    kind, status, title = "infographic-busy", 409, "이미 인포그래픽을 그리는 중이에요"
+
+
 class FramesUnavailable(Problem):
     """장면을 만들 수 없는 영상에 장면 채우기를 시킴(음성 파일 · 원본 없음). reason"""
 

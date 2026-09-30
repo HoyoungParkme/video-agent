@@ -65,6 +65,14 @@ const VIDEOS = {
     frameDelayMs: 800,
   },
   e2eOldRes03: { title: "채우기가 장면 없이 끝나는 발표", duration: 3012, subtitles: { ko: [] } },
+  // 인포그래픽(infographic) — 만들고 크게 보고 노트로 · 떠났다 돌아오기 · 실패 · 키 없음 · 품질 바꾸기
+  e2eInfogr01: { title: "인포그래픽을 만드는 발표", duration: 3012, subtitles: { ko: [] } },
+  e2eInfogr02: { title: "그리는 동안 떠나는 발표", duration: 3012, subtitles: { ko: [] } },
+  e2eInfogr03: { title: "그리기가 실패하는 발표", duration: 3012, subtitles: { ko: [] } },
+  e2eInfogr04: { title: "키 없이 그리려는 발표", duration: 3012, subtitles: { ko: [] } },
+  e2eInfogr05: { title: "품질을 바꾸는 발표", duration: 3012, subtitles: { ko: [] } },
+  e2eInfogr06: { title: "실패 뒤에 거절되는 발표", duration: 3012, subtitles: { ko: [] } },
+  e2eInfogr07: { title: "두 창에서 그리는 발표", duration: 3012, subtitles: { ko: [] } },
 };
 
 // 스토리보드 — 칸 320×180, 장마다 3 × 3칸, 칸 하나가 600 / 9초(장 하나가 10분)

@@ -58,6 +58,8 @@ from app.domains.analysis.schemas import (  # noqa: E402
     ChapterDraft,
     FrameShot,
     FrameSource,
+    ImageShot,
+    InfographicBrief,
     Segment,
     SummaryDraft,
 )
@@ -467,6 +469,35 @@ class FakeFrames:
             yield FrameShot(sec + 1, self.source, 320, 180, str(path))
 
 
+@dataclass
+class FakeImageMaker:
+    """ImageMakerPort 자리 — dest에 작은 그림을 쓰고 ImageShot을 낸다. 받은 재료를 적는다.
+
+    fail: 이 예외로 실패 · gate: 그리기 앞에서 기다린다(그리는 중을 붙잡아 둔다).
+    """
+
+    fail: Exception | None = None
+    gate: asyncio.Event | None = None
+    picture: bytes = b"png-new"
+    calls: list[tuple[InfographicBrief, str, str]] = field(default_factory=list)
+
+    async def infographic(
+        self, brief: InfographicBrief, model: str, quality: str, dest: str
+    ) -> ImageShot:
+        self.calls.append((brief, model, str(quality)))
+        if self.gate is not None:
+            await self.gate.wait()
+        if self.fail is not None:
+            raise self.fail
+        Path(dest).write_bytes(self.picture)
+        return ImageShot(1024, 1536, dest)
+
+
+@pytest.fixture
+def image_maker() -> FakeImageMaker:
+    return FakeImageMaker()
+
+
 @pytest.fixture
 def storyboard() -> FakeFrames:
     return FakeFrames()
@@ -611,7 +642,7 @@ def stt() -> FakeStt:
 
 @pytest.fixture
 async def api(
-    db, youtube, probe, summarizer, answerer, storyboard, local_frames, monkeypatch
+    db, youtube, probe, summarizer, answerer, storyboard, local_frames, image_maker, monkeypatch
 ) -> AsyncIterator[httpx.AsyncClient]:
     """앱에 바로 붙는 클라이언트 — 시작 이벤트(워커) 없이, 어댑터는 가짜로."""
     from app.main import app
@@ -622,6 +653,7 @@ async def api(
     monkeypatch.setattr(app.state, "answerer", answerer)
     monkeypatch.setattr(app.state, "storyboard", storyboard)
     monkeypatch.setattr(app.state, "local_frames", local_frames)
+    monkeypatch.setattr(app.state, "image_maker", image_maker)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -258,6 +259,69 @@ async def test_chat_json_passes_sdk_errors_once() -> None:
     assert seq.calls == 1  # SDK 예외는 다시 부르지 않는다
 
 
+# --- image
+
+
+def _image_client(rec: _Recorder, options: dict[str, Any]) -> Any:
+    def with_options(**kwargs: Any) -> Any:
+        options.update(kwargs)
+        return SimpleNamespace(images=_Generate(rec))
+
+    return SimpleNamespace(with_options=with_options)
+
+
+class _Generate:
+    """images.generate 자리 — _Recorder의 create를 generate 이름으로."""
+
+    def __init__(self, rec: _Recorder) -> None:
+        self.rec = rec
+
+    async def generate(self, **kwargs: Any) -> Any:
+        return await self.rec.create(**kwargs)
+
+
+def _images(b64: str | None) -> Any:
+    return SimpleNamespace(
+        data=[SimpleNamespace(b64_json=b64)],
+        usage=SimpleNamespace(input_tokens=310, output_tokens=1056),
+    )
+
+
+async def test_image(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="app")
+    png = b"\x89PNG\r\n\x1a\n..."
+    rec, options = _Recorder(_images(base64.b64encode(png).decode())), {}
+    got = await openai.image(
+        _image_client(rec, options), "gpt-image-2", "비밀 재료", "1024x1536", "low"
+    )
+    assert got == png
+    assert rec.kwargs == {
+        "model": "gpt-image-2",
+        "prompt": "비밀 재료",
+        "size": "1024x1536",
+        "quality": "low",
+        "n": 1,
+    }
+    assert options == {"timeout": config.IMAGE_TIMEOUT_SEC}
+    assert "310" in caplog.text and "1056" in caplog.text  # 사용량 한 줄
+    assert "비밀 재료" not in caplog.text  # 프롬프트는 찍지 않는다
+
+
+async def test_image_without_picture() -> None:
+    for resp in (_images(None), SimpleNamespace(data=[], usage=None)):
+        with pytest.raises(OpenAIOutputError) as e:
+            await openai.image(_image_client(_Recorder(resp), {}), "gpt-image-2", "p", "1x1", "low")
+        assert e.value.reason == "그림을 받지 못했어요"
+
+
+async def test_image_passes_sdk_errors() -> None:
+    error = sdk.APIConnectionError(request=httpx2.Request("POST", "http://fake/v1/images"))
+    with pytest.raises(sdk.APIConnectionError):
+        await openai.image(
+            _image_client(_Recorder(error=error), {}), "gpt-image-2", "p", "1x1", "low"
+        )
+
+
 # --- reason_of
 
 REQ = httpx2.Request("POST", "http://fake/v1/chat")
@@ -281,5 +345,7 @@ def test_reason_of_each_row() -> None:
     assert reason(_status(429, "insufficient_quota")) == "OpenAI 잔액 부족"
     assert reason(_status(429, "rate_limit_exceeded")) == "OpenAI 요청 한도 초과"
     assert reason(_status(503)) == "OpenAI 서버 오류"
-    assert reason(_status(400)) == "OpenAI가 요청을 거절함(400)"
+    assert reason(_status(400, "moderation_blocked")) == "안전 정책에 걸려 그리지 않음"
+    assert reason(_status(400, "content_policy_violation")) == "안전 정책에 걸려 그리지 않음"
+    assert reason(_status(400)) == "OpenAI가 요청을 거절함(400)"  # 다른 400
     assert reason(sdk.OpenAIError("상태 없음")) == "OpenAI 오류"

@@ -24,7 +24,9 @@ from app.core.settings import settings
 from app.domains.analysis import router as analysis_router
 from app.domains.analysis.adapters.frames_local import FramesLocal
 from app.domains.analysis.adapters.frames_storyboard import FramesStoryboard
+from app.domains.analysis.adapters.image_openai import ImageOpenAI
 from app.domains.analysis.adapters.summarizer_openai import SummarizerOpenAI
+from app.domains.analysis.service import AnalysisService
 from app.domains.chat import router as chat_router
 from app.domains.chat.adapters.answerer_openai import AnswererOpenAI
 from app.domains.job import pipeline
@@ -69,7 +71,8 @@ async def load_video(video_id: int) -> Video | None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """시작 — 저장된 키 확인 → 죽은 작업 되돌리기 → 대기열 워커(순서가 있다, SEQ-13).
+    """시작 — 저장된 키 확인 → 죽은 작업 · 그리던 인포그래픽 되돌리기 → 대기열 워커(순서가 있다,
+    SEQ-13).
 
     끌 때 워커를 취소한다. 돌던 작업은 running으로 남고 다음 시작 때 되돌린다.
     """
@@ -77,8 +80,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     log.info("키 확인: %s %s", status.state.value, status.reason or "")
     async with SessionLocal() as session:
         orphans = await JobService(session).fail_orphans()
+        drawings = await AnalysisService(session).fail_orphans()
     if orphans:
         log.info("서버가 죽어 멈춘 작업 %d개를 실패로 되돌렸다", orphans)
+    if drawings:
+        log.info("서버가 죽어 멈춘 인포그래픽 %d개를 실패로 되돌렸다", drawings)
     worker = asyncio.create_task(pipeline.worker(load_video))
     try:
         yield
@@ -100,6 +106,7 @@ app.state.answerer = AnswererOpenAI(client_for)
 # 장면 — 파이프라인의 장면 단계와 옛 결과 채우기(결과 라우터)가 같은 어댑터를 쓴다(INFRA C12)
 app.state.storyboard = FramesStoryboard()
 app.state.local_frames = FramesLocal()
+app.state.image_maker = ImageOpenAI(client_for)
 pipeline.audio_source = AudioSourceAdapter()
 pipeline.audio_split = AudioSplitAdapter()
 pipeline.stt = SttOpenAI(client_for)

@@ -60,12 +60,16 @@ export interface FakeState {
   transcribed: number[];
   /** 답한 질문마다 — 앞선 턴 수와 받은 스크립트의 첫 · 끝 시각 */
   asks: { question: string; history: number; first: string | null; last: string | null }[];
+  imageDelayMs: number;
+  imageFail: "server" | "moderation" | null;
+  /** 받은 이미지 요청마다 — 모델 · 크기 · 품질 · 프롬프트 */
+  images: { model: string; size: string; quality: string; prompt: string }[];
 }
 
 /**
  * 가짜 OpenAI를 조절하거나 지금 값을 읽는다 — 채팅 · 받아쓰기 지연, 조각 하나를 몇 번 실패시킬지
  * (drop이면 500 대신 연결을 끊는다 — 인터넷 끊김), 다음 채팅 몇 번을 실패시킬지, 키 확인(models)을
- * 끊을지(drop) 맞는 키도 거절할지(401).
+ * 끊을지(drop) 맞는 키도 거절할지(401), 이미지 지연과 다음 이미지 한 번을 서버 오류 · 안전 정책 거절로 할지.
  * reset이면 부른 수 · 받은 조각 기록 · 남은 실패를 비운다(같은 요청의 설정값은 그 뒤에 들어간다).
  */
 export async function fakeOpenAI(
@@ -76,6 +80,8 @@ export async function fakeOpenAI(
     stt_fail?: { seq: number; times: number; drop?: boolean } | null;
     chat_fail?: number;
     models?: "drop" | 401 | null;
+    image_delay_ms?: number;
+    image_fail?: "server" | "moderation" | null;
     reset?: boolean;
   } = {},
 ): Promise<FakeState> {

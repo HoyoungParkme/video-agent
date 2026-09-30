@@ -1,8 +1,9 @@
 /**
  * 코드값 → 화면 글자. 두 화면 이상이 쓰는 표기만 — 단계 이름(VA-UI-002 UI-3 규칙) · 언어 이름 ·
- * 분석한 때('오늘 14:08' · '9월 12일') · 음성 파일 판정. 시각 표기는 components/TimeChip이 가진다.
+ * 분석한 때('오늘 14:08' · '9월 12일') · 음성 파일 판정 · 값(USD) · 인포그래픽 만든 정보. 시각 표기는
+ * components/TimeChip이 가진다.
  */
-import type { JobStage } from "@/api/client";
+import type { InfographicImage, JobStage } from "@/api/client";
 
 /** 단계 이름(4.3). download는 자막이 있으면 '자막 가져오기', 없으면 '음성 내려받기'. */
 export function stageName(stage: JobStage, hasCaptions: boolean): string {
@@ -66,4 +67,18 @@ const AUDIO_EXTS = ["mp3", "m4a", "wav"];
 export function isAudioFile(name: string): boolean {
   const dot = name.lastIndexOf(".");
   return dot >= 0 && AUDIO_EXTS.includes(name.slice(dot + 1).toLowerCase());
+}
+
+/** '$0.006' · '$0.25' · '$15.00' — 소수 둘째 자리까지는 늘 쓰고, 더 있으면 그대로(UI-5 · UI-4 · UI-8). */
+export function usd(value: number | undefined): string {
+  if (value === undefined) return "—";
+  const digits = Math.max(2, (String(value).split(".")[1] ?? "").length);
+  return `$${value.toFixed(digits)}`;
+}
+
+const QUALITY_NAMES = { low: "낮은 품질", medium: "중간 품질" } as const;
+
+/** 인포그래픽 만든 정보 — '{이미지 모델} · {품질} · {만든 시각} 만듦'(UI-4 15.6 · UI-9 1.2). */
+export function madeLabel(image: InfographicImage, now: Date = new Date()): string {
+  return `${image.model} · ${QUALITY_NAMES[image.quality]} · ${analyzedLabel(image.created_at, now)} 만듦`;
 }

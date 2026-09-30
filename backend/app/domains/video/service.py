@@ -354,10 +354,11 @@ class VideoService:
     async def delete(self, video_id: int) -> None:
         """VA-MS-001#VideoService.delete
 
-        영상과 딸린 것 전부 — 작업 · 조각 · 스크립트 · 요약 · 챕터 · 장면 · 추천 질문 · 대화는
-        FK cascade가 지우고(앱이 자식을 차례로 지우지 않는다), 커밋 뒤 임시 폴더 `data/tmp/{id}`와
-        장면 폴더 `data/frames/{id}`를 지운다. 진행 중 작업은 라우터가 먼저 JobService.cancel로,
-        장면 채우기는 AnalysisService.cancel_tasks로 멈춘다 — 여기서는 멈춰 있다고 본다.
+        영상과 딸린 것 전부 — 작업 · 조각 · 스크립트 · 요약 · 챕터 · 장면 · 인포그래픽 · 추천
+        질문 · 대화는 FK cascade가 지우고(앱이 자식을 차례로 지우지 않는다), 커밋 뒤 임시 폴더
+        `data/tmp/{id}` · 장면 폴더 `data/frames/{id}` · 인포그래픽 `data/infographics/{id}.png`를
+        지운다. 진행 중 작업은 라우터가 먼저 JobService.cancel로, 장면 채우기 · 인포그래픽
+        그리기는 AnalysisService.cancel_tasks로 멈춘다 — 여기서는 멈춰 있다고 본다.
         inbox 원본과 내보낸 노트 · 그림은 건드리지 않는다(INFRA C4).
 
         Args:
@@ -374,3 +375,5 @@ class VideoService:
         await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
         frames = Path(config.FRAMES_DIR) / str(video_id)
         await asyncio.to_thread(shutil.rmtree, frames, ignore_errors=True)
+        infographic = Path(config.INFOGRAPHICS_DIR) / f"{video_id}.png"
+        await asyncio.to_thread(infographic.unlink, missing_ok=True)

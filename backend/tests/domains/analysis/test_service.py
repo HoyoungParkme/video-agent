@@ -488,10 +488,12 @@ async def test_filename_for(db, make) -> None:
     assert await name("a\tb\x7fc") == "a_b_c"  # 제어 문자도 _
     # 위키링크에서 뜻이 있는 글자도 _ — 노트의 [[{이름} 스크립트]]가 깨지지 않게(MS-003 v9)
     assert await name("[EP.1] RAG #shorts ^v2") == "_EP.1_ RAG _shorts _v2"
-    assert await name("가" * 200) == "가" * 79  # 한글 80자는 240바이트 — 238바이트에 맞춰 79자
+    assert await name("가" * 200) == "가" * 78  # 한글 80자는 240바이트 — 235바이트에 맞춰 78자
     emoji = await name("🔥" * 80)  # 4바이트 글자 — 80자면 320바이트
-    assert len(emoji.encode()) <= 238 and emoji == "🔥" * 59
+    assert len(emoji.encode()) <= 235 and emoji == "🔥" * 58
     assert len(f"{emoji}{SCRIPT_SUFFIX}.md".encode()) <= 255  # 스크립트 파일 이름까지(MS-003 v8)
+    # 가장 긴 꼬리 — 인포그래픽 그림 파일 이름까지 255바이트 안(MS-003 v14)
+    assert len(export.infographic_name("가" * 78).encode()) <= 255
     local = {"source_kind": "local", "origin": "workshop_0912.mp4", "channel": None}
     assert await name("workshop_0912.mp4", **local) == "workshop_0912"  # 로컬 파일은 확장자를 뗀다
     empty = await _video(db, make, title=" . ")

@@ -363,7 +363,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 3. `shot = ImageMakerPort.infographic(brief, choice.image_model, choice.image_quality.id, str(tmp))`
 4. `FS: os.replace(tmp, config.INFOGRAPHICS_DIR / f"{video_id}.png")` — 다 그린 뒤 한 번에 바꾼다
 5. `DB: update infographics set state=done, model, quality, width, height, cost_usd=choice.image_quality.price_usd, path, created_at=지금, error_reason=null`
-6. 실패하면 — `llm-unavailable`(어댑터가 OpenAI 실패를 바꾼 것, [[VA-MS-006#answerer_openai.answer]]와 같은 방식) → `reason = e.reason` · `OSError` → '그림 파일을 저장하지 못함' · 그 밖 → '알 수 없는 오류'(원인은 로그) · `DB: update set state=failed, error_reason=reason` · 그림 컬럼은 그대로 · `tmp`를 지운다
+6. 1 ~ 5번 어디서든 실패하면 — `llm-unavailable`(어댑터가 OpenAI 실패를 바꾼 것, [[VA-MS-006#answerer_openai.answer]]와 같은 방식) → `reason = e.reason` · `key-missing`(그리는 사이 `.env`에서 키가 빠져 어댑터가 클라이언트를 만들지 못했다) → 'OpenAI API 키 없음' · `OSError` → '그림 파일을 저장하지 못함' · 그 밖(DB 오류 포함) → '알 수 없는 오류'(원인은 로그) · 세션을 되돌린 뒤(1 · 5번의 DB 오류로 트랜잭션이 깨졌을 수 있다) `DB: update set state=failed, error_reason=reason` · 그림 컬럼은 그대로 · `tmp`를 지운다. 4번 뒤에 5번이 실패했다면 파일은 새 그림이고 행의 그림 값은 이전 것이다 — 다음 그리기가 맞춘다. 실패마저 적지 못하면(DB가 없다) 로그만 남긴다 — 행은 `making`으로 남고 다음 시작의 [[#AnalysisService.fail_orphans]]가 되돌린다(카드 D3 코드 리뷰 — 5번이 실패 처리 밖이면 행이 영영 `making`이라 [만들기]가 모두 `infographic-busy`였다)
 7. 취소(`CancelledError`) → `tmp`를 지우고 올린다 — 행은 둔다(영상 삭제면 cascade가, 서버 종료면 다음 시작의 [[#AnalysisService.fail_orphans]]가 정리한다)
 8. 어떻게 끝나든 `_image_tasks`에서 뺀다
 
@@ -373,7 +373,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** `ImageMakerPort.infographic`
 
-**테스트 관점** 가짜 포트로: 성공 → `done`, 그림 컬럼, `cost_usd`가 그 품질의 한 장 값, 파일 `data/infographics/{id}.png` · `llm-unavailable('OpenAI 연결 시간 초과')` → `failed`, `error_reason` 그 문장, 이전 그림 파일과 컬럼 그대로 · 이전 그림이 있을 때 성공 → 새 그림으로 바뀌고 `created_at`이 바뀐다 · `brief`에 스크립트 줄이 없다 · 임시 파일이 남지 않는다
+**테스트 관점** 가짜 포트로: 성공 → `done`, 그림 컬럼, `cost_usd`가 그 품질의 한 장 값, 파일 `data/infographics/{id}.png` · `llm-unavailable('OpenAI 연결 시간 초과')` → `failed`, `error_reason` 그 문장, 이전 그림 파일과 컬럼 그대로 · 이전 그림이 있을 때 성공 → 새 그림으로 바뀌고 `created_at`이 바뀐다 · `brief`에 스크립트 줄이 없다 · 임시 파일이 남지 않는다 · 5번 DB 쓰기가 실패 → `failed`('알 수 없는 오류') · 1번에서 DB 오류가 나 트랜잭션이 깨져도 `failed`로 적힌다 · 그리는 사이 키가 빠짐 → `failed`('OpenAI API 키 없음')
 
 ---
 
@@ -487,9 +487,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 근거: [[VA-UI-002#UI-7]] 2.1(저장 경로 표시) · [[VA-API-001]] 6장 미결(파일 이름 규칙 — 여기서 정한다)
 
-**처리** `name = video.title` · 로컬 파일이면 확장자를 뗀다 · 유니코드 NFC 정규화 · `\ / : * ? " < > |`와 제어 문자, 위키링크에서 뜻이 있는 `[ ] # ^`를 `_`로 — 노트가 `[[{이름} 스크립트]]`로 스크립트 파일을 가리키는데 Obsidian은 링크 안의 `#`를 제목, `^`를 블록, `]]`를 링크 끝으로 읽는다(`[EP.1] …` · `… #shorts` 같은 YouTube 제목, 카드 C 코드 리뷰) · 연속 공백 · 밑줄을 하나로 · 앞뒤 공백 · 점 제거 · 80자로 자른다(문자 단위) · UTF-8로 235바이트를 넘으면 더 자른다 — 파일 이름 한도가 255바이트이고, 이름 뒤에 붙는 꼬리 가운데 가장 긴 것이 인포그래픽의 ` 인포그래픽.png`(20바이트)다(스크립트 ` 스크립트.md` 16바이트 · 장면 ` 1-05-26.jpg` 12바이트, 카드 C · D3). 한글은 한 글자 3바이트라 80자(240바이트)가 79자가 되고, 이모지처럼 4바이트 글자가 많은 제목은 더 짧아진다 · 자른 끝의 공백 · 점도 뗀다 · 비면 `video-{id}` · `→ name`. 확장자 `.md`는 부르는 쪽이 붙인다
+**처리** `name = video.title` · 로컬 파일이면 확장자를 뗀다 · 유니코드 NFC 정규화 · `\ / : * ? " < > |`와 제어 문자, 위키링크에서 뜻이 있는 `[ ] # ^`를 `_`로 — 노트가 `[[{이름} 스크립트]]`로 스크립트 파일을 가리키는데 Obsidian은 링크 안의 `#`를 제목, `^`를 블록, `]]`를 링크 끝으로 읽는다(`[EP.1] …` · `… #shorts` 같은 YouTube 제목, 카드 C 코드 리뷰) · 연속 공백 · 밑줄을 하나로 · 앞뒤 공백 · 점 제거 · 80자로 자른다(문자 단위) · UTF-8로 235바이트를 넘으면 더 자른다 — 파일 이름 한도가 255바이트이고, 이름 뒤에 붙는 꼬리 가운데 가장 긴 것이 인포그래픽의 ` 인포그래픽.png`(20바이트)다(스크립트 ` 스크립트.md` 16바이트 · 장면 ` 1-05-26.jpg` 12바이트, 카드 C · D3). 한글은 한 글자 3바이트라 80자(240바이트)가 78자(234바이트)가 되고, 이모지처럼 4바이트 글자가 많은 제목은 더 짧아진다 · 자른 끝의 공백 · 점도 뗀다 · 비면 `video-{id}` · `→ name`. 확장자 `.md`는 부르는 쪽이 붙인다
 
-**테스트 관점** `RAG 서비스 1년 운영기` → 그대로 · `a/b:c?` → `a_b_c_` · `[EP.1] RAG #shorts ^v2` → `_EP.1_ RAG _shorts _v2` · 200자 제목 → 80자 · 한글 80자 제목 → 79자 · 이모지 80자 제목 → 235바이트 이하(`{이름} 인포그래픽.png`까지 255바이트 안) · `workshop_0912.mp4` → `workshop_0912` · 빈 제목 → `video-12`
+**테스트 관점** `RAG 서비스 1년 운영기` → 그대로 · `a/b:c?` → `a_b_c_` · `[EP.1] RAG #shorts ^v2` → `_EP.1_ RAG _shorts _v2` · 200자 제목 → 80자 · 한글 80자 제목 → 78자(79자는 237바이트라 235를 넘는다 — 카드 D3에서 238 → 235로 줄이며 고침) · 이모지 80자 제목 → 235바이트 이하(`{이름} 인포그래픽.png`까지 255바이트 안) · `workshop_0912.mp4` → `workshop_0912` · 빈 제목 → `video-12`
 
 ---
 

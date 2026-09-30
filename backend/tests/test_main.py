@@ -14,6 +14,8 @@ from app.core.db import SessionLocal
 from app.core.settings import settings
 from app.domains.analysis.adapters.frames_local import FramesLocal
 from app.domains.analysis.adapters.frames_storyboard import FramesStoryboard
+from app.domains.analysis.adapters.image_openai import ImageOpenAI
+from app.domains.analysis.models import InfographicRow, InfographicState
 from app.domains.job import pipeline
 from app.domains.job.models import AnalysisJobRow, AudioChunkRow, ChunkState, ErrorKind, JobStatus
 from app.domains.job.service import JobService
@@ -173,3 +175,23 @@ def test_frame_adapters_are_shared() -> None:
     assert isinstance(app.state.local_frames, FramesLocal)
     assert pipeline.storyboard is app.state.storyboard
     assert pipeline.local_frames is app.state.local_frames
+
+
+async def test_lifespan_fails_drawing_infographics(db, make, env_file, verify, monkeypatch) -> None:
+    """서버가 죽어 그리는 중(making)으로 남은 인포그래픽은 시작 때 failed('서버가 다시 시작됨')."""
+    row = await make.video()
+    db.add(InfographicRow(video_id=row.id, state=InfographicState.making))
+    await db.commit()
+    monkeypatch.setattr(settings, "last_check", settings.last_check)  # 끝나면 되돌린다
+    async with app.router.lifespan_context(app):
+        pass
+    got = await db.scalar(
+        select(InfographicRow)
+        .where(InfographicRow.video_id == row.id)
+        .execution_options(populate_existing=True)
+    )
+    assert (got.state, got.error_reason) == ("failed", "서버가 다시 시작됨")
+
+
+def test_image_maker_is_openai() -> None:
+    assert isinstance(app.state.image_maker, ImageOpenAI)

@@ -1,6 +1,7 @@
 """결과 묶음의 응답 형태(VA-API-001 4장)와 내부 타입(VA-DOM-002 2.6).
 
-내부 타입 — CaptionLine · SummaryDraft · ChapterDraft · FrameShot. 포트와 서비스 사이에서만 오간다.
+내부 타입 — CaptionLine · SummaryDraft · ChapterDraft · FrameShot · InfographicBrief · ImageShot.
+포트와 서비스 사이에서만 오간다.
 """
 
 from __future__ import annotations
@@ -12,8 +13,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.core.config import ImageQuality
 from app.core.settings import Models
-from app.domains.analysis.models import FrameSource, TranscriptSource
+from app.domains.analysis.models import FrameSource, InfographicState, TranscriptSource
 from app.domains.video.schemas import Video
 
 
@@ -83,6 +85,26 @@ class FrameSet(BaseModel):
     frames: list[Frame]
 
 
+class InfographicImage(BaseModel):
+    """지금 쓰는 인포그래픽 그림. url의 ?v=는 만든 시각이라 그림이 바뀌면 주소가 바뀐다."""
+
+    url: str
+    model: str
+    quality: ImageQuality
+    width: int
+    height: int
+    created_at: datetime
+    cost_usd: float
+
+
+class Infographic(BaseModel):
+    """인포그래픽 상태와 지금 쓰는 그림 — 다시 만들기가 실패해도 이전 그림이 남는다(UC-H9 4a)."""
+
+    state: InfographicState
+    image: InfographicImage | None
+    error_reason: str | None
+
+
 class Chapter(BaseModel):
     seq: int
     part_seq: int | None
@@ -109,6 +131,7 @@ class Result(BaseModel):
     models: Models
     analyzed_at: datetime
     frames_state: FramesState
+    infographic: Infographic
 
 
 class ExportMethod(StrEnum):
@@ -188,6 +211,25 @@ class FrameShot:
 
     sec: float
     source: FrameSource
+    width: int
+    height: int
+    path: str
+
+
+@dataclass(frozen=True)
+class InfographicBrief:
+    """인포그래픽 재료 — 제목 · 한 줄 요약 · 인사이트 · 챕터 제목뿐. 스크립트는 없다(UC-H9 4번)."""
+
+    title: str
+    one_liner: str
+    insights: list[str]
+    chapter_titles: list[str]
+
+
+@dataclass(frozen=True)
+class ImageShot:
+    """그린 인포그래픽 한 장 — 크기와 쓴 파일 경로."""
+
     width: int
     height: int
     path: str

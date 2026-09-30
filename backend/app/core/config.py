@@ -6,6 +6,7 @@ SettingsService가 `.env` 파일에서 읽는다(VA-MS-005 0장).
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, model_serializer
@@ -40,6 +41,28 @@ class ModelOptions(BaseModel):
 
     stt: list[ModelOption]
     text: list[ModelOption]
+
+
+class ImageQuality(StrEnum):
+    """인포그래픽 품질 — `.env`의 IMAGE_QUALITY(VA-DOM-002 2장 열거형)."""
+
+    low = "low"
+    medium = "medium"
+
+
+class ImageQualityOption(BaseModel):
+    """고를 수 있는 품질 하나와 한 장 값(VA-API-001 4장). UI-4 · UI-5 · UI-8이 같은 값을 쓴다."""
+
+    id: ImageQuality
+    label: str
+    price_usd: float
+
+
+class ImageOptions(BaseModel):
+    """인포그래픽 이미지 모델 목록과 품질 목록."""
+
+    models: list[str]
+    qualities: list[ImageQualityOption]
 
 
 def _text(model: str, input_usd: float, output_usd: float) -> ModelOption:
@@ -110,6 +133,16 @@ class Config(BaseSettings):
         ],
     )
     DEFAULT_MODELS: dict[str, str] = {"stt": "whisper-1", "text": "gpt-5-mini"}
+    # 인포그래픽(INFRA C11) — 낮음은 실측(카드 D3, 세로 한 장 $0.0096), 중간은 외부 가격 정리 값
+    IMAGE_OPTIONS: ImageOptions = ImageOptions(
+        models=["gpt-image-2"],
+        qualities=[
+            ImageQualityOption(id=ImageQuality.low, label="낮음", price_usd=0.01),
+            ImageQualityOption(id=ImageQuality.medium, label="중간", price_usd=0.05),
+        ],
+    )
+    # 파일에 선택이 없을 때 — 사용자 결정 2026-09-29(「좀 비싸다, 싼 걸로」)
+    DEFAULT_IMAGE: dict[str, str] = {"model": "gpt-image-2", "quality": "low"}
     KEY_CHECK_TIMEOUT_SEC: float = 10
 
     # 어댑터 — MS-006
@@ -125,6 +158,7 @@ class Config(BaseSettings):
     # 장면 — 스토리보드 가운데 가장 큰 칸(1080p 영상 320×180) · 로컬 프레임 폭(높이는 비율대로)
     STORYBOARD_FORMAT: str = "sb0"
     FRAME_WIDTH: int = 640
+    INFOGRAPHIC_SIZE: str = "1024x1536"  # 인포그래픽 세로 한 장(MS-006, INFRA C11)
 
     # infra — MS-007
     PROC_TIMEOUT_SEC: float = 1800
@@ -136,6 +170,8 @@ class Config(BaseSettings):
     FFMPEG_BIN: str = "ffmpeg"
     FFPROBE_BIN: str = "ffprobe"
     OPENAI_TIMEOUT_SEC: float = 120
+    # 인포그래픽 한 장의 상한 — 세로 한 장이 수십 초 걸린다. 뒤에서 돌아 web 넘기기 60초와 무관
+    IMAGE_TIMEOUT_SEC: float = 180
     OPENAI_BASE_URL: str | None = None  # E2E의 가짜 OpenAI 서버만 채운다
     OPENAI_MAX_RETRIES: int = 0
     # 텍스트 모델의 추론 강도 — low면 답 2~3초 · 47분 요약 8초(기본은 3~4배, 카드 C 실측)
@@ -145,6 +181,11 @@ class Config(BaseSettings):
     def EXPORT_DIR(self) -> str:
         """내보낸 마크다운을 쓰는 곳 — data 폴더 안 export/(MS-003)."""
         return f"{self.DATA_DIR}/export"
+
+    @property
+    def INFOGRAPHICS_DIR(self) -> str:
+        """인포그래픽 — data 폴더 안 infographics/{video_id}.png, 영상마다 한 장(MS-003)."""
+        return f"{self.DATA_DIR}/infographics"
 
     @property
     def FRAMES_DIR(self) -> str:
