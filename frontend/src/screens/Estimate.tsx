@@ -181,11 +181,20 @@ export default function Estimate({ video, estimate, othersRunning, onClose }: Pr
     if (starting || discarding) return;
     if (!video.uploaded) return onClose();
     setDiscarding(true);
-    api.deleteVideo(video.id).then(
-      () => onClose(true),
-      () => onClose(false),
-    );
+    void discard().then(onClose);
   };
+
+  /** 올린 파일 판의 취소 — 그 사이 작업이 생겼으면(다른 창에서 시작 · 시작 응답만 잃음) 지우지 않는다 */
+  async function discard(): Promise<boolean> {
+    try {
+      const now = await api.video(video.id);
+      if (now.video.status !== "registered") return false; // 도는 분석과 결과를 지우지 않게
+      await api.deleteVideo(video.id);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   async function start() {
     if (starting) return;

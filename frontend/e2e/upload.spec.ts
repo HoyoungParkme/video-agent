@@ -131,6 +131,27 @@ test("끌어 놓아 올린다 — 덮개 → 놓으면 올리고, 올린 파일 
   await expect(el(page, "4.17")).toHaveText("한 번에 한 파일씩 올려 주세요 — 파일 2개를 놓았어요");
 });
 
+test("다른 창에서 분석을 시작한 올린 영상 — 이 창에서 취소해도 지우지 않는다", async ({
+  page,
+  context,
+}) => {
+  const file = media("two_tabs.mp4");
+  await page.goto("/");
+  await pick(page, file);
+  await expect(inDialog(page, "2.3")).toHaveText("로컬 파일 · 올린 사본");
+  // 다른 창에서 같은 파일을 올려(같은 영상) 분석을 시작한다
+  const other = await context.newPage();
+  await other.goto("/");
+  await pick(other, file);
+  await inDialog(other, "6.3").click();
+  await expect(other).toHaveURL(/\/videos\/\d+\/progress$/);
+  // 이 창의 올린 파일 판을 닫는다 — 그 사이 작업이 생겨 지우지 않고 알림 없이 닫힌다
+  await inDialog(page, "6.2").click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(el(page, "4.17")).toHaveCount(0);
+  await expect(other).toHaveURL(/\/videos\/\d+$/, { timeout: 30_000 }); // 분석은 끝까지 간다
+});
+
 test("여러 파일 · 받지 않는 형식은 보내지 않고 한 줄", async ({ page }) => {
   const sent = countUploads(page);
   await page.goto("/");
