@@ -286,3 +286,18 @@ async def test_post_upload_existing_analysis_has_no_estimate(
     assert (r.json()["video"]["id"], r.json()["video"]["status"]) == (row.id, "analyzed")
     assert r.json()["estimate"] is None
     assert list((tmp_path / "uploads").iterdir()) == []  # 사본을 두지 않는다
+
+
+async def test_post_upload_rejected_reads_the_rest(api, env_file, verify) -> None:
+    # 키가 없어 본문 전에 거절해도 남은 본문을 끝까지 읽는다 — 브라우저는 본문을 다 보내야 답을 읽는다
+    pulled: list[bytes] = []
+
+    async def body():
+        for chunk in (b"rec", b"ord", b"ing"):
+            pulled.append(chunk)
+            yield chunk
+
+    headers = _upload_headers("a.mp4") | {"Content-Length": "9"}
+    r = await api.post("/api/uploads", content=body(), headers=headers)
+    assert (r.status_code, r.json()["type"]) == (503, "urn:va:key-missing")
+    assert pulled == [b"rec", b"ord", b"ing"]

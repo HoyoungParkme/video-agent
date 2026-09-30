@@ -8,14 +8,17 @@ video_service로 영상을 먼저 읽는다.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import AsyncIterator
 from typing import Annotated
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import ClientDisconnect
 
 from app.core.db import get_session
-from app.core.errors import Validation
+from app.core.errors import Problem, Validation
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.service import JobService
 from app.domains.video.schemas import (
@@ -82,10 +85,23 @@ async def post_upload(request: Request, videos: Videos, jobs: Jobs) -> RegisterR
         errors.append({"field": "X-File-Name", "message": "파일 이름이 없어요"})
     if length is None or not length.isdigit():
         errors.append({"field": "Content-Length", "message": "크기가 없어요"})
-    if name is None or length is None or errors:
-        raise Validation(errors=errors)
-    video = await videos.upload(name, int(length), request.stream())
+    body = request.stream()
+    try:
+        if name is None or length is None or errors:
+            raise Validation(errors=errors)
+        video = await videos.upload(name, int(length), body)
+    except Problem:
+        await _drain(body)
+        raise
     return RegisterResponse(video=video, estimate=await jobs.estimate(video))
+
+
+async def _drain(body: AsyncIterator[bytes]) -> None:
+    # 거절한 뒤 남은 본문을 읽어 버린다 — 브라우저는 본문을 다 보내야 답을 읽는다. 읽지 않으면
+    # 올리기가 멈춘 채 끝나지 않는다(카드 D4 실측, VA-SEQ-001 3장). 끊겼으면 그만 읽는다
+    with contextlib.suppress(ClientDisconnect):
+        async for _ in body:
+            pass
 
 
 @router.get("/videos/{video_id}")
