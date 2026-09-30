@@ -77,10 +77,12 @@ class Config(BaseSettings):
     CHUNK_MAX_ATTEMPTS: int = 3
     CHUNK_RETRY_WAIT_SEC: float = 2  # 다시 보내기 전 첫 기다림, 다음은 두 배
     CHUNK_EST_SEC: int = 45
-    TEXT_EST_SEC: int = 60
-    # 장면 단계 전체의 예상 · 그 단계 안에서 남은 한 장의 예상(카드 D2에서 재어 고친다)
-    FRAMES_EST_SEC: int = 30
-    FRAME_EST_SEC: int = 2
+    # 요약 세 단계 합 — 추론 강도 low 실측 21~22초. 장면 몫과 합쳐 자막 있음이 '약 1분'(카드 D2)
+    TEXT_EST_SEC: int = 45
+    # 장면 단계 전체의 예상 · 그 단계 안에서 남은 한 장의 예상 — 실측 YouTube 5~13초(칸마다 약 1초),
+    # 로컬 27장 12초(카드 D2)
+    FRAMES_EST_SEC: int = 15
+    FRAME_EST_SEC: int = 1
     # 스크립트를 한 번 보낼 때 영상 1분당 입력 토큰 — 실측 323~497(줄 앞 시각 표기까지, 카드 C)
     TOKENS_PER_MIN: int = 450
     WORKER_IDLE_SEC: float = 5

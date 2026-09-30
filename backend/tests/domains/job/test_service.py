@@ -118,8 +118,8 @@ def _row(**kw) -> AnalysisJobRow:
 
 
 def test_remaining_sec_without_chunks() -> None:
-    # 요약 단계 — 세 단계 몫 60초에서 요약에 쓴 10초. 앞 단계(자막 3초)는 빼지 않는다
-    assert JobService.remaining_sec(_row(), []) in (49, 50)
+    # 요약 단계 — 세 단계 몫 45초에서 요약에 쓴 10초. 앞 단계(자막 3초)는 빼지 않는다
+    assert JobService.remaining_sec(_row(), []) in (34, 35)
     late = _row(stage_started_at=datetime.now(UTC) - timedelta(seconds=300))
     assert JobService.remaining_sec(late, []) == 0  # 예상보다 오래 걸리면 0 — 화면이 비운다
     for status in (JobStatus.queued, JobStatus.failed, JobStatus.done):
@@ -138,17 +138,17 @@ def _cells(done: int, total: int) -> FrameProgress:
 
 
 def test_remaining_sec_adds_frames_share() -> None:
-    # 장면 단계가 있는 작업 — 요약 단계 값에 장면 몫 30초. 요약이 늦어도 장면 몫은 줄지 않는다
-    assert JobService.remaining_sec(_row(stages=FRAME_JOB), []) in (79, 80)
+    # 장면 단계가 있는 작업 — 요약 단계 값에 장면 몫 15초. 요약이 늦어도 장면 몫은 줄지 않는다
+    assert JobService.remaining_sec(_row(stages=FRAME_JOB), []) in (49, 50)
     late = _row(stages=FRAME_JOB, stage_started_at=datetime.now(UTC) - timedelta(seconds=300))
-    assert JobService.remaining_sec(late, []) == 30
+    assert JobService.remaining_sec(late, []) == 15
 
 
 def test_remaining_sec_in_frames_stage() -> None:
     row = _row(stage=JobStage.frames, stages=FRAME_JOB)
-    assert JobService.remaining_sec(row, [], _cells(5, 8)) == 3 * 2  # 남은 칸 × 한 장 2초
-    assert JobService.remaining_sec(row, [], _cells(0, 0)) in (19, 20)  # 칸이 아직 없다 — 30 − 10
-    assert JobService.remaining_sec(row, []) in (19, 20)
+    assert JobService.remaining_sec(row, [], _cells(5, 8)) == 3 * 1  # 남은 칸 × 한 장 1초
+    assert JobService.remaining_sec(row, [], _cells(0, 0)) in (4, 5)  # 칸이 아직 없다 — 15 − 10
+    assert JobService.remaining_sec(row, []) in (4, 5)
 
 
 def test_to_job_frames_only_for_frames_stage() -> None:
@@ -168,7 +168,7 @@ def test_remaining_sec_text_stages_do_not_take_leftover_time() -> None:
         stage_durations_sec={"download": 30, "transcribe": 60},
         stage_started_at=started,
     )
-    assert JobService.remaining_sec(fast, []) in (57, 58)  # 60 − 2 — 435 − 92가 아니다
+    assert JobService.remaining_sec(fast, []) in (42, 43)  # 45 − 2 — 435 − 92가 아니다
     # 챕터 단계 — 요약에 쓴 시간만큼 줄어 있다
     chapter = _row(
         stage=JobStage.chapter,
@@ -177,7 +177,7 @@ def test_remaining_sec_text_stages_do_not_take_leftover_time() -> None:
         stage_durations_sec={"download": 30, "transcribe": 60, "summarize": 25},
         stage_started_at=datetime.now(UTC) - timedelta(seconds=5),
     )
-    assert JobService.remaining_sec(chapter, []) in (29, 30)  # 60 − 25 − 5
+    assert JobService.remaining_sec(chapter, []) in (14, 15)  # 45 − 25 − 5
     # 세 단계가 예상보다 오래 걸리면 0
     slow = _row(
         stage=JobStage.suggest,
@@ -211,19 +211,19 @@ def _chunks(row: AnalysisJobRow, done_now: int, done_before: int, total: int) ->
 def test_remaining_sec_transcribe_from_this_run_rate() -> None:
     row = _transcribe_row(started_ago=240)  # 12개가 4분 — 초당 0.05개
     got = JobService.remaining_sec(row, _chunks(row, done_now=12, done_before=0, total=30))
-    assert got in (420, 421)  # 남은 18개는 6분 + 요약 세 단계 몫 1분
+    assert got in (405, 406)  # 남은 18개는 6분 + 요약 세 단계 몫 45초
 
 
 def test_remaining_sec_transcribe_before_first_chunk() -> None:
     row = _transcribe_row(started_ago=20)
     # 30 ÷ 동시 3 × 45초 + 요약 세 단계 몫
-    assert JobService.remaining_sec(row, _chunks(row, 0, 0, 30)) == 10 * 45 + 60
+    assert JobService.remaining_sec(row, _chunks(row, 0, 0, 30)) == 10 * 45 + 45
 
 
 def test_remaining_sec_transcribe_after_retry_ignores_old_chunks() -> None:
     # 다시 시도 — 이전 실행의 15개는 속도에 안 든다. 이번 실행에서 끝난 것이 없으면 예상치
     row = _transcribe_row(started_ago=2)
-    assert JobService.remaining_sec(row, _chunks(row, 0, 15, 30)) == 5 * 45 + 60
+    assert JobService.remaining_sec(row, _chunks(row, 0, 15, 30)) == 5 * 45 + 45
 
 
 def test_remaining_sec_transcribe_while_splitting() -> None:
@@ -330,7 +330,7 @@ async def test_estimate_captions(db, make, env_file) -> None:
         None,
         None,
     )
-    assert (est.stt_cost_usd, est.seconds) == (0, 90)  # 텍스트 60 + 장면 30
+    assert (est.stt_cost_usd, est.seconds) == (0, 60)  # 텍스트 45 + 장면 15 — '약 1분'
     # 50.2분 × 450토큰 × 3번 × $0.25 + 출력 3천 × $2.00 — 실제 영상으로 맞춘 값(MS-002 v18)
     assert est.text_cost_usd == 0.0229
     assert est.total_cost_usd == round(est.text_cost_usd, 2)
@@ -350,7 +350,7 @@ async def test_estimate_local_150_minutes(db, make, env_file) -> None:
     est = await JobService(db).estimate(_video(row))
     assert (est.chunks, est.concurrency, est.stt_minutes, est.stt_cost_usd) == (15, 3, 150, 0.9)
     assert est.stt_price_per_min == 0.006
-    assert est.seconds == 5 * 45 + 60 + 150 + 30  # 조각 · 텍스트 · 추출 · 장면 몫
+    assert est.seconds == 5 * 45 + 45 + 150 + 15  # 조각 · 텍스트 · 추출 · 장면 몫
 
 
 async def test_estimate_local_audio_counts_conversion(db, make, env_file) -> None:
@@ -365,7 +365,7 @@ async def test_estimate_local_audio_counts_conversion(db, make, env_file) -> Non
     )
     est = await JobService(db).estimate(_video(row))
     assert (est.chunks, est.stt_minutes) == (3, 30)
-    assert est.seconds == 1 * 45 + 60 + 30  # 조각 · 텍스트 · mp3 변환 몫 — 음성은 장면이 없다
+    assert est.seconds == 1 * 45 + 45 + 30  # 조각 · 텍스트 · mp3 변환 몫 — 음성은 장면이 없다
 
 
 async def test_estimate_none_when_job_exists(db, make, env_file) -> None:
@@ -396,7 +396,7 @@ async def test_start_queues_and_wakes(db, make, key) -> None:
     saved = await _job_row(db, job.id)
     assert saved.stages == ["download", "summarize", "chapter", "suggest", "frames"]
     assert saved.stt_model is None  # 자막 있는 YouTube
-    assert (saved.text_model, saved.concurrency, saved.est_seconds) == ("gpt-5-mini", 3, 90)
+    assert (saved.text_model, saved.concurrency, saved.est_seconds) == ("gpt-5-mini", 3, 60)
     assert saved.queued_at == saved.started_at == saved.stage_started_at
 
 
