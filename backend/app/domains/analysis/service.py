@@ -866,7 +866,7 @@ class AnalysisService:
         Raises:
             ResultNotReady: 분석이 끝나지 않았다
             ExportFailed: 쓰지 못했다 — path는 쓰지 못한 파일의 보일 경로, reason은 errno로
-                고른 한 줄
+                고른 한 줄. 복사할 그림이 그 사이 없어졌으면 '그림 파일을 찾을 수 없음'
         """
         result = await self.result_of(video)
         name = self.filename_for(video)
@@ -880,9 +880,15 @@ class AnalysisService:
         for c in result.chapters:  # 장면이 있는 챕터의 그림을 노트의 그림 줄이 가리키는 이름으로
             if c.frame is None:
                 continue
-            src = await self.frame_file(video.id, c.seq)
-            data = await asyncio.to_thread(Path(src).read_bytes)
-            await self._write_export(export.frame_name(name, c.start_sec, video.duration_sec), data)
+            file = export.frame_name(name, c.start_sec, video.duration_sec)
+            try:
+                src = await self.frame_file(video.id, c.seq)
+                data = await asyncio.to_thread(Path(src).read_bytes)
+            except (NotFound, OSError) as e:  # 결과를 읽은 뒤 다시 채우기 · 지우기로 없어졌다
+                raise ExportFailed(
+                    path=f"{EXPORT_SHOWN}/{file}", reason="그림 파일을 찾을 수 없음"
+                ) from e
+            await self._write_export(file, data)
             written.append(("", data))
             images += 1
         return ExportResult(

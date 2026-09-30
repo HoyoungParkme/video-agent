@@ -438,6 +438,32 @@ async def test_export_to_file_copies_frames_beside_note(
     assert got.bytes == sum(p.stat().st_size for p in folder.iterdir())
 
 
+async def test_export_frame_gone_meanwhile_is_export_failed(
+    db, make, storyboard, local_frames, env_file, data_dir: Path, monkeypatch
+) -> None:
+    # 결과를 읽은 뒤 그림이 없어졌다 — 없음(404)이 아니라 저장 실패로, 그 그림의 보일 경로와 함께
+    video, svc = await _with_frames(db, make, storyboard, local_frames, set())
+
+    async def gone(video_id: int, seq: int) -> str:
+        raise NotFound(resource="frame", id=seq)
+
+    monkeypatch.setattr(svc, "frame_file", gone)
+    with pytest.raises(ExportFailed) as e:
+        await svc.export_to_file(video, False, [])
+    assert e.value.extra == {
+        "path": "data/export/RAG 운영기 00-00.jpg",
+        "reason": "그림 파일을 찾을 수 없음",
+    }
+
+    async def missing(video_id: int, seq: int) -> str:
+        return str(data_dir / "없는 그림.jpg")  # 행은 있는데 읽는 사이 지워졌다
+
+    monkeypatch.setattr(svc, "frame_file", missing)
+    with pytest.raises(ExportFailed) as e:
+        await svc.export_to_file(video, False, [])
+    assert e.value.extra["reason"] == "그림 파일을 찾을 수 없음"
+
+
 async def test_export_frame_copy_failure_names_that_picture(
     db, make, storyboard, local_frames, env_file, data_dir: Path
 ) -> None:
