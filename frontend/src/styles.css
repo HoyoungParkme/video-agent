@@ -577,15 +577,17 @@ h1, h2, p { margin: 0; }
 .timeline-band { height: 30px; }
 .timeline-bars { height: var(--tap); }
 .band-cell, .bar-cell {
-  flex: 0 1 0px; min-width: 0; padding: 0; border: 0; border-radius: var(--radius-6); font-size: var(--text-12); font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+  flex: 0 1 0px; min-width: 0; padding: 0; display: flex; align-items: center; overflow: hidden;
+  border: 0; border-radius: var(--radius-6); font-size: var(--text-12); font-weight: 600; cursor: pointer;
 }
-.band-cell { padding: 0 var(--space-8); background: var(--c-chip); color: var(--c-ink-2); text-align: left; }
+.cell-label { flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.band-cell { background: var(--c-chip); color: var(--c-ink-2); text-align: left; }
+.band-cell .cell-label, .bar-cell.is-wide .cell-label { padding: 0 var(--space-8); }
 .band-cell.is-alt { background: var(--c-band-2); }
 .band-cell[aria-pressed="true"] { background: var(--c-ink-2); color: var(--c-card); }
 .bar-cell { background: var(--c-teal-soft); color: var(--c-teal-deep); text-align: center; }
 .bar-cell.is-alt { background: var(--c-bar-2); }
-.bar-cell.is-wide { padding: 0 var(--space-8); text-align: left; }
+.bar-cell.is-wide { text-align: left; }
 .bar-cell[aria-pressed="true"] { background: var(--c-teal); color: var(--c-card); }
 .timeline-dots { position: relative; }
 .dot {

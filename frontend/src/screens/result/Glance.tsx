@@ -107,7 +107,10 @@ function useWidth<T extends HTMLElement>() {
   return [ref, width] as const;
 }
 
-/** 13 타임라인 카드 — (파트 띠) · 인사이트 점 · 챕터 막대 · 시각 눈금 · 범례. */
+/**
+ * 13 타임라인 카드 — (파트 띠) · 인사이트 점 · 챕터 막대 · 시각 눈금 · 범례. 칸의 안쪽 여백은 글자에 둔다 —
+ * 칸에 두면 여백이 flex 몫에 더해져 폭이 길이에 비례하지 않는다.
+ */
 function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "onToggle">) {
   const [track, width] = useWidth<HTMLDivElement>();
   const { chapters, parts } = result;
@@ -137,7 +140,9 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
               data-el={i === 0 ? "13.1" : undefined}
               onClick={() => onSelect(p.start_sec)}
             >
-              {p.seq} {p.title}
+              <span className="cell-label">
+                {p.seq} {p.title}
+              </span>
             </button>
           ))}
         </div>
@@ -180,7 +185,9 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
               data-el={i === 0 ? "13.3" : undefined}
               onClick={() => onSelect(c.start_sec)}
             >
-              {wide ? `${c.seq} ${c.title}` : px > NUMBER_PX ? c.seq : null}
+              <span className="cell-label">
+                {wide ? `${c.seq} ${c.title}` : px > NUMBER_PX ? c.seq : null}
+              </span>
             </button>
           );
         })}
