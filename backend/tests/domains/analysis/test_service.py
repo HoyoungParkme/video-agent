@@ -284,9 +284,31 @@ async def test_generate_chapters_150_minutes_model_parts(db, make, summarizer, e
     )
     await AnalysisService(db, summarizer).generate_chapters(video)
     parts, chapters = await _parts_and_chapters(db, summarizer, video.id)
-    # 시각순 · 첫 파트 0초로 당김 · 챕터가 없는 파트(8900초)는 빠진다
-    assert parts == [(1, "오전 1", 0), (2, "오전 2", 2400), (3, "오후", 5400)]
+    # 시각순 · 첫 파트 0초로 당김 · 챕터가 없는 파트(8900초)는 빠진다 · 파트 시작은 그 파트 첫 챕터의
+    # 시작(2400 → 2500, 5400 → 6000 — 이슈 #14). 챕터가 드는 파트는 그대로다
+    assert parts == [(1, "오전 1", 0), (2, "오전 2", 2500), (3, "오후", 6000)]
     assert chapters == [(1, 0), (1, 1200), (2, 2500), (2, 3600), (3, 6000)]
+
+
+async def test_generate_chapters_part_start_is_its_first_chapter(
+    db, make, summarizer, env_file
+) -> None:
+    # 모델이 둘째 파트를 1:15:00에 두고 챕터가 1:14:30 · 1:16:30이면 — 1:14:30은 첫 파트에 남고
+    # 둘째 파트는 1:16:30에서 시작한다(이슈 #14)
+    video = await _video(db, make, duration_sec=9000)
+    await make.transcript(video.id, ["x"] * 90, step=100)
+    summarizer.chapter_draft = ChapterDraft(
+        parts=[("앞", 0.0), ("뒤", 4500.0)],
+        chapters=[
+            (1, 0.0, "시작", ["a", "b"]),
+            (1, 4470.0, "앞의 끝", ["a", "b"]),
+            (2, 4590.0, "뒤의 처음", ["a", "b"]),
+        ],
+    )
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    parts, chapters = await _parts_and_chapters(db, summarizer, video.id)
+    assert parts == [(1, "앞", 0), (2, "뒤", 4590)]
+    assert chapters == [(1, 0), (1, 4470), (2, 4590)]
 
 
 async def test_generate_chapters_one_model_part_groups_by_hour(

@@ -421,7 +421,13 @@ class AnalysisService:
                 parts.append((title, start))
         parts[0] = (parts[0][0], 0.0)  # 첫 챕터(0초)가 어느 파트에도 안 드는 것을 막는다
         used = {_part_of(parts, start) for start, _, _ in chapters}
-        return [p for i, p in enumerate(parts, 1) if i in used]  # 챕터 없는 파트는 뺀다
+        kept = [p for i, p in enumerate(parts, 1) if i in used]  # 챕터 없는 파트는 뺀다
+        # 파트 시작을 그 파트 첫 챕터의 시작으로(이슈 #14) — 모델이 준 시작은 챕터 경계와 달라
+        # 파트 띠를 누르면 앞 파트의 챕터가 강조됐다. 챕터가 드는 파트는 그대로다
+        firsts: dict[int | None, float] = {}
+        for start, _, _ in chapters:  # 시각순
+            firsts.setdefault(_part_of(kept, start), start)
+        return [(title, firsts[i]) for i, (title, _) in enumerate(kept, 1)]
 
     async def generate_questions(self, video: Video) -> None:
         """VA-MS-003#AnalysisService.generate_questions
