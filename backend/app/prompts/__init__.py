@@ -1,4 +1,4 @@
-"""모델에 보내는 지시문 — 이 폴더의 마크다운 넷을 읽어 `{{이름}}`을 채운다(VA-MS-006 0장).
+"""모델에 보내는 지시문 — 이 폴더의 마크다운 다섯을 읽어 `{{이름}}`을 채운다(VA-MS-006 0장).
 
 OpenAI 어댑터(analysis · chat)만 부른다. 문장은 파일에서 고치고, 명세는 자리 표시 · 반드시
 들어갈 규칙 · 출력 형식만 정한다.
@@ -29,7 +29,7 @@ def render(name: str, **values: str | int) -> str:
     한 번만 바꾸므로 값 안의 `{{…}}`는 그대로이고, JSON 예시의 한 겹 중괄호도 그대로다.
 
     Args:
-        name: 파일 이름(확장자 없이) — summary · chapters · questions · answer
+        name: 파일 이름(확장자 없이) — summary · chapters · questions · answer · infographic
         values: 자리 표시 이름과 값. 파일의 자리 표시와 정확히 같아야 한다
 
     Returns:

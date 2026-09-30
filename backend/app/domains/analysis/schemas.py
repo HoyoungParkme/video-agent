@@ -1,6 +1,7 @@
 """결과 묶음의 응답 형태(VA-API-001 4장)와 내부 타입(VA-DOM-002 2.6).
 
-내부 타입 — CaptionLine · SummaryDraft · ChapterDraft · FrameShot. 포트와 서비스 사이에서만 오간다.
+내부 타입 — CaptionLine · SummaryDraft · ChapterDraft · FrameShot · InfographicBrief · ImageShot.
+포트와 서비스 사이에서만 오간다.
 """
 
 from __future__ import annotations
@@ -188,6 +189,25 @@ class FrameShot:
 
     sec: float
     source: FrameSource
+    width: int
+    height: int
+    path: str
+
+
+@dataclass(frozen=True)
+class InfographicBrief:
+    """인포그래픽 재료 — 제목 · 한 줄 요약 · 인사이트 · 챕터 제목뿐. 스크립트는 없다(UC-H9 4번)."""
+
+    title: str
+    one_liner: str
+    insights: list[str]
+    chapter_titles: list[str]
+
+
+@dataclass(frozen=True)
+class ImageShot:
+    """그린 인포그래픽 한 장 — 크기와 쓴 파일 경로."""
+
     width: int
     height: int
     path: str
