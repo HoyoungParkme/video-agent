@@ -11,7 +11,7 @@ async def test_post_job_starts(api, key, make) -> None:
     assert r.status_code == 201
     body = r.json()
     assert (body["status"], body["stage"], body["queue_position"]) == ("queued", "pending", 1)
-    assert body["stages"] == ["download", "summarize", "chapter", "suggest"]
+    assert body["stages"] == ["download", "summarize", "chapter", "suggest", "frames"]
     assert body["models"] == {"stt": None, "text": "gpt-5-mini"}
     again = await api.post(f"/api/videos/{row.id}/job")
     assert (again.status_code, again.json()["type"], again.json()["job_status"]) == (

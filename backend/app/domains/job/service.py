@@ -107,7 +107,8 @@ class JobService:
     def stages_for(video: Video) -> list[JobStage]:
         """VA-MS-002#JobService.stages_for
 
-        출처에 필요한 단계만, 순서대로 — 화면의 단계 목록이 이것을 그대로 그린다.
+        출처에 필요한 단계만, 순서대로 — 화면의 단계 목록이 이것을 그대로 그린다. 장면 단계는 늘
+        맨 끝이고 로컬 음성에는 없다(그릴 장면이 없다).
 
         Args:
             video: 영상(출처 · 자막 유무 · 파일 이름)
@@ -115,14 +116,14 @@ class JobService:
         Returns:
             단계 목록
         """
-        tail = [JobStage.summarize, JobStage.chapter, JobStage.suggest]
+        text = [JobStage.summarize, JobStage.chapter, JobStage.suggest]
         if video.source_kind == "youtube":
             if video.has_captions:
-                return [JobStage.download, *tail]
-            return [JobStage.download, JobStage.transcribe, *tail]
+                return [JobStage.download, *text, JobStage.frames]
+            return [JobStage.download, JobStage.transcribe, *text, JobStage.frames]
         if _is_audio(video):
-            return [JobStage.transcribe, *tail]
-        return [JobStage.extract, JobStage.transcribe, *tail]
+            return [JobStage.transcribe, *text]
+        return [JobStage.extract, JobStage.transcribe, *text, JobStage.frames]
 
     @staticmethod
     def remaining_sec(row: AnalysisJobRow, chunks: list[AudioChunkRow]) -> int | None:

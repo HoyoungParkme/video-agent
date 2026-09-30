@@ -41,6 +41,7 @@ class JobStage(StrEnum):
     summarize = "summarize"
     chapter = "chapter"
     suggest = "suggest"
+    frames = "frames"  # 챕터 대표 장면 — 늘 맨 끝, 로컬 음성에는 없다(카드 D2)
 
 
 class ChunkState(StrEnum):

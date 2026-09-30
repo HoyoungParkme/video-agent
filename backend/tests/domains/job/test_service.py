@@ -73,9 +73,16 @@ async def test_stages_for_four_sources(make) -> None:
         caption_language=None,
         caption_kind=None,
     )
-    assert JobService.stages_for(_video(yt)) == ["download", "summarize", "chapter", "suggest"]
-    assert JobService.stages_for(_video(yt_no)) == STT_STAGES
-    assert JobService.stages_for(_video(mp4)) == ["extract", *STT_STAGES[1:]]
+    # 장면 단계는 늘 맨 끝 — 로컬 음성에는 그릴 장면이 없다
+    assert JobService.stages_for(_video(yt)) == [
+        "download",
+        "summarize",
+        "chapter",
+        "suggest",
+        "frames",
+    ]
+    assert JobService.stages_for(_video(yt_no)) == [*STT_STAGES, "frames"]
+    assert JobService.stages_for(_video(mp4)) == ["extract", *STT_STAGES[1:], "frames"]
     assert JobService.stages_for(_video(mp3)) == STT_STAGES[1:]  # 로컬 음성은 origin의 확장자
 
 
@@ -348,7 +355,7 @@ async def test_start_queues_and_wakes(db, make, key) -> None:
     assert job.stage == JobStage.pending
     assert JobService.work_event.is_set()
     saved = await _job_row(db, job.id)
-    assert saved.stages == ["download", "summarize", "chapter", "suggest"]
+    assert saved.stages == ["download", "summarize", "chapter", "suggest", "frames"]
     assert saved.stt_model is None  # 자막 있는 YouTube
     assert (saved.text_model, saved.concurrency, saved.est_seconds) == ("gpt-5-mini", 3, 60)
     assert saved.queued_at == saved.started_at == saved.stage_started_at
