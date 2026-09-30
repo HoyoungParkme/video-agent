@@ -183,6 +183,11 @@ class Config(BaseSettings):
         return f"{self.DATA_DIR}/export"
 
     @property
+    def INFOGRAPHICS_DIR(self) -> str:
+        """인포그래픽 — data 폴더 안 infographics/{video_id}.png, 영상마다 한 장(MS-003)."""
+        return f"{self.DATA_DIR}/infographics"
+
+    @property
     def FRAMES_DIR(self) -> str:
         """챕터 대표 장면 — data 폴더 안 frames/{video_id}/{chapter_seq}.jpg(MS-003)."""
         return f"{self.DATA_DIR}/frames"

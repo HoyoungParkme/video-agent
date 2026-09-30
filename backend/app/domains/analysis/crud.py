@@ -12,6 +12,7 @@ from app.domains.analysis.models import (
     ChapterFrameRow,
     ChapterRow,
     FrameSource,
+    InfographicRow,
     InsightRow,
     PartRow,
     SegmentRow,
@@ -238,3 +239,8 @@ async def frame_by_seq(session: AsyncSession, video_id: int, seq: int) -> Chapte
         .join(ChapterRow, ChapterRow.id == ChapterFrameRow.chapter_id)
         .where(ChapterRow.video_id == video_id, ChapterRow.seq == seq)
     )
+
+
+async def infographic(session: AsyncSession, video_id: int) -> InfographicRow | None:
+    """그 영상의 인포그래픽 행. 없으면 None(만든 적 없음)."""
+    return await session.scalar(select(InfographicRow).where(InfographicRow.video_id == video_id))

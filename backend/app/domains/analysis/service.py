@@ -25,7 +25,13 @@ from app.core.errors import ExportFailed, FramesUnavailable, NotFound, ResultNot
 from app.core.settings import Models, settings
 from app.domains.analysis import crud, export
 from app.domains.analysis.export import SCRIPT_SUFFIX
-from app.domains.analysis.models import ChapterFrameRow, ChapterRow, TranscriptSource
+from app.domains.analysis.models import (
+    ChapterFrameRow,
+    ChapterRow,
+    InfographicRow,
+    InfographicState,
+    TranscriptSource,
+)
 from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
 from app.domains.analysis.schemas import (
     CaptionLine,
@@ -37,6 +43,8 @@ from app.domains.analysis.schemas import (
     Frame,
     FrameSet,
     FramesState,
+    Infographic,
+    InfographicImage,
     Insight,
     Part,
     Result,
@@ -152,6 +160,24 @@ def _frame_list(
             )
         )
     return out
+
+
+def _infographic(video_id: int, row: InfographicRow | None) -> Infographic:
+    """인포그래픽 행 → 응답. 행이 없으면 none, 그림은 컬럼이 있고 파일도 있을 때만."""
+    if row is None:
+        return Infographic(state=InfographicState.none, image=None, error_reason=None)
+    image = None
+    if row.path is not None and row.created_at is not None and os.path.isfile(row.path):
+        image = InfographicImage(
+            url=f"/api/videos/{video_id}/infographic/image?v={int(row.created_at.timestamp())}",
+            model=row.model,
+            quality=row.quality,
+            width=row.width,
+            height=row.height,
+            created_at=row.created_at,
+            cost_usd=row.cost_usd,
+        )
+    return Infographic(state=row.state, image=image, error_reason=row.error_reason)
 
 
 def _files(result: Result, name: str) -> list[ExportFile]:
@@ -540,6 +566,25 @@ class AnalysisService:
             # wait는 태스크의 CancelledError를 올리지 않는다 — 부른 쪽 자신의 취소는 그대로 전해진다
             await asyncio.wait({task})
         AnalysisService._making.discard(video_id)
+
+    async def infographic_of(self, video: Video) -> Infographic:
+        """VA-MS-003#AnalysisService.infographic_of
+
+        인포그래픽 상태와 지금 쓰는 그림 — 그리는 동안 화면이 3초마다 부른다. 다시 그리는 중이거나
+        다시 그리기가 실패해도 이전 그림이 그대로 있다.
+
+        Args:
+            video: 결과를 연 영상
+
+        Returns:
+            상태 · 그림(없으면 None) · 실패 이유
+
+        Raises:
+            ResultNotReady: 분석이 끝나지 않았다
+        """
+        if video.status != "analyzed":
+            raise ResultNotReady(video_status=video.status)
+        return _infographic(video.id, await crud.infographic(self.session, video.id))
 
     async def save_transcript(
         self,

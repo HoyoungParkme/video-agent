@@ -13,8 +13,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.core.config import ImageQuality
 from app.core.settings import Models
-from app.domains.analysis.models import FrameSource, TranscriptSource
+from app.domains.analysis.models import FrameSource, InfographicState, TranscriptSource
 from app.domains.video.schemas import Video
 
 
@@ -82,6 +83,26 @@ class FrameSet(BaseModel):
 
     state: FramesState
     frames: list[Frame]
+
+
+class InfographicImage(BaseModel):
+    """지금 쓰는 인포그래픽 그림. url의 ?v=는 만든 시각이라 그림이 바뀌면 주소가 바뀐다."""
+
+    url: str
+    model: str
+    quality: ImageQuality
+    width: int
+    height: int
+    created_at: datetime
+    cost_usd: float
+
+
+class Infographic(BaseModel):
+    """인포그래픽 상태와 지금 쓰는 그림 — 다시 만들기가 실패해도 이전 그림이 남는다(UC-H9 4a)."""
+
+    state: InfographicState
+    image: InfographicImage | None
+    error_reason: str | None
 
 
 class Chapter(BaseModel):
