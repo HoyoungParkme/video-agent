@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import config
-from app.core.errors import FramesUnavailable, NotFound, ResultNotReady
+from app.core.errors import ExportFailed, FramesUnavailable, NotFound, ResultNotReady
 from app.domains.analysis import crud
 from app.domains.analysis.models import FrameSource, SummaryRow
 from app.domains.analysis.schemas import ExportMethod, FramesState
@@ -416,3 +416,33 @@ async def test_export_without_frames_has_two_files(
     video, svc = await _with_frames(db, make, storyboard, local_frames, {0, 1, 2})
     got = await svc.export_markdown(video, False, [], ExportMethod.file)
     assert [f.kind for f in got.files] == ["note", "script"]
+
+
+async def test_export_to_file_copies_frames_beside_note(
+    db, make, storyboard, local_frames, env_file, data_dir: Path
+) -> None:
+    video, svc = await _with_frames(db, make, storyboard, local_frames, {1})
+    got = await svc.export_to_file(video, False, [])
+    folder = data_dir / "data" / "export"
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "RAG 운영기 00-00.jpg",
+        "RAG 운영기 20-00.jpg",
+        "RAG 운영기 스크립트.md",
+        "RAG 운영기.md",
+    ]  # 임시 파일이 남지 않는다
+    assert got.images == 2
+    assert [f.name for f in got.files][2:] == ["RAG 운영기 00-00.jpg", "RAG 운영기 20-00.jpg"]
+    note = (folder / "RAG 운영기.md").read_text(encoding="utf-8")
+    assert "![[RAG 운영기 00-00.jpg]]" in note and "![[RAG 운영기 20-00.jpg]]" in note
+    assert (folder / "RAG 운영기 00-00.jpg").read_bytes() == b"jpeg"
+    assert got.bytes == sum(p.stat().st_size for p in folder.iterdir())
+
+
+async def test_export_frame_copy_failure_names_that_picture(
+    db, make, storyboard, local_frames, env_file, data_dir: Path
+) -> None:
+    video, svc = await _with_frames(db, make, storyboard, local_frames, set())
+    (data_dir / "data" / "export" / "RAG 운영기 10-00.jpg").mkdir(parents=True)  # 그 자리에 폴더
+    with pytest.raises(ExportFailed) as e:
+        await svc.export_to_file(video, False, [])
+    assert e.value.extra["path"] == "data/export/RAG 운영기 10-00.jpg"

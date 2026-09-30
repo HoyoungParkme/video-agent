@@ -173,7 +173,7 @@ def _write(folder: Path, name: str, data: bytes) -> None:
     # 같은 폴더의 임시 파일에 쓴 뒤 바꿔 끼운다 — 쓰다 멈춰도 반쯤 쓴 파일이 남지 않는다.
     # mkstemp는 0600으로 만들어 보통 파일처럼(0644) 읽히게 바꾼다 — 노트 앱이 읽는 파일이다
     folder.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".export-", suffix=".md")
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".export-", suffix=Path(name).suffix)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -849,10 +849,10 @@ class AnalysisService:
     ) -> ExportResult:
         """VA-MS-003#AnalysisService.export_to_file
 
-        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓴다 — 화면이 보낸 본문을 쓰지 않고 다시
-        만든다. 노트는 챕터 다음에 스크립트 파일을 가리키는 절(`[[{이름} 스크립트]]`)이 붙는다.
-        스크립트를 먼저 써 노트의 링크가 헛돌지 않게 한다. 같은 이름이 있으면 둘 다 덮어쓰고,
-        폴더가 없으면 만든다.
+        노트와 스크립트 파일 둘을 `config.EXPORT_DIR`에 쓰고, 장면이 있는 챕터의 그림을 곁에
+        복사한다 — 화면이 보낸 본문을 쓰지 않고 다시 만든다. 노트는 장면 그림 줄과 스크립트 파일을
+        가리키는 절(`[[{이름} 스크립트]]`)을 갖는다. 스크립트를 먼저 써 노트의 링크가 헛돌지 않게
+        한다. 같은 이름이 있으면 모두 덮어쓰고, 폴더가 없으면 만든다.
 
         Args:
             video: 라우터가 VideoService.get으로 받은 영상
@@ -872,16 +872,30 @@ class AnalysisService:
         script = f"{name}{SCRIPT_SUFFIX}"
         note = export.build(result, turns if with_chat else None, name).encode("utf-8")
         text = export.build_script(result).encode("utf-8")
-        for file, data in ((script, text), (name, note)):
-            try:
-                await asyncio.to_thread(_write, Path(config.EXPORT_DIR), f"{file}.md", data)
-            except OSError as e:
-                reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
-                raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}.md", reason=reason) from e
+        written = [(f"{script}.md", text), (f"{name}.md", note)]
+        for file, data in written:
+            await self._write_export(file, data)
+        images = 0
+        for c in result.chapters:  # 장면이 있는 챕터의 그림을 노트의 그림 줄이 가리키는 이름으로
+            if c.frame is None:
+                continue
+            src = await self.frame_file(video.id, c.seq)
+            data = await asyncio.to_thread(Path(src).read_bytes)
+            await self._write_export(export.frame_name(name, c.start_sec, video.duration_sec), data)
+            written.append(("", data))
+            images += 1
         return ExportResult(
             filename=name,
             path=f"{EXPORT_SHOWN}/{name}.md",
-            bytes=len(note) + len(text),
-            images=0,
+            bytes=sum(len(data) for _, data in written),
+            images=images,
             files=_files(result, name),
         )
+
+    async def _write_export(self, file: str, data: bytes) -> None:
+        """내보낼 파일 하나를 EXPORT_DIR에 쓴다. 실패는 보일 경로와 errno로 고른 이유로."""
+        try:
+            await asyncio.to_thread(_write, Path(config.EXPORT_DIR), file, data)
+        except OSError as e:
+            reason = WRITE_REASONS.get(e.errno or 0, "파일을 쓸 수 없음")
+            raise ExportFailed(path=f"{EXPORT_SHOWN}/{file}", reason=reason) from e
