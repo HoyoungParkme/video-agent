@@ -46,6 +46,7 @@
   --text-28: 28px;
   --text-26: 26px;
   --text-24: 24px;
+  --text-22: 22px;
   --text-20: 20px;
   --text-19: 19px;
   --text-18: 18px;
@@ -242,6 +243,20 @@ h1, h2, p { margin: 0; }
   background: var(--c-card); box-shadow: var(--shadow-dialog);
 }
 .dialog-overlay.is-dark { background: var(--c-overlay-dark); }
+
+/* UI-8 인포그래픽 만들기 — 폭 580px, 위 120px(VA-UI-002 UI-8 규칙) */
+.ig { display: flex; flex-direction: column; gap: var(--space-20); }
+.ig-cost { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-12); }
+.ig-cost-box { padding: var(--space-14) var(--space-16); display: flex; flex-direction: column; gap: var(--space-4); border-radius: var(--radius-12); background: var(--c-bg); }
+.ig-cost-label { font-size: var(--text-13); color: var(--c-ink-3); }
+.ig-cost-value { font-size: var(--text-22); font-weight: 600; }
+.ig-quality { font-size: var(--text-17); font-weight: 600; }
+.ig-settings-link { align-self: flex-start; font-size: var(--text-13); font-weight: 600; text-decoration: none; }
+.ig-send { padding: var(--space-14) var(--space-16); display: flex; flex-direction: column; gap: var(--space-8); border-radius: var(--radius-12); border: 1px solid var(--c-line); }
+.ig-send-title { display: flex; align-items: center; gap: var(--space-8); font-size: var(--text-14); font-weight: 600; }
+.ig-send-what { font-size: var(--text-14); line-height: 1.6; color: var(--c-ink-2); }
+.ig-send-note { font-size: var(--text-13); line-height: 1.55; color: var(--c-ink-3); }
+.ig-send-replace { font-size: var(--text-13); line-height: 1.55; font-weight: 600; color: var(--c-ink-2); }
 
 /* UI-9 인포그래픽 크게 보기 — 그림 폭 432px, 창이 낮으면 창 높이에 맞춰 줄인다(다이얼로그가 넘치지 않게) */
 .iv { display: flex; flex-direction: column; gap: var(--space-16); }
