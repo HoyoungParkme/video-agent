@@ -12,7 +12,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 
 11단계 CODE. 싱크독 개발 규약 DEV-11~15대로 작업을 슬라이스 카드로 자르고, 카드마다 커밋을 기록한다. **에이전트는 카드 하나를 받아 카드 안 참조만 따라간다.** 카드에 없는 함수를 짜게 되면 카드가 틀린 것이다 — 카드를 고치고, 필요하면 MINISPEC을 고친다.
 
-슬라이스는 시나리오([[VA-SCN-001]]) 순서다 — S1 YouTube 자막 영상이 첫 슬라이스(B1). 기반 A가 끝나야 B가 시작되고, B1이 끝나면 자막 있는 YouTube 하나를 넣어 요약 · 챕터 · 스크립트를 읽을 수 있다. 그 뒤 받아쓰기(B2) → 질문(B3) → 다시 열기 · 내보내기 · 삭제(B4) → 잘 안 되는 경우(B5) → 통합 · 배포(C).
+슬라이스는 시나리오([[VA-SCN-001]]) 순서다 — S1 YouTube 자막 영상이 첫 슬라이스(B1). 기반 A가 끝나야 B가 시작되고, B1이 끝나면 자막 있는 YouTube 하나를 넣어 요약 · 챕터 · 스크립트를 읽을 수 있다. 그 뒤 받아쓰기(B2) → 질문(B3) → 다시 열기 · 내보내기 · 삭제(B4) → 잘 안 되는 경우(B5) → 통합 · 배포(C). 첫 배포를 써 본 사용자의 요구(2026-09-29 — 「분석 내용이 가시성이 없다」 · 「로컬 파일은 끌어 놓거나 골라서」)로 결과 그림 셋과 파일 올리기를 더했다 — 한눈에 보기(D1) → 대표 장면(D2) → 인포그래픽(D3) → 파일 올리기(D4). 하나가 끝날 때마다 쓸 수 있는 순서다.
 
 **카드는 호출 그래프로 닫혀 있다.** 카드의 함수가 부르는 함수는 같은 카드에 있거나, 선행 카드에서 끝났거나, 카드의 `스텁` 행에 적혀 있다. 스텁은 둘뿐 — 빈 결과, 또는 `not-implemented`(501). 조용히 다르게 동작하는 스텁은 없다. 스텁을 해제한 카드가 완료란에 그 사실을 적는다. `not-implemented`는 [[VA-API-001]] 2장 에러 표에 없는 임시 종류다 — `core/errors.py`의 `NotImplementedYet`(`urn:va:not-implemented`, 501)이 내고, 파이프라인 안에서 나면 작업이 `unknown`으로 실패한다. 스텁이 모두 풀리는 B4에서 지운다.
 
@@ -20,7 +20,7 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 
 **커밋 규격** — `code(슬라이스): 함수명 — 요약`. 함수 하나 = 커밋 하나, docstring 첫 줄 = MINISPEC 항목 ID. PR = 슬라이스 하나. **커밋 메시지와 PR 본문에 에이전트 표시(`Co-Authored-By` · 세션 링크 · 「Generated with」)를 넣지 않는다** — 제목과 본문만 쓴다(싱크독 규약 STD-001 1.10, 사용자 결정 2026-09-22).
 
-**진행 상황**: 카드 7장 **모두 완료**(A · B1 · B2 2026-09-23, B3 2026-09-27, B4 · B5 2026-09-28, C 2026-09-29 — PR #1 · #2 · #3 · #4 · #7 · #8 · #11). 스텁은 하나도 남지 않았다. **첫 배포**(2026-09-29): `dev` → `main` PR #12를 merge commit `3b3b2c4`로 머지했다 — 결정은 「에이전트는 PR만 열고 머지는 사용자가 merge commit으로」였고, 이번에는 사용자 지시(「너가 머지해」)로 에이전트가 머지했다. main에서 다시 띄운 스택이 그대로 돈다(첫 화면 · 키 확인 · 결과 넷 · 내보내기).
+**진행 상황**: 카드 7장 **모두 완료**(A · B1 · B2 2026-09-23, B3 2026-09-27, B4 · B5 2026-09-28, C 2026-09-29 — PR #1 · #2 · #3 · #4 · #7 · #8 · #11). 스텁은 하나도 남지 않았다. **첫 배포**(2026-09-29): `dev` → `main` PR #12를 merge commit `3b3b2c4`로 머지했다 — 결정은 「에이전트는 PR만 열고 머지는 사용자가 merge commit으로」였고, 이번에는 사용자 지시(「너가 머지해」)로 에이전트가 머지했다. main에서 다시 띄운 스택이 그대로 돈다(첫 화면 · 키 확인 · 결과 넷 · 내보내기). **다음**: 카드 D1(명세 2026-09-30). D4가 끝나면 `dev` → `main` PR — 에이전트는 열기만 하고 머지는 사용자가 merge commit으로 한다.
 
 ---
 
@@ -118,18 +118,74 @@ upstream: [VA-SCN-001, VA-UC-001, VA-INFRA-001, VA-DOM-002, VA-DOM-003, VA-API-0
 | 선행 | B5 |
 | 완료 | 2026-09-29(KST) · 브랜치 `feat/card-c` → `dev` squash `f236b7e`(PR #11, 커밋 20개 — 함수 하나 = 커밋 하나, 단계마다 그 함수의 테스트가 통과한 채로. `fix(#9)` 하나 · `fix(#10)` 둘, 코드 리뷰 반영 둘 포함) · 테스트: pytest 434(api 이미지 안 435 — 진짜 ffmpeg 포함. 이미지 안에서는 `ENV_PATH` · `DATA_DIR` · `INBOX_DIR`를 `/tmp`로 돌려 진짜 `.env` · `data/`를 건드리지 않았다) · E2E 36(s5가 노트 · 스크립트 두 파일을 본다) · `export.build` 스냅샷 둘 + `export.build_script` 스냅샷 둘 · `check_code` 90/90(싱크독 도구가 고쳐져(싱크독 #196, `**kwargs`) 카드 A부터 남던 `prompts.render`도 일치) · `check_ui` 화면 7개 — UI-2 26/26 · UI-5 · UI-6 · UI-7 일치, UI-1 23/35 · UI-3 21/27 · UI-4 34/48은 도구 한계(목록 첫 항목에만 붙인 번호 · 레이아웃이 그리는 배너 번호, 앞 카드와 같다) · 새로 설치해 보기([[VA-PRD-001#N4]]): GitHub의 `dev`를 받아 캐시 없이 빌드 102초, 첫 화면까지 13초 · **진짜 실행**(진짜 키 · 실제 영상 넷, 가짜 없음 — PR #11 댓글): 자동 자막 YouTube 46:47 1분 7초 · $0.030(추론 medium) · 42:24 23초 · $0.020(low) · 자막 없는 YouTube 30:49 1분 32초(시간당 3.0분) · $0.206 · 로컬 mp4 2:30:30 6분 41초(시간당 2.7분, 15조각) · $0.98 — [[VA-PRD-001#N1]] 충족 · 답 2.4~3.1초(low) · 품질 판단: 인사이트 · 답의 근거 108개 전부 그 말이 나온 지점 ±15초 안([[VA-PRD-001]] 4장), 노트 넷을 사용자가 노트 앱에서 확인 · 화면 확인: 사용자 지시로 에이전트가 진짜 스택 + Playwright MCP로 UI-7 저장 알림 · 복사 · 긴 스크립트 목록을(PR #11 댓글) · 사용자 결정(2026-09-29): 영상 넷은 사용자가 골랐다 · 키는 사용자가 준 것을 에이전트가 설정 API(화면과 같은 `POST /api/settings/key`)로 넣었다 — `.env`는 읽지 않았고 키 원문은 로그 · 응답 · 커밋 어디에도 없다 · 결과는 남긴다 · 요약 상한 4만 → 10만 · 추론 강도 low · 스크립트는 별도 파일([[VA-PRD-001#R10]]) · 해시는 전체 그대로 · 품질 기준은 ±15초 그대로(5장) · 긴 스크립트 목록은 가상 스크롤 없이 · `dev` → `main`은 PR만 · 앞 카드의 버그(DEV-15, 이슈로 남겼다): #9 자동 원어 자막이 여럿이면 영상 언어와 다른 것을 골랐다(B1, `fix(#9)`) · #10 추천 질문 앞에 시각 표기가 붙었다(B1 — 1시간 넘는 받아쓰기 영상에서 드러났다, `fix(#10)` 둘) · 되먹임(모두 반영): [[VA-DOM-002]] v24 · [[VA-MS-006]] v14~v18 · [[VA-MS-002]] v17 · v18 · [[VA-MS-003]] v7~v9 · [[VA-MS-004]] v5 · [[VA-MS-007]] v9 · [[VA-PRD-001]] v6 · [[VA-UC-001]] v3 · [[VA-UI-001]] v8 · v9 · [[VA-UI-002]] v16 · v17 · [[VA-API-001]] v10 · [[VA-MS-001]] v7 · 이 문서 v16 · 코드 리뷰(`/code-review`) 9건 — 고친 것 셋(파일 이름에 남던 위키링크 글자 `[ ] # ^` · 추천 질문 끝의 시각 표기 · 한글 제목 79자 설명), 명세에만 적은 것 둘(스크립트 파일과 다른 영상 노트의 이름 겹침은 덮어쓴다 — 사용자 결정 2026-09-29 · 노트를 쓰다 실패하면 스크립트 파일만 새것으로 남는다), 남긴 것 넷(`reasoning_effort`를 모든 텍스트 모델에 보냄 — 목록의 셋이 모두 추론 모델 · `captions.pick`의 `-orig` 하나 — 오탐, 나머지 자동 키는 번역 · `export_to_file`의 반복 — MINISPEC이 두 함수를 따로 정했다 · `_sample`의 어림 다시 세기 — 수십 ms) · 남긴 것: 받아쓰기 오류가 요약에 옮는다(고유명사 · 전문어 — whisper-1의 한계, 고를 수 있는 받아쓰기 모델은 구간 시각을 주는 whisper-1 하나) · 좁은 창(UI-001은 1440px만 그렸다, 8장) · 첫 배포: PR #12 merge commit `3b3b2c4`(사용자 지시로 에이전트가 머지) |
 
+
+#### D1 한눈에 보기 — 타임라인 · 마인드맵
+
+| 항목 | 내용 |
+|---|---|
+| 근거 | [[VA-PRD-001#R11]] · [[VA-UC-001#UC-H3]] · [[VA-UC-001#UC-H7]] 2번 · [[VA-SEQ-001#SEQ-8]] · [[VA-SEQ-001#SEQ-10]] · [[VA-UI-001#UI-4]] · [[VA-UI-001#UI-7]] · [[VA-INFRA-001]] 3절(화면은 라이브러리 없이 · 노트는 Mermaid `gantt` · `mindmap`) |
+| 구현 함수 | **새로** [[VA-MS-003#export.gantt]] · [[VA-MS-003#export.mindmap]] · **고친다** [[VA-MS-003#export.build]](한눈에 보기 절 · 인자 `script_name` → `file_name`) · [[VA-MS-003#AnalysisService.export_markdown]](`method` · `files` — 이 카드에서는 노트 · 스크립트 둘) · [[VA-MS-003#AnalysisService.export_to_file]](`images=0` · `files`) — 새 함수 2개 + 고치는 함수 3개. 그림 줄 · 그림 파일은 D2 · D3이 더한다 |
+| API | [[VA-API-001#GET/api/videos/{id}/export]]의 쿼리 `method`와 `files` · [[VA-API-001#POST/api/videos/{id}/export]]의 `images` · `files` |
+| 화면 | [[VA-UI-002#UI-4]] 12 ~ 14 한눈에 보기 — 타임라인(파트 띠 13.1 · 인사이트 점 13.2 · 챕터 막대 13.3 · 축 13.4 · 범례 13.5)과 마인드맵(한 줄 요약 14.1 · 챕터 14.2 · 요점 14.3 · 파트 펴고 접기 14.4 · 14.5). 누르면 오른쪽 스크립트가 그 시각으로 가고 같은 챕터가 막대 · 마인드맵 · 챕터 카드에서 함께 강조된다 · `screens/result/Glance.tsx`([[VA-DOM-002]] 1장 — UI-4만 쓰는 부분) · [[VA-UI-002#UI-7]] 2.3 함께 저장되는 파일(노트 · 스크립트) · 2.4 복사 안내 · 미리 보기가 고른 방법의 노트 |
+| 테스트 | 구현 함수의 테스트 관점 전부 · 스냅샷: `export.gantt` · `mindmap`(42분 결과 = 와이어프레임 UI-7 4.1의 블록, 150분 파트 결과) · `export.build` 스냅샷 넷을 새로 찍는다(한눈에 보기 절) · **E2E**: 결과 화면에서 막대 · 점 · 마인드맵 챕터를 누르면 스크립트 시각이 바뀌고 같은 챕터가 강조된다 · 긴 영상은 파트 띠와 파트 펴고 접기 · 내보내기 미리 보기에 Mermaid 블록 둘, 복사를 고르면 `## 스크립트` 절이 없다 · 화면 확인: 에이전트가 진짜 스택 + Playwright MCP로 요소 번호대로(PR 댓글) · 실제 노트를 사용자가 옵시디언에서 연다 — 긴 영상의 gantt 눈금과 챕터 수십 개의 mindmap이 읽을 만한지([[VA-MS-003]] 3장 미결) |
+| 스텁 | 없음. 결과의 장면 · 인포그래픽 필드는 D2 · D3이 더한다 |
+| 선행 | C |
+| 완료 | — |
+
+#### D2 챕터 대표 장면
+
+| 항목 | 내용 |
+|---|---|
+| 근거 | [[VA-PRD-001#R12]] · [[VA-UC-001#UC-S7]] · [[VA-UC-001#UC-H3]] 1a · 1b · [[VA-UC-001#UC-S6]] 1b · [[VA-SEQ-001#SEQ-5]] · [[VA-SEQ-001#SEQ-16]] · [[VA-SEQ-001#SEQ-17]] · [[VA-SEQ-001#SEQ-C1]] · [[VA-INFRA-001#C12]] · [[VA-DOM-003#chapter_frames]] |
+| DB | Alembic `0003_chapter_frames` — 테이블과 CHECK(그림 컬럼이 모두 null이거나 모두 not null) · `downgrade`([[VA-DOM-003]] 3장) |
+| 구현 함수 | **새로** analysis [[VA-MS-003#AnalysisService.make_frames]] · [[VA-MS-003#AnalysisService.frames_state]] · [[VA-MS-003#AnalysisService.fill_frames]] · [[VA-MS-003#AnalysisService.frames_of]] · [[VA-MS-003#AnalysisService.frame_progress]] · [[VA-MS-003#AnalysisService.frame_file]] · [[VA-MS-003#AnalysisService.cancel_tasks]](장면 태스크 몫) · [[VA-MS-003#export.frame_name]] · adapters [[VA-MS-006#frames_storyboard.frames]] · [[VA-MS-006#frames_local.frames]] · shared [[VA-MS-006#sources.local_path]] · infra [[VA-MS-007#ffmpeg.frame]] · [[VA-MS-007#ffmpeg.crop]] — 13개 · **고친다** [[VA-MS-003#AnalysisService.result_of]](`chapters[].frame` · `frames_state`) · `export_markdown` · `export_to_file` · `export.build`(장면 줄 · 장면 파일 복사) · [[VA-MS-002#JobService.stages_for]](`frames`) · [[VA-MS-002#JobService.estimate]] · [[VA-MS-002#JobService.remaining_sec]](장면 몫) · [[VA-MS-002#JobService.to_job]] · [[VA-MS-002#JobService.progress]](장면 칸) · [[VA-MS-002#pipeline.run]](장면 단계 · 추출이 `sources.local_path`로) · [[VA-MS-002#pipeline.resume]](장면 단계부터) · [[VA-MS-001#VideoService.delete]](장면 폴더) — 12개 · 조립: `main.py`가 장면 어댑터 둘을 만들어 라우터(`app.state`)와 파이프라인(모듈 속성)에 · job/router가 `frame_progress`를 `progress`에 넘기고 · 삭제 라우터가 `cancel_tasks`를 `VideoService.delete` 전에 부른다([[VA-DOM-002]] 3.1) · D4 전에는 올린 영상이 없어 `sources.local_path`를 `uploaded=False`로 부른다 — D4가 `Video.uploaded`로 바꾼다 |
+| API | [[VA-API-001#GET/api/videos/{id}/frames]] · [[VA-API-001#POST/api/videos/{id}/frames]] · [[VA-API-001#GET/api/videos/{id}/frames/{seq}]] · `GET …/job`의 `frames` · `GET …/result`의 `chapters[].frame` · `frames_state` · 내보내기의 장면 파일 |
+| 화면 | [[VA-UI-002#UI-3]] 단계 목록의 '장면' · 장면 칸 줄(4.9 ~ 4.11) · [[VA-UI-002#UI-4]] 챕터 카드의 대표 장면(6.7) · 가져오는 중(6.8) — 옛 결과면 `POST …/frames` 한 번 뒤 3초 폴링 · [[VA-UI-002#UI-2]] 예상 시간(장면 몫) · [[VA-UI-002#UI-7]] 2.3 장면 칩 |
+| 테스트 | 구현 함수의 테스트 관점 전부 · 가짜 yt-dlp에 스토리보드 `formats` · 가짜 ffmpeg가 `frame` · `crop`에 작은 JPEG · **E2E**: S1 흐름에 장면 단계(UI-3 칸이 한 장씩 찬다) → 결과 챕터 카드에 장면 · 옛 결과(장면 단계 전 작업)를 열면 가져오는 중 → 채워짐 · 스토리보드 없는 영상 → 장면 없이 `done` · 로컬 영상의 장면 · 음성 파일은 장면 단계가 없다 · 파일로 저장하면 장면 파일과 노트의 장면 줄 · 진행 중 삭제가 장면 태스크를 멈춘다 · **진짜**: 42분 YouTube로 스토리보드 칸 계산과 YouTube의 머리 요구([[VA-MS-006]] · [[VA-MS-007]] 3장 미결), 2시간 30분 로컬로 장면 단계 시간(`FRAMES_EST_SEC` · `FRAME_EST_SEC`, [[VA-MS-002]] 3장 미결) · 화면 확인: 에이전트가 진짜 스택 + Playwright MCP로 요소 번호대로(PR 댓글) |
+| 스텁 | 없음 |
+| 선행 | D1 |
+| 완료 | — |
+
+#### D3 인포그래픽
+
+| 항목 | 내용 |
+|---|---|
+| 근거 | [[VA-PRD-001#R13]] · [[VA-UC-001#UC-H9]] · [[VA-SEQ-001#SEQ-18]] · [[VA-SEQ-001#SEQ-13]] · [[VA-SEQ-001#SEQ-11]] · [[VA-SEQ-001#SEQ-C1]] · [[VA-INFRA-001#C11]] · [[VA-DOM-003#infographics]] · [[VA-API-001]] 5장 13 |
+| DB | Alembic `0004_infographics` — 테이블과 CHECK(그림 컬럼 · `state` · `error_reason`) · `downgrade` |
+| 구현 함수 | **새로** analysis [[VA-MS-003#AnalysisService.infographic_of]] · [[VA-MS-003#AnalysisService.start_infographic]] · [[VA-MS-003#AnalysisService.draw_infographic]] · [[VA-MS-003#AnalysisService.infographic_file]] · [[VA-MS-003#AnalysisService.fail_orphans]] · [[VA-MS-003#export.infographic_name]] · adapters [[VA-MS-006#image_openai.infographic]](+ `prompts/infographic.md`) · infra [[VA-MS-007#openai.image]] — 8개 · **고친다** `result_of`(`infographic`) · `export_markdown` · `export_to_file` · `export.build`(인포그래픽 줄 · 그림 복사) · [[VA-MS-003#AnalysisService.filename_for]](235바이트) · `cancel_tasks`(그림 태스크 몫) · 설정 [[VA-MS-005#SettingsService.get]] · [[VA-MS-005#SettingsService.set_models]] · [[VA-MS-005#SettingsService.current_models]] · [[VA-MS-005#SettingsService.read_env]] · [[VA-MS-005#SettingsService.write_env]](이미지 줄 둘) · [[VA-MS-007#openai.reason_of]](안전 정책 거절) · `VideoService.delete`(인포그래픽 파일) — 13개 · 조립: `main.py` lifespan이 `AnalysisService.fail_orphans`를 부르고 이미지 어댑터를 만든다 |
+| API | [[VA-API-001#GET/api/videos/{id}/infographic]] · [[VA-API-001#POST/api/videos/{id}/infographic]](202) · [[VA-API-001#GET/api/videos/{id}/infographic/image]] · `GET /api/settings`의 `image` · `PUT /api/settings/models`의 이미지 값 · `GET …/result`의 `infographic` · 내보내기의 인포그래픽 파일 |
+| 화면 | [[VA-UI-002#UI-4]] 15 인포그래픽 카드(만들기 전 · 그리는 중 · 다 됨 · 실패 · 키 없음) · `screens/result/InfographicCard.tsx` · [[VA-UI-002#UI-8]] 인포그래픽 만들기 · [[VA-UI-002#UI-9]] 크게 보기 · [[VA-UI-002#UI-5]] 7 인포그래픽 품질 · [[VA-UI-002#UI-7]] 2.3 인포그래픽 칩 |
+| 테스트 | 구현 함수의 테스트 관점 전부 · 가짜 OpenAI에 이미지 엔드포인트(작은 PNG · 지연 · 실패 · 안전 거절) · **E2E**: 만들기 → 확인 → 그리는 중 → 다 됨 → 크게 보기 · 그리는 동안 다른 화면에 갔다 와도 이어진다 · 다시 만들기가 실패하면 이전 그림 그대로와 실패 줄 · 키 없음 카드 · 설정에서 품질을 바꾸면 카드 · 확인 창의 한 장 값이 바뀐다 · 파일로 저장하면 인포그래픽 파일과 노트의 그림 줄 · 서버 재시작 → 그리던 것이 `failed`(pytest가 lifespan으로) · **진짜**: 사용자 키로 한 장(약 $0.006) — 사용량으로 한 장 값을 고치고([[VA-MS-005]] · [[VA-API-001]] 6장 · [[VA-INFRA-001]] 9절 미결) 그림 품질 · 프롬프트를 사용자가 본다([[VA-MS-006]] 3장 미결) · 화면 확인: 에이전트가 진짜 스택 + Playwright MCP로 요소 번호대로(PR 댓글) |
+| 스텁 | 없음 |
+| 선행 | D2 |
+| 완료 | — |
+
+#### D4 로컬 파일 끌어 놓기 · 고르기
+
+| 항목 | 내용 |
+|---|---|
+| 근거 | [[VA-PRD-001#R1]] · [[VA-UC-001#UC-H2]] · [[VA-UC-001#UC-H6]] · [[VA-UC-001#UC-S5]] 1b · [[VA-SEQ-001#SEQ-15]] · [[VA-SEQ-001#SEQ-16]] · [[VA-SEQ-001#SEQ-11]] · [[VA-SEQ-001#SEQ-13]] · [[VA-INFRA-001#C4]] · [[VA-DOM-003#videos]] · [[VA-DOM-002]] 1장(web 라우트 핸들러 · `host.ts`) |
+| DB | Alembic `0005_videos_uploaded` — `uploaded boolean not null default false` · CHECK(`uploaded`면 `source_kind = local`) · `downgrade` |
+| 구현 함수 | **새로** video [[VA-MS-001#VideoService.upload]] · [[VA-MS-001#VideoService.release_upload]] · [[VA-MS-001#VideoService.sweep_uploads]] — 3개 · **고친다** [[VA-MS-001#VideoService.register]](중복 — 이름 고치기는 inbox 영상만) · [[VA-MS-001#VideoService.info_of]](`uploaded=False`) · [[VA-MS-001#VideoService.to_dto]](`uploaded` · `upload_bytes`) · `VideoService.delete`(올린 사본) · [[VA-MS-002#pipeline.worker]](`release_upload`) · `pipeline.run`(끝나면 사본 놓기) — 6개 · `sources.local_path`를 부르는 곳이 `Video.uploaded`를 넘긴다(D2에서 `False`로 부르던 것) · 조립: `main.py`가 `JobService.fail_orphans` 뒤에 `sweep_uploads`를 부르고, `release_upload`를 감싸 워커에 넘긴다 · **web**: `src/host.ts`(Host 판정 한곳 — `proxy.ts`에서 옮긴다) · `src/app/api/uploads/route.ts`(Host 확인 뒤 본문을 스트림 그대로 api에, 응답을 그대로) · `proxy.ts` matcher에서 `/api/uploads`를 뺀다 · `api/client.ts` 올리기(XHR · `upload.onprogress` · `abort()`) |
+| API | [[VA-API-001#POST/api/uploads]] · `Video.uploaded` · `upload_bytes` · [[VA-API-001#DELETE/api/videos/{id}]]의 사본 지우기(사전 안내 취소 포함) |
+| 화면 | [[VA-UI-002#UI-1]] 4.7 ~ 4.19 끌어 놓기 칸 · [파일 고르기] · 창 전체 끌어 오는 중(8) · 올리는 중(진행 · 멈추기) · 파일 확인 중 · 오류 한 줄(형식 · 여러 파일 · 끊김 · 디스크 · 키 없음) · 목록의 '올린 파일' 행 · [[VA-UI-002#UI-2]] 6.4 올린 사본 안내(취소하면 지운다) · [[VA-UI-002#UI-5]] 4.2 올린 사본 줄 · [[VA-UI-002#UI-6]] 올린 사본 크기와 「남는 것」 문구 |
+| 테스트 | 구현 함수의 테스트 관점 전부 · web 라우트 핸들러: Host가 다르면 400, 본문을 버퍼에 담지 않는다 · **E2E**: `setInputFiles`로 고르기 · `DataTransfer`로 끌어 놓기 → 진행 → UI-2 → 분석 → `done` 뒤 사본이 없다 · 여러 파일 · 받지 않는 형식은 요청 없이 한 줄 · 키 없음이면 올리지 않는다 · 멈추기 → `.part`가 없다 · UI-2 취소 → 사본이 없다 · 실패한 영상은 사본이 남아 다시 시도가 이어 간다 · 서버 재시작 → 청소(pytest가 lifespan으로) · **진짜**: 588MB 워크숍을 끌어 놓아 분석까지 — 올리는 동안 web 메모리(`docker stats`)가 파일 크기만큼 늘지 않는지, web → api 기본 대기 300초([[VA-MS-001]] 3장 미결), 본문 전 거절 응답이 브라우저에 닿는지([[VA-SEQ-001]] 3장 미결), 끝난 뒤 `data/uploads`가 빈다 · 화면 확인: 에이전트가 진짜 스택 + Playwright MCP로 요소 번호대로(PR 댓글) · 끝에 `dev` → `main` PR |
+| 스텁 | 없음 |
+| 선행 | D3 |
+| 완료 | — |
+
 ---
 
 ## 2. 통합 테스트 시나리오
 
 | 시나리오 | 슬라이스 | 검증하는 것 |
 |---|---|---|
-| [[VA-SCN-001#S1]] YouTube 링크로 첫 분석 | B1 | 주소 → 사전 안내 → 4단계 → 결과. 1분 안. OpenAI 받아쓰기 호출 0회 |
-| [[VA-SCN-001#S2]] 로컬 파일 2시간 30분 | B2 | inbox → 15조각 · 3동시 → 격자 → 파트 묶음. 조각 파일이 지워짐. 다른 영상이 도는 동안 시작하면 차례를 기다리는 변형은 B1 |
+| [[VA-SCN-001#S1]] YouTube 링크로 첫 분석 | B1 · D1 · D2 · D3 | 주소 → 사전 안내 → 4단계 → 결과. 1분 안. OpenAI 받아쓰기 호출 0회. 결과 그림: 한눈에 보기(D1) · 장면 단계와 챕터 장면(D2) · 누를 때만 인포그래픽(D3) |
+| [[VA-SCN-001#S2]] 로컬 파일 2시간 30분 | B2 · D2 · D4 | inbox → 15조각 · 3동시 → 격자 → 파트 묶음. 조각 파일이 지워짐. 다른 영상이 도는 동안 시작하면 차례를 기다리는 변형은 B1. 원본 장면(D2) · 끌어 놓아 올리고 끝나면 사본이 지워짐(D4) |
 | [[VA-SCN-001#S3]] 챕터 · 인사이트로 구간 찾기 | B1 | 시각 칩 · 챕터 카드 · 구간 줄 어디를 눌러도 같은 이동. 파트 안 챕터도(B2) |
 | [[VA-SCN-001#S4]] 영상에 질문하기 | B3 | 근거 칩 · 이어지는 질문 · 없는 내용 · 기록 보존 |
-| [[VA-SCN-001#S5]] 다시 열기 · 내보내기 · 삭제 | B4 | 목록에서 열기 · 파일 저장 · 복사 · 삭제 · 다시 넣기 |
-| [[VA-SCN-001#S6]] 잘 안 되는 경우들 | A · B2 · B5 | 키 없음 · 비공개 · 4시간 · 도중 실패 · 인터넷 끊김(연결 문구, 버튼은 막지 않음). 프로그램이 죽지 않는다 |
+| [[VA-SCN-001#S5]] 다시 열기 · 내보내기 · 삭제 | B4 · D1 · D2 · D3 | 목록에서 열기 · 파일 저장 · 복사 · 삭제 · 다시 넣기. 노트의 Mermaid 둘(D1) · 장면 · 인포그래픽 파일(D2 · D3) · 옛 결과의 장면 채우기(D2) |
+| [[VA-SCN-001#S6]] 잘 안 되는 경우들 | A · B2 · B5 · D4 | 키 없음 · 비공개 · 4시간 · 도중 실패 · 인터넷 끊김(연결 문구, 버튼은 막지 않음). 프로그램이 죽지 않는다. 올리다 끊김 · 디스크 부족 · 여러 파일 · 사전 안내 취소(D4) |
 
 E2E는 가짜 yt-dlp · ffmpeg · OpenAI로 돈다(C에서만 진짜). 테스트 DB는 이름에 `test`가 든 것만 — 아니면 시작하지 않는다(DEV-14).
 
@@ -148,8 +204,10 @@ E2E는 가짜 yt-dlp · ffmpeg · OpenAI로 돈다(C에서만 진짜). 테스트
 | 5 | **텍스트 모델 단가와 프레임워크 버전** | 카드 A를 시작할 때 그날 값으로 고정했다(2026-09-23) | [[VA-INFRA-001]] 3절 버전 표 · [[VA-MS-005]] 0장 단가 |
 | 6 | **프롬프트 자리** | `backend/app/prompts/*.md` 파일 넷. 명세는 자리 표시 · 반드시 들어갈 규칙 · 출력 형식만 정한다 | [[VA-MS-006]] 0장 · [[VA-DOM-002]] 1장 |
 | 7 | **네트워크로 키 확인이 실패했을 때** | 배너 문구를 '연결을 확인하지 못했어요 — …'로 가르고 [키 넣으러 가기]를 뺀다. 버튼은 막지 않고, 누를 때 서버가 한 번 다시 확인한다 | [[VA-UI-002]] 1.4 · [[VA-API-001]] 5장 11 · [[VA-MS-005#SettingsService.require_key]] |
+| 8 | **결과 그림의 모델 · 방식** | 인포그래픽은 `gpt-image-2` 낮은 품질(설정에서 중간), 버튼을 누를 때만 · YouTube 장면은 스토리보드, 로컬은 ffmpeg 프레임 — 영상을 내려받지 않는다 · 받아쓰기 `whisper-1` · 텍스트 `gpt-5-mini` 그대로(사용자 결정 2026-09-29) | [[VA-INFRA-001#C11]] · [[VA-INFRA-001#C12]] · [[VA-MS-005]] 0장 |
+| 9 | **올린 사본의 수명** | 분석이 끝나면 지운다. 실패하면 다시 시도를 위해 남기고, 영상을 지우거나 사전 안내에서 취소하면 지운다(사용자 결정 2026-09-29) | [[VA-INFRA-001#C4]] · [[VA-DOM-001]] 5장 6 · [[VA-MS-001]] |
 
-일곱 모두 끝났다. 5번은 카드 A 첫 작업으로 닫았다.
+아홉 모두 끝났다. 5번은 카드 A 첫 작업으로 닫았고, 8 · 9는 결과 그림 · 파일 올리기(카드 D)의 명세를 쓰기 전에 정했다.
 
 ---
 
@@ -166,6 +224,10 @@ E2E는 가짜 yt-dlp · ffmpeg · OpenAI로 돈다(C에서만 진짜). 테스트
 | B4 | 2026-09-28 | #7 (`feat/card-b4` → `dev`) | `3219c6b` | 22 |
 | B5 | 2026-09-28 | #8 (`feat/card-b5` → `dev`) | `7bdc20d` | 15 |
 | C | 2026-09-29 | #11 (`feat/card-c` → `dev`) | `f236b7e` | 20 |
+| D1 | — | — | — | — |
+| D2 | — | — | — | — |
+| D3 | — | — | — | — |
+| D4 | — | — | — | — |
 
 ---
 
@@ -175,4 +237,5 @@ E2E는 가짜 yt-dlp · ffmpeg · OpenAI로 돈다(C에서만 진짜). 테스트
 - [x] 개발 중 프롬프트 고치기 — 결정(카드 A): 개발은 호스트에서 돈다(`uv run uvicorn --reload` · `npm run dev`), DB만 compose(`docker-compose.dev.yml`, 5433). [[VA-MS-006#prompts.render]]가 부를 때마다 파일을 읽으므로 고치면 바로 쓰인다. 이미지에 구운 프롬프트는 다시 빌드한다
 - [x] 프런트 E2E 도구 — 결정(카드 A): Playwright(`frontend/e2e/`). 가짜 OpenAI · api · web을 스스로 띄우고 와이어프레임 요소 번호(`data-el`)로 누른다. 화면 확인(DEV-14 일곱째)은 사람 몫이지만 카드 A는 사용자 지시로 에이전트가 Playwright MCP로 했다
 - [x] 진짜 영상으로 하는 C 카드의 품질 판단 기준 — 인사이트 시각 오차 허용(±10초?), 챕터 수 범위. 사용자가 세 영상을 보고 정한다. 결정(사용자, 2026-09-29): [[VA-PRD-001]] 4장 성공지표 그대로 — 근거가 그 말이 나온 지점 ±15초 안(10개 중 9개). 챕터 수 범위는 두지 않는다. 카드 C: 근거 108/108, 챕터 5 · 8 · 10 · 27개(영상 5~6분에 하나, 2:30 영상은 파트 5)
+- [ ] 카드 D의 되먹임 모음 — D1을 시작하기 전에 상위 문서에 한 번에 반영한다: [[VA-API-001]] 0장 엔드포인트 수(22 → 23) · 올리기 6번 중복 문구 · 6장 디스크 여유분(1 GiB로 닫기), [[VA-UC-001#UC-H2]] 2c1 중복 문구, [[VA-UI-001]] 8장 Mermaid 글자 규칙(닫기), [[VA-DOM-002]] 2장 새 항목의 테이블 링크, [[VA-SEQ-001]] 되먹일 것 #11 반영 표시
 - [x] B1이 끝난 시점에 자막 없는 YouTube를 넣으면 시작 불가 판에 '아직 지원하지 않음'이 뜬다(스텁). B2 전까지 그대로 둘지, B1에서 받아쓰기 필요 판까지만 열고 시작을 막을지 — 결정(사용자, 2026-09-23): 그대로 둔다. 받아쓰기 필요 판은 B2에서 그린다
