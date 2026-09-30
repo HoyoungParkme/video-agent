@@ -179,6 +179,18 @@ async def test_state_moved_original_is_unavailable(db, make, data_dir: Path) -> 
     assert await _state(db, video) == FramesState.absent  # 원본이 있으면 채울 수 있다
 
 
+async def test_state_uploaded_video_looks_at_copy(db, make, data_dir: Path) -> None:
+    sha = "f" * 64
+    video = await _video(
+        db, make, source_kind=SourceKind.local, source_id=sha, origin="t.mp4", uploaded=True
+    )
+    assert await _state(db, video) == FramesState.unavailable  # 사본을 지웠다
+    copy = data_dir / "data" / "uploads" / f"{sha}.mp4"
+    copy.parent.mkdir(parents=True)
+    copy.write_bytes(b"video")
+    assert await _state(db, video) == FramesState.absent  # 사본이 있으면 채울 수 있다
+
+
 async def test_state_done_even_if_original_is_gone(db, make) -> None:
     # 원본이 없어도 챕터마다 행이 있으면 끝난 것이다(올린 사본을 지운 영상도 같다)
     video = await _video(db, make, source_kind=SourceKind.local, origin="없는 파일.mp4")

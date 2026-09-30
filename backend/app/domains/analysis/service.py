@@ -473,7 +473,7 @@ class AnalysisService:
             return FramesState.done
         if video.source_kind == "local":
             ext = Path(video.origin).suffix.lower().lstrip(".")
-            original = sources.local_path(video.origin, video.source_id, False)
+            original = sources.local_path(video.origin, video.source_id, video.uploaded)
             if ext in config.AUDIO_EXTS or not original.is_file():
                 return FramesState.unavailable
         return FramesState.absent
