@@ -1,8 +1,10 @@
 /**
  * VA-UI-002#UI-3 분석 진행 — 1 뒤로 링크 · 2 영상 머리(2.1 ~ 2.3) · 3 진행 카드(3.1 헤드라인 · 3.2 부제 ·
  * 3.3 퍼센트 · 3.4 막대) · 4 단계 목록(4.1 행 · 4.2 표시 · 4.3 이름 · 4.4 메모 · 4.5 연결선 ·
- * 받아쓰기 행 아래 4.6 조각 격자 · 4.7 조각 칸 · 4.8 범례) · 5 실패 알림(5.1 제목 · 5.2 본문 ·
- * 5.3 목록으로 · 5.4 다시 시도) · 6 카드 아래 줄(6.1 전송 표시 · 6.2 떠나기 안내).
+ * 받아쓰기 행 아래 4.6 조각 격자 · 4.7 조각 칸 · 4.8 범례, 장면 행 아래 4.9 장면 칸 줄 · 4.10 장면 칸 ·
+ * 4.11 장면 캡션) · 5 실패 알림(5.1 제목 · 5.2 본문 · 5.3 목록으로 · 5.4 다시 시도) · 6 카드 아래 줄
+ * (6.1 전송 표시 · 6.2 떠나기 안내). 장면 단계는 영상이 있는 출처의 마지막 단계이고 실패로 바뀌지 않는다
+ * — 장면을 못 얻어도 끝난 것으로 넘어가 UI-4가 열린다(UC-S6 1b).
  * 1초마다 진행을 새로 받는다. 끝나면 UI-4로(방문 기록을 바꿔치기), 작업 · 영상이 없으면 UI-1로.
  * 서버에 잠깐 닿지 못하면 영상 정보도 진행도 1초 뒤 다시 받는다 — 빈 화면으로 멈추지 않게.
  * 대기 상태도 같은 화면이다. 화면은 계산하지 않는다 — 서버 값을 그대로 쓴다. 실패하면 폴링을 멈추고,
@@ -23,6 +25,7 @@ import {
   useSettings,
   type Chunks,
   type ErrorKind,
+  type FrameProgress,
   type Job,
   type JobStage,
   type Video,
@@ -45,7 +48,8 @@ const FAILURE_TITLES: Record<ErrorKind, string> = {
 };
 
 /** 지금 하는 일(3.1). 보드에 없는 단계도 같은 말투로(UI-3 규칙). */
-function doing(stage: JobStage, hasCaptions: boolean, splitting: boolean): string {
+function doing(stage: JobStage, video: Video, splitting: boolean): string {
+  const hasCaptions = video.has_captions;
   switch (stage) {
     case "download":
       return hasCaptions ? "자막을 가져오는 중" : "음성을 내려받는 중";
@@ -57,6 +61,8 @@ function doing(stage: JobStage, hasCaptions: boolean, splitting: boolean): strin
       return "핵심 요약을 만드는 중";
     case "chapter":
       return "챕터를 만드는 중";
+    case "frames":
+      return video.source_kind === "youtube" ? "챕터 장면을 가져오는 중" : "챕터 장면을 뽑는 중";
     default:
       return "추천 질문을 만드는 중";
   }
@@ -153,6 +159,33 @@ function ChunkGrid({ chunks }: { chunks: Chunks }) {
   );
 }
 
+/**
+ * 장면 칸 줄(4.9) · 칸(4.10) · 캡션(4.11) — 장면 행 아래. 챕터 하나가 칸 하나이고 한 줄에 아홉 칸까지.
+ * 받은 칸은 그 장면을 잘리지 않게 줄여 넣고, 받는 중인 칸 하나는 깜빡이고, 나머지(못 얻은 칸도)는 빈 칸이다.
+ */
+function FrameRow({ frames, youtube }: { frames: FrameProgress; youtube: boolean }) {
+  const label = `챕터 ${frames.total}개 중 ${frames.done}개 장면을 ${youtube ? "받음" : "뽑음"}`;
+  return (
+    <span className="frame-box">
+      <span role="img" aria-label={label} className="frame-row" data-el="4.9">
+        {frames.items.map((f, i) => (
+          <span
+            key={f.chapter_seq}
+            className={`frame-cell is-${f.state}${f.state === "in_flight" ? " va-pulse" : ""}`}
+            style={f.url ? { backgroundImage: `url("${f.url}")` } : undefined}
+            data-el={i === 0 ? "4.10" : undefined}
+          />
+        ))}
+      </span>
+      <span className="frame-caption" data-el="4.11">
+        {youtube
+          ? "YouTube 재생 막대의 미리 보기 썸네일에서 챕터 시작에 가장 가까운 칸을 잘라요 — 영상은 내려받지 않아요."
+          : "원본 파일에서 챕터 시작 시각의 프레임을 한 장씩 뽑아요."}
+      </span>
+    </span>
+  );
+}
+
 export default function Progress({ id }: { id: number }) {
   const router = useRouter();
   const settings = useSettings();
@@ -229,6 +262,8 @@ export default function Progress({ id }: { id: number }) {
   const splitting = transcribing && !chunks; // 받아쓰기에 들어갔지만 조각이 아직 없다
   const k = job.error?.chunk_seq ?? null;
   const saved = chunks?.done ? ` · 완료한 ${chunks.done}개는 저장됨` : "";
+  const youtube = video.source_kind === "youtube";
+  const framing = !queued && current === "frames";
 
   let headline: string;
   let sub: string;
@@ -245,7 +280,7 @@ export default function Progress({ id }: { id: number }) {
       if (TEXT_STAGES.includes(current)) sub += " · 스크립트는 저장됨";
     }
   } else {
-    headline = doing(current, video.has_captions, splitting);
+    headline = doing(current, video, splitting);
     const left = remaining(job.remaining_sec);
     const tail = left ? ` · 남은 시간 ${left}` : "";
     sub =
@@ -260,6 +295,10 @@ export default function Progress({ id }: { id: number }) {
       `음성 조각 → OpenAI ${job.models.stt}` + (failed ? "" : ` · 동시 ${job.concurrency}개`);
   } else if (!queued && TEXT_STAGES.includes(current)) {
     transfer = `스크립트 텍스트 → OpenAI ${job.models.text}`;
+  } else if (framing) {
+    transfer = youtube
+      ? "YouTube에서 미리 보기 썸네일 받기 · OpenAI로 보내는 것 없음"
+      : "원본 파일에서 프레임 뽑기 · 밖으로 보내는 것 없음";
   }
 
   // 다시 시도가 시작할 곳 — 받아쓰기는 완료하지 않은 첫 조각(r), 그 밖은 멈춘 단계
@@ -274,6 +313,8 @@ export default function Progress({ id }: { id: number }) {
         : `다시 시도하면 ${name}부터 이어서 합니다.`;
   else if (TEXT_STAGES.includes(current))
     leave = "끝나면 결과 화면이 바로 열려요. 닫아도 분석은 계속됩니다.";
+  else if (framing)
+    leave = `장면을 못 ${youtube ? "받아도" : "뽑아도"} 분석은 끝나요 — 결과가 장면 없이 열려요.`;
 
   let body = "";
   if (failed && job.error) {
@@ -384,8 +425,10 @@ export default function Progress({ id }: { id: number }) {
           {job.stages.map((stage, i) => {
             const state = stepState(i);
             const counted = stage === "transcribe" && chunks;
+            const shots = stage === "frames" ? job.frames : null;
             let memo = "—";
             if (state === "done") memo = took(job.stage_durations_sec[stage] ?? 0);
+            else if (state === "active" && shots) memo = `${shots.done} / ${shots.total}`;
             else if (state === "active")
               memo = counted ? `${chunks.done} / ${chunks.total}` : "진행 중";
             else if (state === "failed")
@@ -415,6 +458,7 @@ export default function Progress({ id }: { id: number }) {
                     </span>
                   </span>
                   {counted && state !== "waiting" && <ChunkGrid chunks={chunks} />}
+                  {shots && state !== "waiting" && <FrameRow frames={shots} youtube={youtube} />}
                 </span>
               </li>
             );
