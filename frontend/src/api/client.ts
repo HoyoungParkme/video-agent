@@ -210,18 +210,36 @@ export interface ChatTurn {
   asked_at: string;
 }
 
-/** 내보낼 마크다운 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`. */
+/**
+ * 내보내는 방법 — 파일이면 그림 줄과 `## 스크립트` 절이 든 노트, 클립보드면 둘 다 없는 노트
+ * (VA-API-001 GET export).
+ */
+export type ExportMethod = "file" | "clipboard";
+
+/** 함께 쓸 파일 하나 — UI-7 2.3 칩. name은 data/export/ 안의 파일 이름. */
+export interface ExportFile {
+  kind: "note" | "script" | "frame" | "infographic";
+  name: string;
+}
+
+/**
+ * 내보낼 노트 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`.
+ * files는 method=file일 때 함께 쓸 파일, clipboard면 빈 배열.
+ */
 export interface ExportPreview {
   filename: string;
   path: string;
   markdown: string;
+  files: ExportFile[];
 }
 
-/** 쓴 파일 — path는 짧은 알림 '{path}에 저장했어요'에 들어간다. */
+/** 쓴 파일 — path는 짧은 알림 '{path}에 저장했어요'에, images(쓴 그림 수)는 '· 그림 {n}장'에. */
 export interface ExportResult {
   filename: string;
   path: string;
   bytes: number;
+  images: number;
+  files: ExportFile[];
 }
 
 /** problem+json 하나. kind는 `urn:va:` 뒤 — key-rejected · validation 등(VA-API-001 2장). */
@@ -305,10 +323,10 @@ export const api = {
   /** POST /api/videos/{id}/chat — 질문하고 답을 받는다. 실패하면 저장되지 않는다 */
   ask: (id: number, question: string) =>
     call<ChatTurn>("POST", `/api/videos/${id}/chat`, { question }),
-  /** GET /api/videos/{id}/export — 내보낼 마크다운 전체와 파일 이름. UI-7이 열 때 · 3을 바꿀 때 */
-  exportPreview: (id: number, withChat: boolean) =>
-    call<ExportPreview>("GET", `/api/videos/${id}/export?with_chat=${withChat}`),
-  /** POST /api/videos/{id}/export — 같은 마크다운을 서버가 data/export/에 쓴다 */
+  /** GET /api/videos/{id}/export — 고른 방법의 노트 전체와 파일 이름. UI-7이 열 때 · 방법이나 3을 바꿀 때 */
+  exportPreview: (id: number, withChat: boolean, method: ExportMethod) =>
+    call<ExportPreview>("GET", `/api/videos/${id}/export?with_chat=${withChat}&method=${method}`),
+  /** POST /api/videos/{id}/export — 파일 방법의 노트와 스크립트(그림이 있으면 그림도)를 서버가 data/export/에 쓴다 */
   exportFile: (id: number, withChat: boolean) =>
     call<ExportResult>("POST", `/api/videos/${id}/export`, { with_chat: withChat }),
   /** DELETE /api/videos/{id} — 영상과 딸린 것 전부. 도는 분석은 멈추고 대기 중이면 대기열에서 빠진다 */

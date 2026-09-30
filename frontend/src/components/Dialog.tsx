@@ -16,8 +16,10 @@ interface Props {
   describedBy?: string;
   /** 폭(px) — UI-2 620 · UI-6 540 · UI-7 660 */
   width: number;
-  /** 위 여백(px) — UI-2 104 · UI-6 180 · UI-7 80 */
+  /** 위 여백(px) — UI-2 104 · UI-6 180 · UI-7 48 */
   top: number;
+  /** 안쪽 여백 — 기본 32px, UI-7은 28px 32px(VA-UI-001 3.3) */
+  padding?: string;
   onClose: () => void;
   closeOnOverlay?: boolean;
   /** 처음 초점을 받을 요소의 CSS 선택자. 없으면 첫 초점 가능한 요소 */
@@ -36,6 +38,7 @@ export default function Dialog({
   describedBy,
   width,
   top,
+  padding,
   onClose,
   closeOnOverlay = true,
   initialFocus,
@@ -92,7 +95,7 @@ export default function Dialog({
       <div
         ref={box}
         className="dialog"
-        style={{ maxWidth: width }}
+        style={{ maxWidth: width, padding }}
         role={role}
         aria-modal="true"
         aria-labelledby={labelledBy}
