@@ -168,6 +168,21 @@ def test_current_models_defaults_and_prices(svc, env_file) -> None:
     assert m.text.price.output_per_mtok_usd == 15.00
 
 
+def test_current_models_image(svc, env_file) -> None:
+    _write(env_file)  # 이미지 줄이 없다 — gpt-image-2 · 낮음 한 장 $0.006
+    m = svc.current_models()
+    assert (m.image_model, m.image_quality.id, m.image_quality.price_usd) == (
+        "gpt-image-2",
+        "low",
+        0.006,
+    )
+    env_file.write_text("IMAGE_QUALITY=medium\n")
+    assert svc.current_models().image_quality.price_usd == 0.05
+    env_file.write_text("IMAGE_MODEL=dall-e-9\nIMAGE_QUALITY=high\n")  # 목록에 없으면 기본값
+    m = svc.current_models()
+    assert (m.image_model, m.image_quality.id) == ("gpt-image-2", "low")
+
+
 def test_api_key(svc, env_file, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG, logger="app")
     _write(env_file)

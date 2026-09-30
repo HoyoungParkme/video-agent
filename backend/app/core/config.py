@@ -6,6 +6,7 @@ SettingsService가 `.env` 파일에서 읽는다(VA-MS-005 0장).
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, model_serializer
@@ -40,6 +41,28 @@ class ModelOptions(BaseModel):
 
     stt: list[ModelOption]
     text: list[ModelOption]
+
+
+class ImageQuality(StrEnum):
+    """인포그래픽 품질 — `.env`의 IMAGE_QUALITY(VA-DOM-002 2장 열거형)."""
+
+    low = "low"
+    medium = "medium"
+
+
+class ImageQualityOption(BaseModel):
+    """고를 수 있는 품질 하나와 한 장 값(VA-API-001 4장). UI-4 · UI-5 · UI-8이 같은 값을 쓴다."""
+
+    id: ImageQuality
+    label: str
+    price_usd: float
+
+
+class ImageOptions(BaseModel):
+    """인포그래픽 이미지 모델 목록과 품질 목록."""
+
+    models: list[str]
+    qualities: list[ImageQualityOption]
 
 
 def _text(model: str, input_usd: float, output_usd: float) -> ModelOption:
@@ -110,6 +133,16 @@ class Config(BaseSettings):
         ],
     )
     DEFAULT_MODELS: dict[str, str] = {"stt": "whisper-1", "text": "gpt-5-mini"}
+    # 인포그래픽(INFRA C11) — 한 장 값은 1024×1024 기준 첫 값이다. 카드 D3에서 실제 한 장으로 고친다
+    IMAGE_OPTIONS: ImageOptions = ImageOptions(
+        models=["gpt-image-2"],
+        qualities=[
+            ImageQualityOption(id=ImageQuality.low, label="낮음", price_usd=0.006),
+            ImageQualityOption(id=ImageQuality.medium, label="중간", price_usd=0.05),
+        ],
+    )
+    # 파일에 선택이 없을 때 — 사용자 결정 2026-09-29(「좀 비싸다, 싼 걸로」)
+    DEFAULT_IMAGE: dict[str, str] = {"model": "gpt-image-2", "quality": "low"}
     KEY_CHECK_TIMEOUT_SEC: float = 10
 
     # 어댑터 — MS-006

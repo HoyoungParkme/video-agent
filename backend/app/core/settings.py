@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from app.core.config import ModelOption, ModelOptions, config
+from app.core.config import ImageQualityOption, ModelOption, ModelOptions, config
 from app.core.errors import (
     Internal,
     KeyInvalid,
@@ -52,10 +52,12 @@ class Models(BaseModel):
 
 
 class ChosenModels(BaseModel):
-    """지금 고른 모델의 id와 단가(VA-DOM-002 2.6)."""
+    """지금 고른 모델의 id와 단가, 인포그래픽 이미지 모델과 품질 · 한 장 값(VA-DOM-002 2.6)."""
 
     stt: ModelOption
     text: ModelOption
+    image_model: str
+    image_quality: ImageQualityOption
 
 
 class Settings(BaseModel):
@@ -172,19 +174,26 @@ class SettingsService:
     def current_models(self) -> ChosenModels:
         """VA-MS-005#SettingsService.current_models
 
-        지금 고른 두 모델과 단가. 파일에 없거나 목록에 없는 값이면 기본값.
+        지금 고른 두 모델과 단가, 이미지 모델과 품질(한 장 값). 파일에 없거나 목록에 없는 값이면
+        기본값.
 
         Returns:
-            받아쓰기 · 텍스트 모델의 ModelOption 둘
+            받아쓰기 · 텍스트 모델의 ModelOption 둘과 이미지 모델 · 품질
         """
         return self._models(self.read_env())
 
     def _models(self, env: dict[str, str]) -> ChosenModels:
+        image = config.IMAGE_OPTIONS
+        qualities = {q.id.value: q for q in image.qualities}
+        wanted = env.get("IMAGE_MODEL") or ""
         return ChosenModels(
             stt=_pick(config.MODEL_OPTIONS.stt, env.get("STT_MODEL"), config.DEFAULT_MODELS["stt"]),
             text=_pick(
                 config.MODEL_OPTIONS.text, env.get("TEXT_MODEL"), config.DEFAULT_MODELS["text"]
             ),
+            image_model=wanted if wanted in image.models else config.DEFAULT_IMAGE["model"],
+            image_quality=qualities.get(env.get("IMAGE_QUALITY") or "")
+            or qualities[config.DEFAULT_IMAGE["quality"]],
         )
 
     def api_key(self) -> str | None:
