@@ -63,6 +63,14 @@ export function analyzedLabel(iso: string, now: Date = new Date()): string {
 // 로컬 음성 파일의 확장자(서버 설정값 AUDIO_EXTS와 같다) — 음성 파일은 추출 단계가 없다(UC-H2 2b)
 const AUDIO_EXTS = ["mp3", "m4a", "wav"];
 
+/**
+ * 올린 파일의 크기 — 1 GB 이상이면 GB 소수 한 자리, 아래면 MB 정수(UI-1 4.13 · 4.17, UI-6 '올린 사본').
+ * unit을 주면 그 크기로 단위를 정한다('0.7 GB / 1.8 GB'처럼 보낸 / 전체를 같은 단위로).
+ */
+export function uploadSize(bytes: number, unit = bytes): string {
+  return unit >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+}
+
 /** 파일 이름이 음성 파일인가 — 확장자를 소문자로 본다. */
 export function isAudioFile(name: string): boolean {
   const dot = name.lastIndexOf(".");

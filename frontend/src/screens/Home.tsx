@@ -36,7 +36,7 @@ import { Button } from "@/components/buttons";
 import EmptyBox from "@/components/EmptyBox";
 import { durationLabel } from "@/components/TimeChip";
 import { flash } from "@/components/Toast";
-import { analyzedLabel, stageName } from "@/labels";
+import { analyzedLabel, stageName, uploadSize } from "@/labels";
 import Delete, { takeListFocus, TrashIcon } from "@/screens/Delete";
 import Estimate, { Blocked, blockedOf, type BlockedInfo } from "@/screens/Estimate";
 
@@ -132,11 +132,6 @@ function useInbox(): [InboxListing | null, () => void] {
   return [listing, reload];
 }
 
-/** 올리기 크기(4.13 · 4.17) — 1 GB 이상이면 GB 소수 한 자리, 아래면 MB 정수(UI-1 규칙). unit으로 단위를 맞춘다 */
-function bigSize(bytes: number, unit = bytes): string {
-  return unit >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
-}
-
 /** 서버가 준 한 줄 — 닿지 못했으면 '서버에 연결할 수 없음'(UI-1 규칙) */
 function reasonOf(e: unknown): string {
   if (e instanceof ApiError && e.kind !== "unknown") return e.reason.replace(/[.。]\s*$/, "");
@@ -181,7 +176,7 @@ function SendingBox({ sending, onStop }: { sending: Sending; onStop: () => void 
           <span className="upload-state" data-el="4.13">
             {checking
               ? "다 올렸어요. 길이와 음성 트랙을 확인하는 중이에요"
-              : `올리는 중 · ${bigSize(sent, file.size)} / ${bigSize(file.size)}`}
+              : `올리는 중 · ${uploadSize(sent, file.size)} / ${uploadSize(file.size)}`}
           </span>
         </span>
         {!checking && (
@@ -452,7 +447,7 @@ export default function Home() {
         const needed = Number(e.body.needed_bytes);
         const free = Number(e.body.free_bytes);
         setLine({
-          text: `올릴 자리가 모자라요 — ${bigSize(needed)}가 필요한데 앱 폴더에 ${bigSize(free)} 남았어요`,
+          text: `올릴 자리가 모자라요 — ${uploadSize(needed)}가 필요한데 앱 폴더에 ${uploadSize(free)} 남았어요`,
           alert: true,
         });
       } else if (e instanceof ApiError && CANNOT.includes(e.kind)) {
