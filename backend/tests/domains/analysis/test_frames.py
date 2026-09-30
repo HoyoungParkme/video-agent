@@ -104,6 +104,15 @@ async def test_local_video_goes_to_local_frames_with_path(
     assert {src for _, _, src in await _rows(db, video.id)} == {FrameSource.local_frame}
 
 
+async def test_uploaded_video_reads_copy(db, make, storyboard, local_frames, data_dir) -> None:
+    sha = "f" * 64
+    video = await _video(
+        db, make, source_kind=SourceKind.local, source_id=sha, origin="Talk.MOV", uploaded=True
+    )
+    await _svc(db, storyboard, local_frames).make_frames(video)
+    assert local_frames.calls[0][0] == str(data_dir / "data" / "uploads" / f"{sha}.mov")
+
+
 async def test_making_while_running_and_cleared_on_cancel(
     db, make, storyboard, local_frames
 ) -> None:

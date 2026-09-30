@@ -298,15 +298,13 @@ class AnalysisService:
         return self._port
 
     def _frame_source(self, video: Video) -> tuple[FrameSourcePort, str]:
-        """영상의 장면 포트와 그 포트에 줄 것 — YouTube는 영상 ID, 로컬은 원본 경로."""
+        """영상의 장면 포트와 그 포트에 줄 것 — YouTube는 영상 ID, 로컬은 원본 경로(inbox 파일
+        또는 올린 사본)."""
         if video.source_kind == "youtube":
             port, source = self._storyboard, video.source_id
         else:
-            # 올린 영상은 카드 D4가 더한다 — 그 전에는 모두 inbox 파일이다
-            port, source = (
-                self._local_frames,
-                str(sources.local_path(video.origin, video.source_id, False)),
-            )
+            original = sources.local_path(video.origin, video.source_id, video.uploaded)
+            port, source = self._local_frames, str(original)
         if port is None:  # 코드 실수 — 앱 수준에서 internal(500)
             raise RuntimeError("장면 포트 없이 만든 AnalysisService로 장면을 만들려 했다")
         return port, source
