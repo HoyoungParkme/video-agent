@@ -195,3 +195,21 @@ async def test_lifespan_fails_drawing_infographics(db, make, env_file, verify, m
 
 def test_image_maker_is_openai() -> None:
     assert isinstance(app.state.image_maker, ImageOpenAI)
+
+
+async def test_lifespan_sweeps_uploads(db, make, env_file, verify, monkeypatch, tmp_path, caplog):
+    """시작 때 올린 사본 청소(SEQ-13) — 올리다 만 것은 지우고, 죽어서 되돌린 작업의 사본은 남긴다."""
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "last_check", settings.last_check)
+    caplog.set_level(logging.INFO, logger="app")
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    (uploads / ".part-x.mp4").write_bytes(b"x")  # 서버가 올리는 도중에 죽었다
+    sha = "a" * 64
+    row = await make.video(source_kind="local", source_id=sha, origin="t.mp4", uploaded=True)
+    await make.job(row.id, JobStatus.running, stage="transcribe")  # 죽어서 멈췄다 → failed
+    (uploads / f"{sha}.mp4").write_bytes(b"x")
+    async with app.router.lifespan_context(app):
+        pass
+    assert [p.name for p in uploads.iterdir()] == [f"{sha}.mp4"]  # 다시 시도가 읽는다
+    assert "올린 사본 1개를 지웠다" in caplog.text

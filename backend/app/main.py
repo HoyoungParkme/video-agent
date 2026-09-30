@@ -71,8 +71,9 @@ async def load_video(video_id: int) -> Video | None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """시작 — 저장된 키 확인 → 죽은 작업 · 그리던 인포그래픽 되돌리기 → 대기열 워커(순서가 있다,
-    SEQ-13).
+    """시작 — 저장된 키 확인 → 죽은 작업 · 그리던 인포그래픽 되돌리기 → 올린 사본 청소 → 대기열
+    워커(순서가 있다, SEQ-13). 청소는 작업을 되돌린 뒤다 — 죽은 running이 failed가 되어야 그 사본이
+    다시 시도를 위해 남는다.
 
     끌 때 워커를 취소한다. 돌던 작업은 running으로 남고 다음 시작 때 되돌린다.
     """
@@ -81,11 +82,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     async with SessionLocal() as session:
         orphans = await JobService(session).fail_orphans()
         drawings = await AnalysisService(session).fail_orphans()
+        videos = VideoService(session, app.state.youtube_info, app.state.media_probe)
+        swept = await videos.sweep_uploads()
     if orphans:
         log.info("서버가 죽어 멈춘 작업 %d개를 실패로 되돌렸다", orphans)
     if drawings:
         log.info("서버가 죽어 멈춘 인포그래픽 %d개를 실패로 되돌렸다", drawings)
-    worker = asyncio.create_task(pipeline.worker(load_video))
+    if swept:
+        log.info("올린 사본 %d개를 지웠다 — 올리다 만 것 · 주인 없는 것 · 끝난 작업의 것", swept)
+    worker = asyncio.create_task(pipeline.worker(load_video, VideoService.release_upload))
     try:
         yield
     finally:

@@ -48,6 +48,8 @@ stt: SttPort | None = None
 summarizer: SummarizerPort | None = None
 storyboard: FrameSourcePort | None = None
 local_frames: FrameSourcePort | None = None
+# 끝난 작업의 올린 사본을 놓는 함수 — 워커가 main.py에서 받아 둔다(VideoService.release_upload)
+release_upload: Callable[[Video], Awaitable[None]] | None = None
 
 # 내려받기 · 추출 · 로컬 음성 변환이 쓰는 이름(infra/ffmpeg.extract_audio)
 AUDIO_NAME = "audio.mp3"
@@ -231,7 +233,9 @@ async def run(job_id: int, video: Video) -> None:
     """VA-MS-002#pipeline.run
 
     첫 단계부터 끝까지. 워커가 띄운 태스크 안에서 돈다. 단계마다 mark_stage 뒤 실행하고,
-    끝나면 finish와 임시 폴더 정리. 실패하면 fail로 접고, 취소되면 아무것도 쓰지 않는다.
+    끝나면 finish · 올린 사본 놓기(release_upload) · 임시 폴더 정리. 실패하면 fail로 접고 사본은
+    남긴다(다시 시도가 읽는다). 취소되면 아무것도 쓰지 않는다. 로컬 원본은 inbox 파일이거나
+    올린 사본이다(sources.local_path).
 
     Args:
         job_id: 작업 id
@@ -276,6 +280,7 @@ async def _drive(job_id: int, video: Video, resume: bool) -> None:
             audio = await _stage(stage, job_id, video, stages, tmp, audio)
         async with SessionLocal() as s:
             await JobService(s).finish(job_id)
+        await _release(video)  # 장면을 뽑은 뒤다 — 로컬 장면이 사본을 읽는다
         shutil.rmtree(tmp, ignore_errors=True)
     except asyncio.CancelledError:
         raise  # 삭제 · 서버 종료 — 행과 조각 파일은 그대로 둔다
@@ -362,15 +367,27 @@ async def _stage(
 
 
 def _original(video: Video) -> str:
-    # 로컬 영상의 원본 — inbox 파일(올린 사본은 카드 D4가 더한다)
-    return str(sources.local_path(video.origin, video.source_id, False))
+    # 로컬 영상의 원본 — inbox 파일 또는 올린 사본
+    return str(sources.local_path(video.origin, video.source_id, video.uploaded))
+
+
+async def _release(video: Video) -> None:
+    # 끝난 작업의 올린 사본을 놓는다 — 작업은 이미 done이라 예외는 로그로만 남긴다(남은 사본은
+    # 다음 시작의 청소가 지운다)
+    try:
+        await _need(release_upload, "release_upload")(video)
+    except Exception:
+        log.exception("영상 %d의 올린 사본을 놓지 못했다", video.id)
 
 
 def _error_of(e: Exception) -> JobError:
     return JobError(kind=error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1)
 
 
-async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
+async def worker(
+    load_video: Callable[[int], Awaitable[Video | None]],
+    release_upload: Callable[[Video], Awaitable[None]],
+) -> None:
     """VA-MS-002#pipeline.worker
 
     대기열 워커 — 한 번에 하나씩 차례로 돌린다. main.py lifespan이 태스크 하나로 띄우고
@@ -380,7 +397,10 @@ async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
 
     Args:
         load_video: 영상 id → Video(없으면 None). main.py가 VideoService.get을 감싸 넘긴다
+        release_upload: 끝난 작업의 올린 사본을 놓는 함수(VideoService.release_upload). 모듈
+            속성에 두고 run · resume이 끝에서 부른다 — 작업 묶음은 영상 묶음을 import하지 않는다
     """
+    globals()["release_upload"] = release_upload  # 모듈 속성 pipeline.release_upload(이름이 같다)
     while True:
         JobService.work_event.clear()  # 확인하기 전에 — 확인과 잠들기 사이에 온 신호를 잃지 않게
         try:

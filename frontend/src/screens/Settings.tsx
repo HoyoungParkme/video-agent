@@ -1,8 +1,9 @@
 /**
  * VA-UI-002#UI-5 설정 — 1 제목 · 2 키 카드(2.1 상태 배지 · 2.2 지금 쓰는 키 · 2.3 새 키 · 2.4 확인하고 저장 ·
  * 2.5 키 확인 오류 · 2.6 도움말) · 3 모델 카드(3.1 · 3.2 받아쓰기 · 3.3 · 3.4 요약) · 7 인포그래픽 카드(7.1
- * 이미지 모델 · 7.2 · 7.3 품질 · 7.4 품질 줄 · 7.5 품질 도움말) · 4 폴더(4.1) · 5 밖으로 나가는 데이터(5.1 ·
- * 5.2) · 6 버튼 줄(6.1 취소 · 6.2 저장). 품질의 한 장 값은 서버 값 그대로다 — 화면에서 계산하지 않는다.
+ * 이미지 모델 · 7.2 · 7.3 품질 · 7.4 품질 줄 · 7.5 품질 도움말) · 4 로컬 파일(4.1 inbox · 4.2 올린 사본 자리) ·
+ * 5 밖으로 나가는 데이터(5.1 · 5.2) · 6 버튼 줄(6.1 취소 · 6.2 저장). 품질의 한 장 값은 서버 값 그대로다 —
+ * 화면에서 계산하지 않는다.
  */
 "use client";
 
@@ -323,7 +324,7 @@ export default function Settings() {
         data-el="4"
       >
         <h2 id="inbox-title" className="settings-h2">
-          로컬 파일 폴더
+          로컬 파일
         </h2>
         <div className="value-box value-box-folder" data-el="4.1">
           <svg className="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -332,8 +333,19 @@ export default function Settings() {
           <span className="value-box-text">{settings.inbox_path}</span>
           <span className="value-box-caption">읽기 전용</span>
         </div>
+        {/* 올린 사본 자리 — 앱 폴더 안이라 바꾸지 않고, 남은 사본의 수 · 크기는 보이지 않는다(UI-5 규칙) */}
+        <div className="value-box value-box-folder" data-el="4.2">
+          <svg className="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <path d="m17 8-5-5-5 5" />
+            <path d="M12 3v12" />
+          </svg>
+          <span className="value-box-text">data/uploads</span>
+          <span className="value-box-caption">끌어 놓은 파일의 사본 · 분석이 끝나면 지워요</span>
+        </div>
         <span className="field-help">
-          이 폴더의 파일을 읽기만 하고 고치거나 지우지 않아요. 위치는 docker-compose.yml에서 바꿀 수
+          inbox 폴더의 파일은 읽기만 하고 고치거나 지우지 않아요. 화면에 끌어 놓은 파일은 원본을
+          그대로 두고 앱 폴더의 사본으로 분석해요. inbox 위치는 docker-compose.yml에서 바꿀 수
           있습니다.
         </span>
       </section>

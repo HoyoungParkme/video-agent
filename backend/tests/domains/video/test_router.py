@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
+
+import pytest
 
 from app.core.config import config
 from app.core.errors import SourceUnavailable
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
+from app.domains.video.service import VideoService
 from app.infra.openai import ReasonKind
 
 PROBLEM = "application/problem+json"
@@ -235,3 +240,87 @@ async def test_register_problems(api, key, verify, youtube, probe, tmp_path, mon
     body = _problem(await api.post("/api/videos", json=yt), 503, "key-invalid")
     assert (body["reason_kind"], body["reason"]) == ("auth", "인증에 실패했습니다")
     assert body["checked_at"]
+
+
+# --- /api/uploads
+
+
+def _upload_headers(name: str) -> dict[str, str]:
+    return {"X-File-Name": quote(name), "Content-Type": "application/octet-stream"}
+
+
+async def test_post_upload_registers_with_estimate(api, key, probe, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    probe.default = (9000, True)
+    r = await api.post("/api/uploads", content=b"recording", headers=_upload_headers("워크숍.mp4"))
+    assert r.status_code == 200
+    video, est = r.json()["video"], r.json()["estimate"]
+    sha = hashlib.sha256(b"recording").hexdigest()
+    assert (video["title"], video["origin"], video["source_id"]) == (
+        "워크숍.mp4",
+        "워크숍.mp4",
+        sha,
+    )
+    assert (video["uploaded"], video["upload_bytes"], video["status"]) == (True, 9, "registered")
+    assert (est["needs_stt"], est["chunks"]) == (True, 15)  # POST /api/videos와 같은 예상치
+    assert (tmp_path / "uploads" / f"{sha}.mp4").read_bytes() == b"recording"
+
+
+async def test_post_upload_needs_name_and_length(api, key) -> None:
+    r = await api.post("/api/uploads", content=b"x")  # 이름이 없다
+    assert (r.status_code, r.json()["type"]) == (422, "urn:va:validation")
+    assert r.json()["errors"][0]["field"] == "X-File-Name"
+
+    async def chunks():  # 길이를 모르는 본문 — Content-Length가 없다
+        yield b"x"
+
+    r = await api.post("/api/uploads", content=chunks(), headers=_upload_headers("a.mp4"))
+    assert (r.status_code, r.json()["errors"][0]["field"]) == (422, "Content-Length")
+
+
+async def test_post_upload_existing_analysis_has_no_estimate(
+    api, key, make, probe, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    sha = hashlib.sha256(b"recording").hexdigest()
+    row = await make.video(source_kind="local", source_id=sha, origin="a.mp4")
+    await make.job(row.id, JobStatus.done)
+    r = await api.post("/api/uploads", content=b"recording", headers=_upload_headers("b.mp4"))
+    assert (r.json()["video"]["id"], r.json()["video"]["status"]) == (row.id, "analyzed")
+    assert r.json()["estimate"] is None
+    assert list((tmp_path / "uploads").iterdir()) == []  # 사본을 두지 않는다
+
+
+async def test_post_upload_rejected_reads_the_rest(api, env_file, verify) -> None:
+    # 키가 없어 본문 전에 거절해도 남은 본문을 끝까지 읽는다 — 브라우저는 본문을 다 보내야 답을 읽는다
+    pulled: list[bytes] = []
+
+    async def body():
+        for chunk in (b"rec", b"ord", b"ing"):
+            pulled.append(chunk)
+            yield chunk
+
+    headers = _upload_headers("a.mp4") | {"Content-Length": "9"}
+    r = await api.post("/api/uploads", content=body(), headers=headers)
+    assert (r.status_code, r.json()["type"]) == (503, "urn:va:key-missing")
+    assert pulled == [b"rec", b"ord", b"ing"]
+
+
+async def test_post_upload_unexpected_error_reads_the_rest(api, key, monkeypatch) -> None:
+    # 판정이 아닌 뜻밖의 오류(500)여도 남은 본문을 끝까지 읽는다(MS-001 upload 입력)
+    async def broken(self, name, size, body) -> None:
+        raise PermissionError(13, "Permission denied", "/app/data/uploads")
+
+    monkeypatch.setattr(VideoService, "upload", broken)
+    pulled: list[bytes] = []
+
+    async def body():
+        for chunk in (b"rec", b"ord", b"ing"):
+            pulled.append(chunk)
+            yield chunk
+
+    headers = _upload_headers("a.mp4") | {"Content-Length": "9"}
+    # 시험용 클라이언트는 뜻밖의 오류를 응답(500) 대신 다시 던진다 — 던지기 전에 다 읽었는지 본다
+    with pytest.raises(PermissionError):
+        await api.post("/api/uploads", content=body(), headers=headers)
+    assert pulled == [b"rec", b"ord", b"ing"]

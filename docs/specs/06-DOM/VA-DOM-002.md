@@ -186,9 +186,9 @@ frontend/
     │   ├── page.tsx           /                      → screens/Home
     │   ├── videos/[id]/page.tsx            /videos/{id}          → screens/Result
     │   ├── videos/[id]/progress/page.tsx   /videos/{id}/progress → screens/Progress
-    │   ├── settings/page.tsx  /settings              → screens/Settings
-    │   └── api/uploads/route.ts   POST /api/uploads — 화면이 아니다. Host를 확인하고(host.ts) 본문을 스트림 그대로 api에 넘긴다
-    │                          (아래 「기본형과 다른 점」)
+    │   └── settings/page.tsx  /settings              → screens/Settings
+    ├── pages/api/uploads.ts   POST /api/uploads — 화면이 아니다. Pages Router의 API 라우트 하나뿐이다. Host를 확인하고(host.ts)
+    │                          Node 요청을 그대로 api에 흘려보낸다(pipe) (아래 「기본형과 다른 점」)
     ├── screens/               화면 하나 = 파일 하나. 와이어프레임 항목과 1:1 —
     │   │                      Home(UI-1) · Estimate(UI-2) · Progress(UI-3) · Result(UI-4) · Settings(UI-5) · Delete(UI-6) · Export(UI-7) ·
     │   │                      Infographic(UI-8) · InfographicView(UI-9)
@@ -200,7 +200,7 @@ frontend/
     │                          그림(장면 · 인포그래픽)은 응답의 url을 <img>가 그대로 부른다
     ├── labels.ts              코드값 → 화면 글자. 두 화면 이상이 쓰는 표기만 — 단계 이름([[VA-UI-002#UI-3]] 규칙) · 언어 이름 · 분석한 때('오늘 14:08')
     ├── assets/                글꼴 파일 — Hahmlet · IBM Plex Sans KR · IBM Plex Mono (next/font 로컬, 앱 밖으로 요청 없음)
-    ├── host.ts                Host 판정 한곳 — localhost · 127.0.0.1 · [::1]만. proxy.ts와 app/api/uploads/route.ts가 같이 쓴다
+    ├── host.ts                Host 판정 한곳 — localhost · 127.0.0.1 · [::1]만. proxy.ts와 pages/api/uploads.ts가 같이 쓴다
     ├── proxy.ts               요청이 라우트에 닿기 전에 — `/api/*`의 Host가 허용 목록이 아니면 400(INFRA 5절, DNS 리바인딩). Next 16에서 middleware의 새 이름.
     │                          matcher에서 `/api/uploads`만 뺀다 — proxy가 도는 요청은 Next가 본문을 메모리에 복제하고 10MB에서 자른다(INFRA C4)
     └── styles.css             [[VA-UI-001]] 3장 토큰의 전사. 값을 컴포넌트에 직접 쓰지 않는다
@@ -209,10 +209,10 @@ frontend/
 **기본형과 다른 점, 그리고 왜.**
 
 - **Vite가 아니라 Next.js다.** 사용자 결정이고 인프라 문서에 적혀 있다([[VA-INFRA-001#C10]] — 디자인 산출물을 그대로 올린다). 기본형의 `index.html` · `main.tsx` · `App.tsx`는 Next.js에서 `src/app/`(App Router)이 맡는다. `page.tsx`는 화면 파일을 불러 그리는 한 줄이고 화면은 `screens/`에 있다.
-- **`pages/`가 아니라 `screens/`다.** Next.js가 `src/pages/`를 옛 Pages Router로 예약하고 있어 그 이름을 쓰면 라우터가 둘이 된다. 역할은 기본형의 `pages/`와 같다 — 규약이 보는 것은 폴더의 역할이지 이름이 아니다.
+- **`pages/`가 아니라 `screens/`다.** Next.js가 `src/pages/`를 옛 Pages Router로 예약하고 있어 화면을 두면 라우터가 둘이 된다. 역할은 기본형의 `pages/`와 같다 — 규약이 보는 것은 폴더의 역할이지 이름이 아니다. `src/pages/`에는 올리기 API 라우트 하나만 있다(아래).
 - 다이얼로그 다섯(UI-2 · UI-6 · UI-7 · UI-8 · UI-9)은 주소가 없어 `app/`에 경로가 없고, 여는 화면이 `screens/`의 파일을 부른다.
 - **`screens/result/`가 있다.** 화면 하나 = 파일 하나인데, UI-4는 한눈에 보기(막대 · 파트 띠 · 점 · 마인드맵)와 인포그래픽 카드를 더하면 한 파일이 1,300줄을 넘는다(지금 약 780줄). 화면은 여전히 `Result.tsx` 하나이고 고른 시각 · 강조한 챕터 같은 상태도 거기 있다. `result/`는 그것을 받아 그리기만 하는 UI-4 전용 부분이다 — 두 화면이 쓰게 되면 `components/`로 간다.
-- **화면이 아닌 라우트가 하나 있다 — `app/api/uploads/route.ts`.** 다른 `/api/*`는 넘기기(rewrites)가 api로 보내는데, 그 앞의 Host 확인(proxy)이 도는 요청은 Next가 본문을 메모리에 쌓고 10MB에서 자른다. 그래서 올리기 한 경로만 proxy에서 빼고 이 라우트 핸들러가 받는다 — 같은 Host 판정(`host.ts`)을 한 뒤 본문을 스트림 그대로 넘기고 응답을 그대로 돌려준다([[VA-INFRA-001#C4]]). 판단은 없다. Next는 파일 경로의 라우트를 넘기기보다 먼저 찾으므로 이 경로만 여기로 온다.
+- **화면이 아닌 라우트가 하나 있다 — `pages/api/uploads.ts`.** 다른 `/api/*`는 넘기기(rewrites)가 api로 보내는데, 그 앞의 Host 확인(proxy)이 도는 요청은 Next가 본문을 메모리에 쌓고 10MB에서 자른다. 그래서 올리기 한 경로만 proxy에서 빼고 이 API 라우트가 받는다 — 같은 Host 판정(`host.ts`)을 한 뒤 Node 요청을 그대로 api 요청에 흘려보내고(`pipe` — 받는 쪽이 느리면 보내는 쪽을 멈춘다) 응답을 그대로 돌려준다([[VA-INFRA-001#C4]]). 판단은 없다. 화면과 달리 Pages Router에 둔 것은 App Router 라우트 핸들러가 본문을 받는 쪽 속도와 상관없이 읽어 들여 web 메모리에 쌓기 때문이다(카드 D4 실측: 300MB에 +344MB, 이 라우트는 1GB에 +70MB 안). 멈추기(브라우저가 끊음)면 api 요청도 끊어 받던 `.part`를 지우게 한다. Next는 파일 경로의 라우트를 넘기기보다 먼저 찾으므로 이 경로만 여기로 온다.
 - **장면 칸(`FrameProgress` · `FrameProgressItem`)은 `job/schemas.py`에 있다.** 작업 폴링 응답(`Job.frames`)의 일부다. 만드는 쪽은 `AnalysisService.frame_progress`지만 결과 스키마에 두면 `analysis/schemas.py`(결과가 `Video`를 품는다) → `video/schemas.py`(영상이 작업 요약을 품는다) → `job/schemas.py` → `analysis/schemas.py`로 import가 한 바퀴 돈다(카드 D2에서 찾았다). 결과 묶음은 이 타입만 가져오고 작업 서비스를 부르지 않는다 — 서비스 호출 방향(3.2)은 그대로다
 - 빌드 결과는 web 컨테이너에 남는다(standalone 출력). 백엔드는 JSON과 장면 · 인포그래픽 그림만 내고 화면의 정적 파일을 서빙하지 않는다([[VA-INFRA-001#C10]]).
 
@@ -594,13 +594,13 @@ classDiagram
 
 ### 3.1 Boundary → Control
 
-라우터는 클래스가 아니라 함수가 든 파일이므로 박스만 그린다. 프런트는 `api/client.ts` 한곳에서 부른다 — 올리기만 web의 라우트 핸들러(`app/api/uploads/route.ts`)를 거쳐 video/router에 닿는다(1장).
+라우터는 클래스가 아니라 함수가 든 파일이므로 박스만 그린다. 프런트는 `api/client.ts` 한곳에서 부른다 — 올리기만 web의 API 라우트(`pages/api/uploads.ts`)를 거쳐 video/router에 닿는다(1장).
 
 ```mermaid
 flowchart LR
     subgraph fe["frontend/ (Boundary)"]
         FC[api/client.ts]
-        UR[app/api/uploads/route.ts]
+        UR[pages/api/uploads.ts]
     end
     subgraph routers["domains/*/router.py · core/settings_router.py (Boundary)"]
         rs[settings_router]
@@ -1289,7 +1289,7 @@ class VideoRow(Base):
 
 **마이그레이션**: Alembic, 리비전 하나 = ERD 변경 하나. 열거형 값 추가는 마이그레이션 없이 앱 상수만 바꾼다.
 
-**프런트**: Next.js App Router, `output: 'standalone'`. `api/client.ts`는 fetch를 감싸고 problem+json을 예외로 바꾼다. 화면 상태는 서버 값을 그대로 쓴다 — 계산하지 않는다([[VA-API-001]] 1장). `next.config.ts`가 `/api/*`를 api로 넘길 때 시간 제한은 60초다(`experimental.proxyTimeout`, 기본 30초). 가장 긴 요청은 질문이다 — 마지막 키 확인이 연결 실패였으면 다시 확인(최대 10초)과 답(최대 20초)이 이어져 기본값에 닿는다. 넘기면 화면은 실패인데 서버는 답을 저장해, 다시 시도하면 같은 질문이 두 번 남는다. 인포그래픽은 이 제한에 걸리지 않게 맡기고 바로 돌려받는다(5장 13). **올리기는 넘기기가 아니라 라우트 핸들러가 받는다** — `app/api/uploads/route.ts`가 `fetch(API_URL + '/api/uploads', { method: 'POST', headers, body: request.body, duplex: 'half' })`로 본문을 스트림 그대로 넘기고 응답도 그대로 돌려준다. 넘기기의 60초 제한을 받지 않는다. proxy의 matcher에서 이 경로만 뺀다(1장). 화면은 올리기만 XHR로 보낸다 — fetch는 올리는 쪽 진행을 주지 않는다.
+**프런트**: Next.js App Router, `output: 'standalone'`. `api/client.ts`는 fetch를 감싸고 problem+json을 예외로 바꾼다. 화면 상태는 서버 값을 그대로 쓴다 — 계산하지 않는다([[VA-API-001]] 1장). `next.config.ts`가 `/api/*`를 api로 넘길 때 시간 제한은 60초다(`experimental.proxyTimeout`, 기본 30초). 가장 긴 요청은 질문이다 — 마지막 키 확인이 연결 실패였으면 다시 확인(최대 10초)과 답(최대 20초)이 이어져 기본값에 닿는다. 넘기면 화면은 실패인데 서버는 답을 저장해, 다시 시도하면 같은 질문이 두 번 남는다. 인포그래픽은 이 제한에 걸리지 않게 맡기고 바로 돌려받는다(5장 13). **올리기는 넘기기가 아니라 API 라우트가 받는다** — `pages/api/uploads.ts`(Pages Router, `bodyParser: false`)가 Node 요청을 `http.request(API_URL + '/api/uploads')`에 `pipe`로 흘려보내고 응답도 그대로 돌려준다 — 받는 쪽이 느리면 보내는 쪽을 멈춰 web 메모리가 파일 크기만큼 늘지 않는다(1장, 카드 D4 실측). 넘기기의 60초 제한을 받지 않는다. 넘길 곳(`API_URL`)은 넘기기와 같게 빌드 때 굳힌다(`next.config.ts`의 env). proxy의 matcher에서 이 경로만 뺀다(1장). 화면은 올리기만 XHR로 보낸다 — fetch는 올리는 쪽 진행을 주지 않는다.
 
 ---
 

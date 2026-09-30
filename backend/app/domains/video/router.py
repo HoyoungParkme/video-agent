@@ -1,4 +1,4 @@
-"""/api/inbox · /api/videos · /api/videos/{id} — HTTP 입출력만(VA-API-001 3.2 · 3.3).
+"""/api/inbox · /api/videos · /api/uploads · /api/videos/{id} — HTTP 입출력만(VA-API-001 3.2 · 3.3).
 
 라우터가 서비스 둘을 차례로 부르는 곳이 있다 — 등록 뒤의 예상치(JobService.estimate), 삭제 전의
 취소(JobService.cancel · AnalysisService.cancel_tasks)와 삭제 뒤의 깨우기(JobService.wake).
@@ -8,12 +8,17 @@ video_service로 영상을 먼저 읽는다.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import AsyncIterator
 from typing import Annotated
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import ClientDisconnect
 
 from app.core.db import get_session
+from app.core.errors import Validation
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.service import JobService
 from app.domains.video.schemas import (
@@ -60,6 +65,43 @@ async def post_video(req: RegisterRequest, videos: Videos, jobs: Jobs) -> Regist
     """영상을 등록하고 사전 안내를 만든다. 중복이면 기존 것 — 늘 200."""
     video = await videos.register(req)
     return RegisterResponse(video=video, estimate=await jobs.estimate(video))
+
+
+@router.post("/uploads")
+async def post_upload(request: Request, videos: Videos, jobs: Jobs) -> RegisterResponse:
+    """올린 파일 하나를 등록하고 사전 안내를 만든다 — 본문은 파일 바이트 그대로(스트림).
+
+    원래 이름은 X-File-Name(UTF-8 퍼센트 인코딩), 크기는 Content-Length. 둘 중 하나가 없으면
+    validation. 판정 · 사본은 VideoService.upload가 한다. 응답은 POST /api/videos와 같다.
+    """
+    name = request.headers.get("x-file-name")
+    length = request.headers.get("content-length")
+    errors = []
+    try:
+        name = unquote(name, errors="strict") if name else None
+    except UnicodeDecodeError:
+        name = None
+    if not name:
+        errors.append({"field": "X-File-Name", "message": "파일 이름이 없어요"})
+    if length is None or not length.isdigit():
+        errors.append({"field": "Content-Length", "message": "크기가 없어요"})
+    body = request.stream()
+    try:
+        if name is None or length is None or errors:
+            raise Validation(errors=errors)
+        video = await videos.upload(name, int(length), body)
+    except Exception:  # 어느 판정이든 — 뜻밖의 오류(500)도 브라우저가 답을 읽어야 한다
+        await _drain(body)
+        raise
+    return RegisterResponse(video=video, estimate=await jobs.estimate(video))
+
+
+async def _drain(body: AsyncIterator[bytes]) -> None:
+    # 거절한 뒤 남은 본문을 읽어 버린다 — 브라우저는 본문을 다 보내야 답을 읽는다. 읽지 않으면
+    # 올리기가 멈춘 채 끝나지 않는다(카드 D4 실측, VA-SEQ-001 3장). 끊겼으면 그만 읽는다
+    with contextlib.suppress(ClientDisconnect):
+        async for _ in body:
+            pass
 
 
 @router.get("/videos/{video_id}")

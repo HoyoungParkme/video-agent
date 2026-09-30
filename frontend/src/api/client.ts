@@ -84,6 +84,10 @@ export interface Video {
   channel: string | null;
   duration_sec: number;
   origin: string;
+  /** 끌어 놓아 올린 파일인가(원본 자리 = 올린 사본) — UI-1 부제 '올린 파일', UI-6 「남는 것」 */
+  uploaded: boolean;
+  /** 올린 사본이 아직 남아 있으면 그 크기 — UI-6 '올린 사본({크기})' */
+  upload_bytes: number | null;
   has_captions: boolean;
   caption_language: string | null;
   caption_kind: CaptionKind | null;
@@ -350,6 +354,45 @@ export class ApiError extends Error {
   }
 }
 
+/** 올리는 중인 요청 하나 — 응답(done)과 멈추기(abort) */
+export interface Upload {
+  done: Promise<RegisterResponse>;
+  abort: () => void;
+}
+
+/** 멈추기(abort)로 끝난 올리기 — 서버 오류가 아니다 */
+export class UploadAborted extends Error {}
+
+/**
+ * POST /api/uploads — 파일 하나를 본문 그대로 올려 등록한다(VA-API-001). 이것만 XHR이다 — fetch는
+ * 올리는 쪽 진행을 주지 않는다(VA-DOM-002 1장). onProgress는 보낸 바이트를 받는다(다 보내면 파일
+ * 크기). 서버가 거절하면 ApiError, 닿지 못하면 TypeError, 멈추면 UploadAborted로 끝난다.
+ */
+function upload(file: File, onProgress: (sent: number) => void): Upload {
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<RegisterResponse>((resolve, reject) => {
+    xhr.open("POST", "/api/uploads");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+    xhr.upload.onprogress = (e) => onProgress(e.loaded);
+    xhr.upload.onload = () => onProgress(file.size); // 다 보냈다 — 서버가 파일을 확인하는 중
+    xhr.onload = () => {
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse(xhr.responseText) as Record<string, unknown>;
+      } catch {
+        // 평문 오류(web이 api에 닿지 못해 대신 답한 경우 등)도 ApiError로
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body as unknown as RegisterResponse);
+      else reject(new ApiError(xhr.status, body));
+    };
+    xhr.onerror = () => reject(new TypeError("서버에 연결할 수 없음"));
+    xhr.onabort = () => reject(new UploadAborted("올리기를 멈췄다"));
+    xhr.send(file);
+  });
+  return { done, abort: () => xhr.abort() };
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -395,6 +438,8 @@ export const api = {
   /** POST /api/videos — inbox 파일을 등록한다. 같은 내용이면 기존 영상 */
   registerLocal: (path: string) =>
     call<RegisterResponse>("POST", "/api/videos", { source: "local", path }),
+  /** POST /api/uploads — 끌어 놓거나 고른 파일을 올려 등록한다. 같은 내용이면 기존 영상 */
+  upload,
   /** GET /api/inbox — inbox 파일 목록(길이까지), 수정 시각 최근 순 */
   inbox: () => call<InboxListing>("GET", "/api/inbox"),
   /** GET /api/videos — 작업이 있는 영상, 작업 시작 최근 순 */

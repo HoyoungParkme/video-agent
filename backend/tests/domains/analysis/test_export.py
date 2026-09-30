@@ -41,6 +41,8 @@ def video(kind: SourceKind = SourceKind.youtube, duration: int = 3000, **extra) 
         "channel": "E2E 채널" if youtube else None,
         "duration_sec": duration,
         "origin": "https://youtu.be/dQw4w9WgXcQ" if youtube else "workshop_0912.mp4",
+        "uploaded": False,
+        "upload_bytes": None,
         "has_captions": youtube,
         "caption_language": "ko" if youtube else None,
         "caption_kind": CaptionKind.manual if youtube else None,

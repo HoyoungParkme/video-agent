@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import errno
 import hashlib
 import os
+from collections import namedtuple
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select, text
+from starlette.requests import ClientDisconnect
 
 from app.core.config import config
 from app.core.db import SessionLocal
@@ -18,11 +21,14 @@ from app.core.errors import (
     Internal,
     KeyMissing,
     NoAudioTrack,
+    NoSpace,
     NotFound,
     PathOutsideInbox,
     SourceUnavailable,
     UnsupportedFile,
+    UploadIncomplete,
     UrlInvalid,
+    Validation,
     VideoTooLong,
 )
 from app.domains.analysis import crud as analysis_crud
@@ -35,6 +41,7 @@ from app.domains.video.schemas import LocalSource, YouTubeSource
 from app.domains.video.service import VideoService
 
 APP = Path(__file__).resolve().parents[3] / "app"
+shutil_usage = namedtuple("shutil_usage", "total used free", defaults=(0, 0, 0))
 WATCH = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 T0 = datetime(2026, 9, 23, 3, 0, tzinfo=UTC)
 
@@ -156,6 +163,24 @@ async def test_to_dto_status(db, make) -> None:
             assert video.analyzed_at is None
 
 
+async def test_to_dto_upload_bytes(db, make, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    sha = "b" * 64
+    row = await make.video(
+        source_kind="local", source_id=sha, origin="Talk.MOV", uploaded=True, caption_kind=None
+    )
+    copy = tmp_path / "uploads" / f"{sha}.mov"  # 원래 이름의 확장자(소문자)
+    copy.parent.mkdir()
+    copy.write_bytes(b"x" * 7)
+    video = VideoService.to_dto(row, None, 0)
+    assert (video.uploaded, video.upload_bytes) == (True, 7)
+    copy.unlink()  # 분석이 끝나 지웠다
+    assert VideoService.to_dto(row, None, 0).upload_bytes is None
+    inbox = await make.video(source_kind="local", source_id="c" * 64, origin="a.mp4")
+    video = VideoService.to_dto(inbox, None, 0)  # inbox 영상
+    assert (video.uploaded, video.upload_bytes) == (False, None)
+
+
 def test_status_is_made_only_in_to_dto() -> None:
     """이 함수 말고 status를 만드는 곳이 없다 — VideoStatus 값을 쓰는 함수가 to_dto 하나."""
     users = []
@@ -230,6 +255,7 @@ async def test_info_of_local(db, youtube, probe, tmp_path, monkeypatch) -> None:
     )
     assert (info.duration_sec, info.has_captions, info.caption_language) == (3011, False, None)
     assert info.source_id == hashlib.sha256(b"voice").hexdigest()
+    assert info.uploaded is False  # inbox 파일 — 올린 사본이 아니다
     assert probe.calls == [str(tmp_path / "talk.mp3")]
 
 
@@ -361,6 +387,47 @@ async def test_register_local_renamed_after_failure_updates_origin(
     assert (await db.get(VideoRow, first.id)).origin == "talk2.mp4"
 
 
+async def _uploaded(make, content: bytes, origin: str = "Talk.MOV") -> VideoRow:
+    # 올린 영상의 행 — 같은 내용의 파일을 inbox에서 고르는 경우
+    sha = hashlib.sha256(content).hexdigest()
+    return await make.video(
+        source_kind="local", source_id=sha, title=origin, origin=origin, uploaded=True
+    )
+
+
+async def test_register_same_as_uploaded_with_job_keeps_row(
+    db, youtube, probe, key, make, tmp_path, monkeypatch
+) -> None:
+    # 작업이 있는 올린 영상과 같은 내용을 inbox에서 고른다 — 행이 안 바뀐다(origin도)
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "talk.mp4").write_bytes(b"recording")
+    row = await _uploaded(make, b"recording")
+    await make.job(row.id, JobStatus.failed)
+    again = await VideoService(db, youtube, probe).register(local("talk.mp4"))
+    assert (again.id, again.origin, again.uploaded, again.status) == (
+        row.id,
+        "Talk.MOV",
+        True,
+        "failed",
+    )
+
+
+async def test_register_same_as_uploaded_without_job_becomes_inbox(
+    db, youtube, probe, key, make, tmp_path, monkeypatch
+) -> None:
+    # 작업이 없는 올린 영상(사본은 취소 때 지웠다)과 같은 내용을 inbox에서 — inbox 영상으로 덮어쓴다
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "talk.mp4").write_bytes(b"recording")
+    row = await _uploaded(make, b"recording")
+    again = await VideoService(db, youtube, probe).register(local("talk.mp4"))
+    assert (again.id, again.origin, again.uploaded, again.status) == (
+        row.id,
+        "talk.mp4",
+        False,
+        "registered",
+    )
+
+
 async def test_register_local_too_long(db, youtube, probe, key, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
     (tmp_path / "all_day.mp4").write_bytes(b"x")
@@ -405,6 +472,251 @@ async def test_register_twice_at_once_makes_one_row(db, youtube, key, probe) -> 
     ids = await asyncio.gather(one(), one())
     assert ids[0] == ids[1]
     assert await _count(db) == 1
+
+
+# --- upload
+
+
+class Body:
+    """request.stream() 자리 — 조각을 차례로 주고 읽힌 조각 수를 센다. error면 조각 뒤에 던진다."""
+
+    def __init__(self, *chunks: bytes, error: BaseException | None = None) -> None:
+        self.chunks, self.error, self.read = chunks, error, 0
+
+    def __aiter__(self):
+        return self._gen()
+
+    async def _gen(self):
+        for chunk in self.chunks:
+            self.read += 1
+            yield chunk
+        if self.error is not None:
+            raise self.error
+
+
+@pytest.fixture
+def uploads(tmp_path, monkeypatch) -> Path:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path / "inbox"))
+    return tmp_path / "data" / "uploads"
+
+
+def _left(folder: Path) -> list[str]:
+    return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
+
+
+async def test_upload_new(db, youtube, probe, key, uploads, monkeypatch) -> None:
+    monkeypatch.setattr(config, "UPLOAD_WRITE_BYTES", 4)  # 조각을 모아 여러 번 쓴다
+    body = Body(b"rec", b"ord", b"ing")
+    video = await VideoService(db, youtube, probe).upload("Talk.MOV", 9, body)
+    sha = hashlib.sha256(b"recording").hexdigest()
+    assert (video.source_kind, video.source_id, video.uploaded) == ("local", sha, True)
+    assert (video.title, video.origin, video.status, video.upload_bytes) == (
+        "Talk.MOV",
+        "Talk.MOV",
+        "registered",
+        9,
+    )
+    assert _left(uploads) == [f"{sha}.mov"]  # 사본 이름은 해시 · 확장자는 소문자
+    assert (uploads / f"{sha}.mov").read_bytes() == b"recording"
+    # inbox로 등록한 같은 파일과 source_id가 같다
+    inbox = Path(config.INBOX_DIR)
+    inbox.mkdir()
+    (inbox / "talk.mp4").write_bytes(b"recording")
+    info = await VideoService(db, youtube, probe).info_of(local("talk.mp4"))
+    assert info.source_id == sha
+
+
+async def test_upload_without_key_reads_nothing(
+    db, youtube, probe, env_file, verify, uploads
+) -> None:
+    body = Body(b"recording")
+    with pytest.raises(KeyMissing):
+        await VideoService(db, youtube, probe).upload("talk.mp4", 9, body)
+    assert body.read == 0 and not uploads.exists() and await _count(db) == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "size", "error"),
+    [
+        ("notes.txt", 9, UnsupportedFile),  # 받지 않는 형식 — 읽지 않는다
+        ("  ", 9, Validation),
+        ("a\x07.mp4", 9, Validation),  # 제어 문자
+        ("가" * 297 + ".mp4", 9, Validation),  # 300자를 넘는다
+        ("talk.mp4", 0, Validation),
+    ],
+)
+async def test_upload_rejects_before_reading(
+    db, youtube, probe, key, uploads, name, size, error
+) -> None:
+    body = Body(b"recording")
+    with pytest.raises(error):
+        await VideoService(db, youtube, probe).upload(name, size, body)
+    assert body.read == 0 and _left(uploads) == []
+
+
+async def test_upload_no_space(db, youtube, probe, key, uploads, monkeypatch) -> None:
+    gib = 1 << 30
+    monkeypatch.setattr(service_module.shutil, "disk_usage", lambda _: shutil_usage(free=5 * gib))
+    body = Body(b"x")
+    with pytest.raises(NoSpace) as e:  # 4 GiB 파일 + 여유 1 GiB > 남은 5 GiB
+        await VideoService(db, youtube, probe).upload("talk.mp4", 4 * gib + 1, body)
+    assert e.value.extra == {"needed_bytes": 5 * gib + 1, "free_bytes": 5 * gib}
+    assert body.read == 0 and _left(uploads) == []
+
+
+async def test_upload_disk_fills_while_writing(db, youtube, probe, key, uploads, monkeypatch):
+    def full(*_):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(service_module, "_append", full)
+    with pytest.raises(NoSpace):
+        await VideoService(db, youtube, probe).upload("talk.mp4", 9, Body(b"recording"))
+    assert _left(uploads) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        Body(b"record"),  # Content-Length보다 짧다
+        Body(b"recording", b"!"),  # 길다
+        Body(b"rec", error=ClientDisconnect()),  # 올리다 끊겼다
+    ],
+)
+async def test_upload_incomplete_leaves_no_part(db, youtube, probe, key, uploads, body) -> None:
+    with pytest.raises(UploadIncomplete) as e:
+        await VideoService(db, youtube, probe).upload("talk.mp4", 9, body)
+    assert e.value.extra["expected_bytes"] == 9
+    assert _left(uploads) == [] and await _count(db) == 0
+
+
+async def test_upload_without_audio(db, youtube, probe, key, uploads) -> None:
+    probe.default = (1800, False)
+    with pytest.raises(NoAudioTrack) as e:
+        await VideoService(db, youtube, probe).upload("silent.mp4", 9, Body(b"recording"))
+    assert e.value.extra == {"duration_sec": 1800}
+    assert _left(uploads) == [] and await _count(db) == 0
+
+
+async def test_upload_too_long(db, youtube, probe, key, uploads) -> None:
+    probe.default = (14400, True)  # 4시간
+    with pytest.raises(VideoTooLong):
+        await VideoService(db, youtube, probe).upload("all_day.mp4", 9, Body(b"recording"))
+    assert _left(uploads) == [] and await _count(db) == 0  # 행 · 사본이 없다
+
+
+async def test_upload_same_as_video_with_job(db, youtube, probe, key, make, uploads) -> None:
+    row = await _uploaded(make, b"recording", origin="first.mp4")
+    await make.job(row.id, JobStatus.failed)
+    video = await VideoService(db, youtube, probe).upload("again.mp4", 9, Body(b"recording"))
+    assert (video.id, video.origin, video.status) == (row.id, "first.mp4", "failed")
+    assert _left(uploads) == []  # 새 사본도 .part도 없다
+
+
+async def test_upload_again_after_cancel(db, youtube, probe, key, make, uploads) -> None:
+    # 작업 없는 올린 영상(사본은 이미 없다)을 다시 올린다 — 같은 행, 사본이 다시 생긴다
+    row = await _uploaded(make, b"recording", origin="first.MP4")
+    video = await VideoService(db, youtube, probe).upload("second.mp4", 9, Body(b"recording"))
+    assert (video.id, video.origin, video.uploaded, video.status) == (
+        row.id,
+        "second.mp4",
+        True,
+        "registered",
+    )
+    assert _left(uploads) == [f"{row.source_id}.mp4"]
+
+
+async def test_upload_same_as_inbox_video_without_job(
+    db, youtube, probe, key, make, uploads
+) -> None:
+    sha = hashlib.sha256(b"recording").hexdigest()
+    row = await make.video(source_kind="local", source_id=sha, origin="talk.mp4")
+    video = await VideoService(db, youtube, probe).upload("talk.mp4", 9, Body(b"recording"))
+    assert (video.id, video.uploaded) == (row.id, True)  # 이 사본이 원본 자리가 된다
+    assert _left(uploads) == [f"{sha}.mp4"]
+
+
+async def test_upload_twice_at_once_makes_one_row(db, youtube, probe, key, uploads) -> None:
+    async def one():
+        async with SessionLocal() as s:
+            return await VideoService(s, youtube, probe).upload("t.mp4", 9, Body(b"recording"))
+
+    a, b = await asyncio.gather(one(), one())
+    assert a.id == b.id and await _count(db) == 1
+    assert _left(uploads) == [f"{a.source_id}.mp4"]
+
+
+# --- release_upload
+
+
+async def test_release_upload(db, make, uploads) -> None:
+    row = await _uploaded(make, b"recording", origin="Talk.MOV")
+    uploads.mkdir(parents=True)
+    copy = uploads / f"{row.source_id}.mov"
+    copy.write_bytes(b"recording")
+    video = VideoService.to_dto(row, None, 0)
+    await VideoService.release_upload(video)
+    assert not copy.exists()
+    await VideoService.release_upload(video)  # 두 번 불러도 예외가 없다
+    await db.refresh(row)
+    assert row.uploaded is True  # 행은 그대로 — 다시 시도가 어디서 읽을지 정한다
+
+
+async def test_release_upload_leaves_inbox_file(db, make, uploads) -> None:
+    inbox = Path(config.INBOX_DIR)
+    inbox.mkdir()
+    (inbox / "a.mp4").write_bytes(b"x")
+    row = await make.video(source_kind="local", source_id="d" * 64, origin="a.mp4")
+    await VideoService.release_upload(VideoService.to_dto(row, None, 0))
+    assert (inbox / "a.mp4").exists()
+
+
+# --- sweep_uploads
+
+
+async def _copy_of(make, uploads: Path, content: bytes, status: JobStatus | None, **kw) -> str:
+    # 사본 하나와 그 주인 — status가 None이면 작업이 없다
+    row = await _uploaded(make, content, origin="t.mp4") if not kw else await make.video(**kw)
+    if status is not None:
+        await make.job(row.id, status)
+    name = f"{row.source_id}.mp4"
+    (uploads / name).write_bytes(b"x")
+    return name
+
+
+async def test_sweep_uploads(db, make, youtube, probe, uploads) -> None:
+    uploads.mkdir(parents=True)
+    (uploads / ".part-x.mp4").write_bytes(b"x")  # 서버가 올리는 도중에 죽었다
+    (uploads / f"{'e' * 64}.mp4").write_bytes(b"x")  # 주인 없음
+    (uploads / "notes.txt").write_bytes(b"x")  # 이름 모양이 다른 파일도 주인이 없다
+    done = await _copy_of(make, uploads, b"done", JobStatus.done)
+    failed = await _copy_of(make, uploads, b"failed", JobStatus.failed)  # 다시 시도가 읽는다
+    queued = await _copy_of(make, uploads, b"queued", JobStatus.queued)  # 대기열이 읽는다
+    await _copy_of(make, uploads, b"no-job", None)  # 사전 안내에서 멈췄다
+    sha = hashlib.sha256(b"inbox").hexdigest()  # 같은 내용의 inbox 영상 — 올린 영상이 아니다
+    await _copy_of(
+        make, uploads, b"", JobStatus.failed, source_kind="local", source_id=sha, origin="a.mp4"
+    )
+    assert await VideoService(db, youtube, probe).sweep_uploads() == 6
+    assert _left(uploads) == sorted([failed, queued])
+    assert done not in _left(uploads)
+
+
+async def test_sweep_uploads_without_folder(db, youtube, probe, uploads) -> None:
+    assert await VideoService(db, youtube, probe).sweep_uploads() == 0
+
+
+async def test_sweep_uploads_queries_do_not_grow(db, make, youtube, probe, uploads, queries):
+    uploads.mkdir(parents=True)
+    await _copy_of(make, uploads, b"1", JobStatus.failed)
+    queries.clear()
+    await VideoService(db, youtube, probe).sweep_uploads()
+    one = len(queries)
+    for i in range(2, 5):
+        await _copy_of(make, uploads, str(i).encode(), JobStatus.done)
+    queries.clear()
+    await VideoService(db, youtube, probe).sweep_uploads()
+    assert len(queries) == one  # 영상 한 번 · 작업 요약 한 번 — 파일 수에 비례하지 않는다
 
 
 # --- list
@@ -557,3 +869,14 @@ async def test_delete_without_tmp_or_video(db, make, youtube, probe, tmp_path, m
     with pytest.raises(NotFound) as e:
         await svc.delete(row.id)
     assert e.value.extra == {"resource": "video", "id": row.id}
+
+
+async def test_delete_uploaded_removes_copy(db, make, youtube, probe, uploads) -> None:
+    # 사전 안내에서 취소한 올린 영상도 이 길 — 사본이 사라지고, 다른 영상의 사본은 그대로
+    row = await _uploaded(make, b"recording", origin="talk.mp4")
+    other = await _uploaded(make, b"other", origin="other.mp4")
+    uploads.mkdir(parents=True)
+    for v in (row, other):
+        (uploads / f"{v.source_id}.mp4").write_bytes(b"x")
+    await VideoService(db, youtube, probe).delete(row.id)
+    assert _left(uploads) == [f"{other.source_id}.mp4"]

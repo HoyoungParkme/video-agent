@@ -104,6 +104,15 @@ async def test_local_video_goes_to_local_frames_with_path(
     assert {src for _, _, src in await _rows(db, video.id)} == {FrameSource.local_frame}
 
 
+async def test_uploaded_video_reads_copy(db, make, storyboard, local_frames, data_dir) -> None:
+    sha = "f" * 64
+    video = await _video(
+        db, make, source_kind=SourceKind.local, source_id=sha, origin="Talk.MOV", uploaded=True
+    )
+    await _svc(db, storyboard, local_frames).make_frames(video)
+    assert local_frames.calls[0][0] == str(data_dir / "data" / "uploads" / f"{sha}.mov")
+
+
 async def test_making_while_running_and_cleared_on_cancel(
     db, make, storyboard, local_frames
 ) -> None:
@@ -168,6 +177,18 @@ async def test_state_moved_original_is_unavailable(db, make, data_dir: Path) -> 
     (data_dir / "inbox").mkdir()
     (data_dir / "inbox" / "옮긴 파일.mp4").write_bytes(b"video")
     assert await _state(db, video) == FramesState.absent  # 원본이 있으면 채울 수 있다
+
+
+async def test_state_uploaded_video_looks_at_copy(db, make, data_dir: Path) -> None:
+    sha = "f" * 64
+    video = await _video(
+        db, make, source_kind=SourceKind.local, source_id=sha, origin="t.mp4", uploaded=True
+    )
+    assert await _state(db, video) == FramesState.unavailable  # 사본을 지웠다
+    copy = data_dir / "data" / "uploads" / f"{sha}.mp4"
+    copy.parent.mkdir(parents=True)
+    copy.write_bytes(b"video")
+    assert await _state(db, video) == FramesState.absent  # 사본이 있으면 채울 수 있다
 
 
 async def test_state_done_even_if_original_is_gone(db, make) -> None:
