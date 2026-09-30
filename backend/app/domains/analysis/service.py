@@ -518,6 +518,22 @@ class AnalysisService:
             raise NotFound(resource="frame", id=seq)
         return row.path
 
+    async def cancel_tasks(self, video_id: int) -> None:
+        """VA-MS-003#AnalysisService.cancel_tasks
+
+        지우기 전에 그 영상의 뒤 일(장면 채우기)을 멈추고 끝나기를 기다린다 — 지운 폴더에 다시 쓰지
+        않게. 파이프라인의 장면 단계는 작업 태스크의 일부라 JobService.cancel이 멈춘다.
+
+        Args:
+            video_id: 영상 id. 도는 뒤 일이 없으면 아무것도 하지 않는다
+        """
+        task = AnalysisService._frame_tasks.pop(video_id, None)
+        if task is not None:
+            task.cancel()
+            # wait는 태스크의 CancelledError를 올리지 않는다 — 부른 쪽 자신의 취소는 그대로 전해진다
+            await asyncio.wait({task})
+        AnalysisService._making.discard(video_id)
+
     async def save_transcript(
         self,
         video_id: int,

@@ -332,3 +332,26 @@ async def test_frame_file(db, make, storyboard, local_frames) -> None:
     Path(path).unlink()  # 파일이 지워졌다
     with pytest.raises(NotFound):
         await svc.frame_file(video.id, 1)
+
+
+# --- cancel_tasks
+
+
+async def test_cancel_stops_only_that_videos_fill(db, make, storyboard, local_frames) -> None:
+    one, other = await _video(db, make), await _video(db, make)
+    storyboard.gate = asyncio.Event()  # 첫 장 앞에서 붙든다
+    svc = _svc(db, storyboard, local_frames)
+    await svc.fill_frames(one)
+    await svc.fill_frames(other)
+    task = AnalysisService._frame_tasks[one.id]
+    await svc.cancel_tasks(one.id)
+    assert task.cancelled()
+    assert one.id not in AnalysisService._frame_tasks and one.id not in AnalysisService._making
+    assert other.id in AnalysisService._frame_tasks  # 다른 영상은 그대로
+    storyboard.gate.set()
+    await AnalysisService._frame_tasks[other.id]
+    assert await crud.frames(db, one.id) == []  # 멈춘 영상은 행을 쓰지 않았다
+
+
+async def test_cancel_without_task_is_quiet(db, make) -> None:
+    await AnalysisService(db).cancel_tasks(12345)
