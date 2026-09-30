@@ -291,7 +291,7 @@ async def test_estimate_captions(db, make, env_file) -> None:
         None,
         None,
     )
-    assert (est.stt_cost_usd, est.seconds) == (0, 60)
+    assert (est.stt_cost_usd, est.seconds) == (0, 90)  # 텍스트 60 + 장면 30
     # 50.2분 × 450토큰 × 3번 × $0.25 + 출력 3천 × $2.00 — 실제 영상으로 맞춘 값(MS-002 v18)
     assert est.text_cost_usd == 0.0229
     assert est.total_cost_usd == round(est.text_cost_usd, 2)
@@ -311,7 +311,7 @@ async def test_estimate_local_150_minutes(db, make, env_file) -> None:
     est = await JobService(db).estimate(_video(row))
     assert (est.chunks, est.concurrency, est.stt_minutes, est.stt_cost_usd) == (15, 3, 150, 0.9)
     assert est.stt_price_per_min == 0.006
-    assert est.seconds == 5 * 45 + 60 + 150  # 조각 · 텍스트 · 추출 몫
+    assert est.seconds == 5 * 45 + 60 + 150 + 30  # 조각 · 텍스트 · 추출 · 장면 몫
 
 
 async def test_estimate_local_audio_counts_conversion(db, make, env_file) -> None:
@@ -326,7 +326,7 @@ async def test_estimate_local_audio_counts_conversion(db, make, env_file) -> Non
     )
     est = await JobService(db).estimate(_video(row))
     assert (est.chunks, est.stt_minutes) == (3, 30)
-    assert est.seconds == 1 * 45 + 60 + 30  # 조각 · 텍스트 · mp3 변환 몫
+    assert est.seconds == 1 * 45 + 60 + 30  # 조각 · 텍스트 · mp3 변환 몫 — 음성은 장면이 없다
 
 
 async def test_estimate_none_when_job_exists(db, make, env_file) -> None:
@@ -357,7 +357,7 @@ async def test_start_queues_and_wakes(db, make, key) -> None:
     saved = await _job_row(db, job.id)
     assert saved.stages == ["download", "summarize", "chapter", "suggest", "frames"]
     assert saved.stt_model is None  # 자막 있는 YouTube
-    assert (saved.text_model, saved.concurrency, saved.est_seconds) == ("gpt-5-mini", 3, 60)
+    assert (saved.text_model, saved.concurrency, saved.est_seconds) == ("gpt-5-mini", 3, 90)
     assert saved.queued_at == saved.started_at == saved.stage_started_at
 
 

@@ -22,7 +22,7 @@ async def test_post_video_registers_with_estimate(api, key) -> None:
     assert body["video"]["status"] == "registered"
     assert body["video"]["source_id"] == "dQw4w9WgXcQ"
     assert body["estimate"]["needs_stt"] is False
-    assert body["estimate"]["seconds"] == 60
+    assert body["estimate"]["seconds"] == 90  # 텍스트 60 + 장면 30
 
 
 async def test_post_video_local_needs_stt(api, key, probe, tmp_path, monkeypatch) -> None:
