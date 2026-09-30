@@ -37,18 +37,18 @@ test("인포그래픽을 만든다 — 확인 창 → 그리는 중 → 다 됨 
   await openResult(page, "https://youtu.be/e2eInfogr01");
   // 만들기 전 — 설정 품질(낮음)의 한 장 값
   await expect(el(page, "15.1")).toHaveText("인포그래픽 한 장으로 보기");
-  await expect(el(page, "15.2")).toContainText("한 장 약 $0.006 · 누를 때만 만들어요");
+  await expect(el(page, "15.2")).toContainText("한 장 약 $0.01 · 누를 때만 만들어요");
 
   // UI-8 — 값 · 품질 · 보내는 것
   await fakeOpenAI(request, { image_delay_ms: 1500 });
   await el(page, "15.3").click();
   await expect(inDialog(page, "1.1")).toHaveText("인포그래픽 만들기");
-  await expect(inDialog(page, "2.1")).toHaveText("약 $0.006");
+  await expect(inDialog(page, "2.1")).toHaveText("약 $0.01");
   await expect(inDialog(page, "2.2")).toHaveText("낮음 · gpt-image-2");
   await expect(inDialog(page, "3.1")).toHaveText("한 줄 요약 1문장 · 인사이트 6개 · 챕터 제목 5개");
   await expect(inDialog(page, "3.3")).toHaveCount(0); // 처음 — 바꿀 그림이 없다
   await expect(inDialog(page, "4.2")).toBeFocused();
-  await expect(inDialog(page, "4.2")).toHaveText("만들기 · 약 $0.006");
+  await expect(inDialog(page, "4.2")).toHaveText("만들기 · 약 $0.01");
   await inDialog(page, "4.2").click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
@@ -148,12 +148,12 @@ test("키 확인이 실패하면 — 확인 창이 닫히고 카드가 키 넣�
 
 test("설정에서 품질을 바꾸면 카드 · 확인 창의 한 장 값이 바뀐다", async ({ page }) => {
   const url = await openResult(page, "https://youtu.be/e2eInfogr05");
-  await expect(el(page, "15.2")).toContainText("한 장 약 $0.006");
+  await expect(el(page, "15.2")).toContainText("한 장 약 $0.01");
   await page.goto("/settings");
   await expect(el(page, "7.5")).toHaveText("값이 가장 싸요. 그림 속 작은 글자는 흐릴 수 있어요.");
   await expect(el(page, "7.3").getByRole("radio", { name: /낮음 \(기본\)/ })).toBeChecked();
   await el(page, "7.3").getByRole("radio", { name: /중간/ }).check();
-  await expect(el(page, "7.5")).toHaveText("글자가 더 또렷해요. 값은 낮음의 약 8배예요.");
+  await expect(el(page, "7.5")).toHaveText("글자가 더 또렷해요. 값은 낮음의 약 5배예요.");
   await el(page, "6.2").click();
   await expect(page).toHaveURL(/\/$/);
   try {

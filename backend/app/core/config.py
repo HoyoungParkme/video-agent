@@ -133,11 +133,11 @@ class Config(BaseSettings):
         ],
     )
     DEFAULT_MODELS: dict[str, str] = {"stt": "whisper-1", "text": "gpt-5-mini"}
-    # 인포그래픽(INFRA C11) — 한 장 값은 1024×1024 기준 첫 값이다. 카드 D3에서 실제 한 장으로 고친다
+    # 인포그래픽(INFRA C11) — 낮음은 실측(카드 D3, 세로 한 장 $0.0096), 중간은 외부 가격 정리 값
     IMAGE_OPTIONS: ImageOptions = ImageOptions(
         models=["gpt-image-2"],
         qualities=[
-            ImageQualityOption(id=ImageQuality.low, label="낮음", price_usd=0.006),
+            ImageQualityOption(id=ImageQuality.low, label="낮음", price_usd=0.01),
             ImageQualityOption(id=ImageQuality.medium, label="중간", price_usd=0.05),
         ],
     )

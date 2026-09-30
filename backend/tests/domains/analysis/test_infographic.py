@@ -148,7 +148,7 @@ async def test_draw_done_writes_picture_and_columns(
         1024,
         1536,
     )
-    assert row.cost_usd == choice.image_quality.price_usd == 0.006  # 그 품질의 한 장 값
+    assert row.cost_usd == choice.image_quality.price_usd == 0.01  # 그 품질의 한 장 값
     assert row.path == str(data_dir / "infographics" / f"{video.id}.png")
     assert (data_dir / "infographics" / f"{video.id}.png").read_bytes() == b"png-new"
     assert sorted(p.name for p in (data_dir / "infographics").iterdir()) == [f"{video.id}.png"]

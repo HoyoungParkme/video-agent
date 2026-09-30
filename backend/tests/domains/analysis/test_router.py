@@ -212,7 +212,7 @@ async def test_infographic_make_poll_and_picture(
     assert (body["image"]["width"], body["image"]["height"], body["image"]["cost_usd"]) == (
         1024,
         1536,
-        0.006,
+        0.01,
     )
     r = await api.get(body["image"]["url"])
     assert (r.status_code, r.headers["content-type"], r.content) == (200, "image/png", b"png-new")
