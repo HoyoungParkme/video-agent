@@ -156,6 +156,24 @@ async def test_to_dto_status(db, make) -> None:
             assert video.analyzed_at is None
 
 
+async def test_to_dto_upload_bytes(db, make, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    sha = "b" * 64
+    row = await make.video(
+        source_kind="local", source_id=sha, origin="Talk.MOV", uploaded=True, caption_kind=None
+    )
+    copy = tmp_path / "uploads" / f"{sha}.mov"  # 원래 이름의 확장자(소문자)
+    copy.parent.mkdir()
+    copy.write_bytes(b"x" * 7)
+    video = VideoService.to_dto(row, None, 0)
+    assert (video.uploaded, video.upload_bytes) == (True, 7)
+    copy.unlink()  # 분석이 끝나 지웠다
+    assert VideoService.to_dto(row, None, 0).upload_bytes is None
+    inbox = await make.video(source_kind="local", source_id="c" * 64, origin="a.mp4")
+    video = VideoService.to_dto(inbox, None, 0)  # inbox 영상
+    assert (video.uploaded, video.upload_bytes) == (False, None)
+
+
 def test_status_is_made_only_in_to_dto() -> None:
     """이 함수 말고 status를 만드는 곳이 없다 — VideoStatus 값을 쓰는 함수가 to_dto 하나."""
     users = []

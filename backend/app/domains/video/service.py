@@ -7,6 +7,7 @@ JobService · ChatService에 id로 묻는다 — 같은 세션으로(VA-DOM-002 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import os
 import re
@@ -47,6 +48,7 @@ from app.domains.video.schemas import (
     VideoSummary,
     YouTubeSource,
 )
+from app.shared import sources
 
 ACCEPTED_URLS = ["watch", "youtu.be", "shorts"]
 _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
@@ -133,7 +135,8 @@ class VideoService:
         """VA-MS-001#VideoService.to_dto
 
         행 + 최근 작업 + 대화 수 → Video. 상태와 분석 완료 시각은 컬럼이 아니라 여기서 계산한다 —
-        이 함수 말고 status를 만드는 곳이 없다.
+        이 함수 말고 status를 만드는 곳이 없다. 올린 사본의 크기는 파일을 봐서 붙인다(지웠으면
+        None).
 
         Args:
             row: 영상 행
@@ -151,6 +154,11 @@ class VideoService:
             status = VideoStatus.failed
         else:
             status = VideoStatus.analyzed
+        upload_bytes = None
+        if row.uploaded:
+            copy = sources.local_path(row.origin, row.source_id, True)
+            with contextlib.suppress(FileNotFoundError):  # 분석이 끝나 지웠다
+                upload_bytes = copy.stat().st_size
         return Video(
             id=row.id,
             source_kind=row.source_kind,
@@ -159,6 +167,8 @@ class VideoService:
             channel=row.channel,
             duration_sec=row.duration_sec,
             origin=row.origin,
+            uploaded=row.uploaded,
+            upload_bytes=upload_bytes,
             has_captions=row.has_captions,
             caption_language=row.caption_language,
             caption_kind=row.caption_kind,

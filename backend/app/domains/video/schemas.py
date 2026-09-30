@@ -31,6 +31,8 @@ class Video(BaseModel):
     channel: str | None
     duration_sec: int
     origin: str
+    uploaded: bool
+    upload_bytes: int | None  # 올린 사본이 아직 있으면 그 크기(UI-6 '올린 사본({크기})')
     has_captions: bool
     caption_language: str | None
     caption_kind: CaptionKind | None

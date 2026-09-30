@@ -42,6 +42,7 @@ def _video(row, status: str = "registered") -> Video:
     # 영상 묶음을 부르지 않고 DTO를 바로 — 작업 묶음은 Video를 받기만 한다
     return Video(
         **{c: getattr(row, c) for c in Video.model_fields if hasattr(row, c)},
+        upload_bytes=None,
         status=status,
         analyzed_at=None,
         chat_turn_count=0,
