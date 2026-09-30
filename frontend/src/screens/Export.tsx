@@ -91,8 +91,9 @@ export default function Export({ video, turns, onClose, onDone }: Props) {
   // 열 때마다 파일로 저장으로 시작한다 — 지난번 방법을 기억하지 않는다(UI-7 규칙)
   const [method, setMethod] = useState<ExportMethod>("file");
   const [withChat, setWithChat] = useState(false);
-  // 받은 미리 보기와 그때의 방법 · 체크박스 값. 4.1은 새로 받는 동안 앞의 것을 그대로 보이고,
-  // 복사는 지금 값과 맞는 것(preview)으로만 한다
+  // 받은 미리 보기와 그때의 방법 · 체크박스 값. 4.1은 고른 방법의 노트만 보인다 — 체크박스를 바꿔 새로
+  // 받는 동안은 앞의 것을 그대로 두고, 방법을 바꾸면 새 노트가 올 때까지 비운다(UI-7 S-2). 복사는 지금 값과
+  // 맞는 것(preview)으로만 한다
   const [loaded, setLoaded] = useState<{
     method: ExportMethod;
     withChat: boolean;
@@ -266,9 +267,18 @@ export default function Export({ video, turns, onClose, onDone }: Props) {
           </label>
         )}
         <div className="export-preview" data-el="4">
-          <span className="export-preview-label">미리 보기</span>
-          <pre className="export-preview-box" data-el="4.1">
-            {loaded?.data.markdown.slice(0, PREVIEW_CHARS) ?? ""}
+          <span id="export-preview-label" className="export-preview-label">
+            미리 보기
+          </span>
+          {/* 280px 안에서 스크롤한다 — 키보드로도 스크롤하게 초점을 받는다(UI-7 4.1) */}
+          <pre
+            className="export-preview-box"
+            role="region"
+            aria-labelledby="export-preview-label"
+            tabIndex={0}
+            data-el="4.1"
+          >
+            {loaded?.method === method ? loaded.data.markdown.slice(0, PREVIEW_CHARS) : ""}
           </pre>
         </div>
         <div className="dialog-actions" data-el="5">

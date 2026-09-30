@@ -112,8 +112,10 @@ test("S5 — 며칠 뒤 목록에서 열어 묻고, 파일로 저장 · 복사�
   // 2.3 자리에 복사 안내(2.4). 미리 보기가 클립보드 노트로 바뀐다 — 한눈에 보기는 있고 스크립트 절은 없다
   await expect(inDialog(page, "2.4")).toHaveAttribute("role", "note");
   await expect(inDialog(page, "2.3")).toHaveCount(0);
+  await expect(inDialog(page, "4.1")).toContainText("```mermaid\ngantt\n"); // 새 노트가 온 뒤에
   await expect(inDialog(page, "4.1")).not.toContainText("## 스크립트");
-  await expect(inDialog(page, "4.1")).toContainText("```mermaid\ngantt\n");
+  await expect(inDialog(page, "4.1")).toHaveAttribute("tabindex", "0"); // 키보드로도 스크롤
+  await expect(inDialog(page, "4.1")).toHaveAccessibleName("미리 보기");
   await inDialog(page, "3").click();
   const chat = await exported(request, id, true, "clipboard");
   expect(chat.markdown).toContain("## 질문 기록\n**Q.** 청킹은 어떻게 바꿨어?\n**A.** ");
