@@ -40,7 +40,14 @@ export type CaptionKind = "manual" | "auto";
 export type VideoStatus = "registered" | "in_progress" | "failed" | "analyzed";
 export type JobStatus = "queued" | "running" | "failed" | "done";
 export type JobStage =
-  "pending" | "download" | "extract" | "transcribe" | "summarize" | "chapter" | "suggest";
+  | "pending"
+  | "download"
+  | "extract"
+  | "transcribe"
+  | "summarize"
+  | "chapter"
+  | "suggest"
+  | "frames";
 export type ChunkState = "waiting" | "in_flight" | "done" | "failed";
 export type ErrorKind = "network" | "openai" | "youtube" | "ffmpeg" | "disk" | "unknown";
 export type TranscriptSource = "caption_manual" | "caption_auto" | "stt";
@@ -132,6 +139,17 @@ export interface Chunks {
   items: { seq: number; state: ChunkState }[];
 }
 
+/** 진행 화면의 장면 칸(UI-3 4.9) — missing은 얻지 못하고 넘어간 칸. url은 done일 때만 */
+export interface FrameProgress {
+  done: number;
+  total: number;
+  items: {
+    chapter_seq: number;
+    state: "waiting" | "in_flight" | "done" | "missing";
+    url: string | null;
+  }[];
+}
+
 export interface JobError {
   kind: ErrorKind;
   reason: string;
@@ -150,6 +168,8 @@ export interface Job {
   progress_pct: number;
   remaining_sec: number | null;
   chunks: Chunks | null;
+  /** 장면 단계가 있는 작업만 */
+  frames: FrameProgress | null;
   concurrency: number | null;
   models: Models;
   error: JobError | null;
@@ -167,12 +187,35 @@ export interface Segment {
   text: string;
 }
 
+export type FrameSource = "storyboard" | "local_frame";
+/** absent = 장면 단계 전 결과(채울 수 있다) · making = 채우는 중 · unavailable = 음성 파일 · 원본 없음 */
+export type FramesState = "absent" | "making" | "done" | "unavailable";
+
+export interface Frame {
+  chapter_seq: number;
+  /** 실제로 잘라 온 장면의 시각 — 챕터 시작과 몇 초 다를 수 있다 */
+  sec: number;
+  source: FrameSource;
+  width: number;
+  height: number;
+  /** /api/videos/{id}/frames/{seq} */
+  url: string;
+}
+
+export interface FrameSet {
+  state: FramesState;
+  /** 장면이 있는 챕터만, 챕터 순서대로 */
+  frames: Frame[];
+}
+
 export interface Chapter {
   seq: number;
   part_seq: number | null;
   start_sec: number;
   title: string;
   bullets: string[];
+  /** 대표 장면. 없으면 null(UI-4 6.7이 없다) */
+  frame: Frame | null;
 }
 
 export interface Result {
@@ -199,6 +242,8 @@ export interface Result {
   suggested_questions: { seq: number; text: string }[];
   models: Models;
   analyzed_at: string;
+  /** 대표 장면 — making이면 UI-4가 3초마다 장면을 다시 받는다, absent면 한 번 채우기를 맡긴다 */
+  frames_state: FramesState;
 }
 
 /** 질문 하나와 답(VA-API-001 4장 ChatTurn). cited_secs가 비면 '영상에 없는 내용'. */
@@ -318,6 +363,10 @@ export const api = {
   retry: (id: number) => call<Job>("POST", `/api/videos/${id}/job/retry`),
   /** GET /api/videos/{id}/result — 결과 전부 */
   result: (id: number) => call<Result>("GET", `/api/videos/${id}/result`),
+  /** GET /api/videos/{id}/frames — 장면 상태와 장면들. UI-4가 채우는 동안 3초마다 */
+  frames: (id: number) => call<FrameSet>("GET", `/api/videos/${id}/frames`),
+  /** POST /api/videos/{id}/frames — 옛 결과에 장면 채우기를 맡긴다(202). 두 번 불러도 같다 */
+  fillFrames: (id: number) => call<FrameSet>("POST", `/api/videos/${id}/frames`),
   /** GET /api/videos/{id}/chat — 질문 · 답변 기록, 시간순 */
   chat: (id: number) => call<ChatTurn[]>("GET", `/api/videos/${id}/chat`),
   /** POST /api/videos/{id}/chat — 질문하고 답을 받는다. 실패하면 저장되지 않는다 */

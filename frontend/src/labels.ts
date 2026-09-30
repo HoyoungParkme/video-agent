@@ -19,6 +19,8 @@ export function stageName(stage: JobStage, hasCaptions: boolean): string {
       return "챕터";
     case "suggest":
       return "추천 질문";
+    case "frames":
+      return "장면";
     default:
       return "";
   }
