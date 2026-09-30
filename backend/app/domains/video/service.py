@@ -183,6 +183,7 @@ class VideoService:
     - list() · get(): 작업이 있는 영상 목록(최근 순) · 영상 하나와 최근 작업
     - delete(): 영상과 딸린 것 전부 — 행은 cascade, 임시 폴더는 커밋 뒤
     - release_upload(): 올린 사본을 놓는다(작업이 done이 된 뒤)
+    - sweep_uploads(): 시작 때 올리다 만 것 · 주인 없는 사본 · 끝난 작업의 사본을 지운다
     - info_of() · to_dto(): 출처별 정보 조회 · 행 → Video
     """
 
@@ -562,3 +563,34 @@ class VideoService:
         """
         if video.uploaded:
             await _remove_copy(video.origin, video.source_id)
+
+    async def sweep_uploads(self) -> int:
+        """VA-MS-001#VideoService.sweep_uploads
+
+        시작 때 올린 사본을 청소한다 — main.py가 JobService.fail_orphans 뒤에 부른다(죽은 running이
+        failed가 된 뒤라야 그 사본이 남는다). 올리다 만 `.part-*`는 지운다. 사본은 이름의 해시로
+        주인을 찾아, 주인이 없거나 · 올린 영상이 아니거나 · 작업이 없거나(사전 안내에서 멈췄다) ·
+        작업이 done이면 지운다. failed · queued · running은 남긴다 — 다시 시도 · 대기열이 읽는다.
+        쿼리는 파일 수와 상관없이 영상 한 번 · 작업 요약 한 번이다.
+
+        Returns:
+            지운 파일 수(main.py가 로그 한 줄로 남긴다). 폴더가 없으면 0
+        """
+        folder = Path(config.UPLOAD_DIR)
+        try:
+            names = [e.name for e in os.scandir(folder) if e.is_file()]
+        except FileNotFoundError:
+            return 0
+        doomed = [n for n in names if n.startswith(".part-")]  # 서버가 올리는 도중에 죽었다
+        copies = {n: Path(n).stem for n in names if not n.startswith(".part-")}
+        found = await crud.by_source_ids(self.session, set(copies.values()))
+        rows = {r.source_id: r for r in found}
+        jobs = await self.jobs.latest_by_videos([r.id for r in found])
+        for name, sha in copies.items():
+            row = rows.get(sha)
+            job = jobs.get(row.id) if row is not None else None
+            if row is None or not row.uploaded or job is None or job.status == JobStatus.done:
+                doomed.append(name)
+        for name in doomed:
+            await asyncio.to_thread((folder / name).unlink, missing_ok=True)
+        return len(doomed)

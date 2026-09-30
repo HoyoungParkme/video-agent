@@ -32,6 +32,13 @@ async def by_source_id(session: AsyncSession, source_id: str) -> VideoRow | None
     return await session.scalar(select(VideoRow).where(VideoRow.source_id == source_id))
 
 
+async def by_source_ids(session: AsyncSession, source_ids: set[str]) -> list[VideoRow]:
+    """출처 식별자 여럿으로 — 시작 청소가 사본마다 주인을 한 번에 찾는다."""
+    if not source_ids:
+        return []
+    return list(await session.scalars(select(VideoRow).where(VideoRow.source_id.in_(source_ids))))
+
+
 async def with_jobs(session: AsyncSession) -> list[VideoRow]:
     """작업이 하나라도 있는 영상들. 사전 안내에서 취소한 영상은 빠진다."""
     return list(

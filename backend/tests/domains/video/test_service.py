@@ -671,6 +671,54 @@ async def test_release_upload_leaves_inbox_file(db, make, uploads) -> None:
     assert (inbox / "a.mp4").exists()
 
 
+# --- sweep_uploads
+
+
+async def _copy_of(make, uploads: Path, content: bytes, status: JobStatus | None, **kw) -> str:
+    # 사본 하나와 그 주인 — status가 None이면 작업이 없다
+    row = await _uploaded(make, content, origin="t.mp4") if not kw else await make.video(**kw)
+    if status is not None:
+        await make.job(row.id, status)
+    name = f"{row.source_id}.mp4"
+    (uploads / name).write_bytes(b"x")
+    return name
+
+
+async def test_sweep_uploads(db, make, youtube, probe, uploads) -> None:
+    uploads.mkdir(parents=True)
+    (uploads / ".part-x.mp4").write_bytes(b"x")  # 서버가 올리는 도중에 죽었다
+    (uploads / f"{'e' * 64}.mp4").write_bytes(b"x")  # 주인 없음
+    (uploads / "notes.txt").write_bytes(b"x")  # 이름 모양이 다른 파일도 주인이 없다
+    done = await _copy_of(make, uploads, b"done", JobStatus.done)
+    failed = await _copy_of(make, uploads, b"failed", JobStatus.failed)  # 다시 시도가 읽는다
+    queued = await _copy_of(make, uploads, b"queued", JobStatus.queued)  # 대기열이 읽는다
+    await _copy_of(make, uploads, b"no-job", None)  # 사전 안내에서 멈췄다
+    sha = hashlib.sha256(b"inbox").hexdigest()  # 같은 내용의 inbox 영상 — 올린 영상이 아니다
+    await _copy_of(
+        make, uploads, b"", JobStatus.failed, source_kind="local", source_id=sha, origin="a.mp4"
+    )
+    assert await VideoService(db, youtube, probe).sweep_uploads() == 6
+    assert _left(uploads) == sorted([failed, queued])
+    assert done not in _left(uploads)
+
+
+async def test_sweep_uploads_without_folder(db, youtube, probe, uploads) -> None:
+    assert await VideoService(db, youtube, probe).sweep_uploads() == 0
+
+
+async def test_sweep_uploads_queries_do_not_grow(db, make, youtube, probe, uploads, queries):
+    uploads.mkdir(parents=True)
+    await _copy_of(make, uploads, b"1", JobStatus.failed)
+    queries.clear()
+    await VideoService(db, youtube, probe).sweep_uploads()
+    one = len(queries)
+    for i in range(2, 5):
+        await _copy_of(make, uploads, str(i).encode(), JobStatus.done)
+    queries.clear()
+    await VideoService(db, youtube, probe).sweep_uploads()
+    assert len(queries) == one  # 영상 한 번 · 작업 요약 한 번 — 파일 수에 비례하지 않는다
+
+
 # --- list
 
 
