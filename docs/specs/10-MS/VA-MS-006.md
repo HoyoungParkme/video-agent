@@ -67,6 +67,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 | `config.PIECE_SEC` | 15 | 받아쓰기 토막 길이 상한 — 구간 시각이 토막 경계라 출처 시각이 실제와 15초 안이다([[VA-INFRA-001#C3]], [[VA-PRD-001]] 4장) |
 | `config.PIECE_MIN_SEC` | 2 | 이보다 앞의 무음에서는 자르지 않는다 — 너무 짧은 토막은 앞뒤 말이 없어 받아쓰기가 흔들린다 |
 | `config.PIECE_SILENCE_DB` · `config.PIECE_SILENCE_MIN_SEC` | -30dB · 0.2 | 토막 경계용 무음 판정. 실측(2026-10-01, 강의 앞 20분): 10분 조각 값(-35dB · 0.5초)이면 96토막 중 51개를 15초에서 그냥 잘랐고 이 값이면 101토막 중 8개 — 같은 창의 whisper-1과 글자 차이가 0.202 → 0.179 |
+| `config.PIECE_MAX_ATTEMPTS` · `config.PIECE_RETRY_WAIT_SEC` | 3 · 1 | 토막 하나를 일시 오류로 보내는 횟수 상한과 다시 보내기 전 첫 기다림(다음은 두 배). SDK 재시도를 꺼서([[VA-MS-007]] `OPENAI_MAX_RETRIES`) 여기서 센다. 조각의 재시도(파이프라인, 3번)와 곱해 토막 하나를 9번까지 보낸다 — 계속 실패하는 키 · 잔액 문제는 일시 오류가 아니라 곧바로 올린다(429 중 잔액 없음은 예외 — 9번까지 간다) |
 | `config.PIECE_CONCURRENCY` | 3 | 조각 하나 안에서 동시에 보내는 토막 수. 조각 동시 3과 곱해 9개(분당 약 470회). 실측 동시 4 · 8 · 12에서 10분 조각 15 · 8 · 5초, 오류 0 — 분당 요청 한도가 낮은 계정을 생각해 작게 잡았다 |
 | `config.LLM_RETRY` | 1 | 출력 형식 실패 때 다시 부르는 횟수 |
 | `config.NOT_COVERED_TEXT` | '이 영상에서는 다루지 않습니다.' | `answer.md`의 `not_covered`와 어댑터의 판정([[#answerer_openai.answer]] 4번)이 같은 문자열을 쓰게 |
@@ -227,8 +228,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 **처리**
 1. `total = EXT: ffmpeg.probe(path).format.duration` · `mids = EXT: ffmpeg.silences(path, config.PIECE_SILENCE_DB, config.PIECE_SILENCE_MIN_SEC)` — 10분 조각을 나눌 때([[#audio_split.split]] 2번)보다 민감하게 찾는다
 2. **토막 나누기** — `start = 0`부터 되풀이: `end` = `(start + config.PIECE_MIN_SEC, start + config.PIECE_SEC]` 안의 가장 늦은 무음 시각, 없으면 `start + config.PIECE_SEC`(낱말이 잘릴 수 있다) · `total − start ≤ config.PIECE_SEC`이면 `end = total` · `total − end < 1`이면 `end = total`(1초 미만 자투리를 따로 보내지 않는다 — 그 토막만 16초까지) · `start = end`
-3. 토막마다 태스크, 동시 `config.PIECE_CONCURRENCY`개 — `EXT: ffmpeg.cut(path, s, e, f"{조각 파일 이름(확장자 뺌)}_{i:03d}.mp3")`(조각과 같은 폴더) · `raw = EXT: openai.transcribe(client_for(), 토막 경로, model)` · 토막 파일을 지운다
-4. 한 토막이라도 예외면 남은 태스크를 취소하고 끝나기를 기다린 뒤 **그 예외를 그대로** 올린다(여러 예외를 묶지 않는다 — 파이프라인이 예외 종류로 분류한다). 토막 하나의 실패는 조각 하나의 실패다 — 재시도 · 분류 · 이유 한 줄은 파이프라인의 몫이고([[VA-MS-002#pipeline.transcribe_stage]] · [[VA-MS-002#pipeline.error_kind]] · [[VA-MS-002#pipeline.reason_of]]), 다시 보내면 그 조각의 토막을 모두 다시 보낸다. 성공하든 실패하든 남은 토막 파일을 지운다
+3. `client = client_for()` — 조각 하나에 한 번(키를 바꾸면 다음 조각부터) · 토막마다 태스크, 동시 `config.PIECE_CONCURRENCY`개 — `EXT: ffmpeg.cut(path, s, e, f"{조각 파일 이름(확장자 뺌)}_{i:03d}.mp3")`(조각과 같은 폴더) · `raw = EXT: openai.transcribe(client, 토막 경로, model)` · **일시 오류**(연결 · 시간 초과 · 429 · 5xx)면 그 토막만 `config.PIECE_MAX_ATTEMPTS`번까지 다시 보낸다(기다림 `config.PIECE_RETRY_WAIT_SEC`의 1 · 2배) — 조각 하나가 약 40토막이라 요청 하나의 일시 오류가 조각을 통째로 실패시키고, 다시 보낼 때 받아쓴 토막까지 또 보내지 않게(카드 E3 코드 리뷰) · 토막 파일을 지운다
+4. 한 토막이라도 예외면(일시 오류는 다시 보내도 실패했을 때, 그 밖의 오류 — 키 · 400 등 — 는 곧바로) 남은 태스크를 취소하고 끝나기를 기다린 뒤 **그 예외를 그대로** 올린다(여러 예외를 묶지 않는다 — 파이프라인이 예외 종류로 분류한다). 토막 하나의 실패는 조각 하나의 실패다 — 재시도 · 분류 · 이유 한 줄은 파이프라인의 몫이고([[VA-MS-002#pipeline.transcribe_stage]] · [[VA-MS-002#pipeline.error_kind]] · [[VA-MS-002#pipeline.reason_of]]), 다시 보내면 그 조각의 토막을 모두 다시 보낸다. 성공하든 실패하든 남은 토막 파일을 지운다
 5. `→ [SttSegment(start_sec=s, end_sec=e, text=raw.text.strip(), language=raw.languages[0].code 또는 "") for 토막 순서대로 if 글이 있음]` — 시각은 조각 안 상대 시각(토막 경계). 오프셋은 파이프라인이 더한다. 언어는 API가 감지한 ISO 코드다(`languages`가 비면 `""` — 파이프라인이 언어가 있는 첫 구간의 것을 쓰고, 없으면 `und`)
 
 **출력** `list[SttSegment]` — 토막 하나가 구간 하나
@@ -237,7 +238,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **호출하는 것** `ffmpeg.probe` · `ffmpeg.silences` · `ffmpeg.cut` · `openai.transcribe` ([[VA-MS-007#ffmpeg.silences]] · [[VA-MS-007#ffmpeg.cut]] · [[VA-MS-007#openai.transcribe]])
 
-**테스트 관점** 가짜 ffmpeg · 가짜 응답으로: 무음이 3초마다 있는 40초 조각 → 모든 토막 경계가 무음이고 각 15초 이하 · 무음 없는 40초 → 15 · 15 · 10초 · 15.5초 → 토막 하나(자투리를 따로 보내지 않는다) · 시작 2초 안의 무음에서는 자르지 않는다 · 구간 시각이 토막 경계 그대로, 글은 토막 순서대로 · 빈 글 토막은 구간이 없다 · `languages=[{code: "ko"}]` → `language='ko'`, 비면 `''` · 동시에 도는 받아쓰기가 `PIECE_CONCURRENCY`를 넘지 않는다(가짜가 센다) · 한 토막이 429 → 그 예외가 그대로 나가고 다른 토막은 취소되며 토막 파일이 남지 않는다 · 성공해도 토막 파일이 남지 않는다
+**테스트 관점** 가짜 ffmpeg · 가짜 응답으로: 무음이 3초마다 있는 40초 조각 → 모든 토막 경계가 무음이고 각 15초 이하 · 무음 없는 40초 → 15 · 15 · 10초 · 15.5초 → 토막 하나(자투리를 따로 보내지 않는다) · 시작 2초 안의 무음에서는 자르지 않는다 · 구간 시각이 토막 경계 그대로, 글은 토막 순서대로 · 빈 글 토막은 구간이 없다 · `languages=[{code: "ko"}]` → `language='ko'`, 비면 `''` · 동시에 도는 받아쓰기가 `PIECE_CONCURRENCY`를 넘지 않는다(가짜가 센다) · 한 토막이 429 한 번 → 그 토막만 다시 보내 구간이 모두 나온다 · 429가 세 번 → 그 예외가 그대로 나간다(그 토막을 세 번 보냈다) · 400 → 다시 보내지 않고 곧바로 나가며 다른 토막은 취소되고 토막 파일이 남지 않는다 · 성공해도 토막 파일이 남지 않는다 · `client_for`는 조각 하나에 한 번
 
 ---
 
