@@ -179,6 +179,9 @@ class Config(BaseSettings):
     FFMPEG_BIN: str = "ffmpeg"
     FFPROBE_BIN: str = "ffprobe"
     OPENAI_TIMEOUT_SEC: float = 120
+    # 받아쓰기에 알려 주는 말의 후보(PRD R3 한국어 · 영어) — 주면 응답에 감지한 언어 코드가
+    # 온다(MS-007)
+    STT_LANGUAGES: list[str] = ["ko", "en"]
     # 인포그래픽 한 장의 상한 — 세로 한 장이 수십 초 걸린다. 뒤에서 돌아 web 넘기기 60초와 무관
     IMAGE_TIMEOUT_SEC: float = 180
     OPENAI_BASE_URL: str | None = None  # E2E의 가짜 OpenAI 서버만 채운다

@@ -137,22 +137,23 @@ async def verify_key(key: str) -> KeyCheck:
 async def transcribe(client: AsyncOpenAI, path: str, model: str) -> dict:
     """VA-MS-007#openai.transcribe
 
-    음성 파일 하나를 받아쓴다 — verbose_json, 구간 단위 시각. 언어는 자동 감지.
+    음성 파일 하나를 받아쓴다 — json. 시각은 받지 않는다: 부르는 쪽이 15초 이하 토막을 보내 그
+    경계를 쓴다(VA-INFRA-001 C3). 말의 후보(한국어 · 영어)를 알려 주면 감지한 언어가 응답에 온다.
 
     Args:
         client: `client(key)`가 준 클라이언트
-        path: 음성 파일(25MB 이하)
+        path: 음성 파일(토막)
         model: 받아쓰기 모델
 
     Returns:
-        응답 dict — language · duration · segments[{start, end, text}]
+        응답 dict — text · languages[{code}] · usage
     """
     with open(path, "rb") as f:
         resp = await client.audio.transcriptions.create(
             model=model,
             file=f,
-            response_format="verbose_json",
-            timestamp_granularities=["segment"],
+            response_format="json",
+            languages=config.STT_LANGUAGES,
         )
     return resp.model_dump()
 

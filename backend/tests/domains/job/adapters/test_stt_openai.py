@@ -53,13 +53,14 @@ async def test_segments_without_empty_text(chunk: str) -> None:
     assert all(s.language == "ko" for s in got)
 
 
-async def test_request_asks_verbose_json_segments(chunk: str) -> None:
+async def test_request_asks_json_with_languages(chunk: str) -> None:
+    # infra가 json · 말의 후보로 청한다(MS-007 v14) — 토막 나누기는 어댑터의 다음 커밋
     fake = FakeTranscriptions({"language": "english", "segments": []})
     assert await _adapter(fake).transcribe(chunk, "whisper-1") == []
     assert fake.kwargs["model"] == "whisper-1"
-    assert fake.kwargs["response_format"] == "verbose_json"
-    assert fake.kwargs["timestamp_granularities"] == ["segment"]
-    assert "language" not in fake.kwargs  # 자동 감지
+    assert fake.kwargs["response_format"] == "json"
+    assert fake.kwargs["languages"] == ["ko", "en"]
+    assert "timestamp_granularities" not in fake.kwargs
 
 
 async def test_unknown_language_name_kept(chunk: str) -> None:

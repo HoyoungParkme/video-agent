@@ -166,15 +166,21 @@ class _Recorder:
 
 
 async def test_transcribe(tmp_path: Path) -> None:
-    audio = tmp_path / "1.mp3"
+    audio = tmp_path / "1_003.mp3"
     audio.write_bytes(b"mp3")
-    body = {"language": "korean", "duration": 600.0, "segments": [{"start": 0.0, "end": 4.2}]}
+    body = {
+        "text": "안녕하세요.",
+        "languages": [{"code": "ko"}],
+        "usage": {"type": "duration", "seconds": 15.0},
+    }
     rec = _Recorder(SimpleNamespace(model_dump=lambda: body))
     fake = SimpleNamespace(audio=SimpleNamespace(transcriptions=rec))
-    assert await openai.transcribe(fake, str(audio), "whisper-1") == body
-    assert rec.kwargs["response_format"] == "verbose_json"
-    assert rec.kwargs["timestamp_granularities"] == ["segment"]
-    assert rec.kwargs["model"] == "whisper-1"
+    assert await openai.transcribe(fake, str(audio), "gpt-transcribe") == body
+    assert rec.kwargs["response_format"] == "json"
+    assert rec.kwargs["languages"] == ["ko", "en"]
+    assert rec.kwargs["model"] == "gpt-transcribe"
+    # 시각은 청하지 않는다 — gpt-transcribe는 verbose_json에 400이다(2026-10-01 확인)
+    assert "timestamp_granularities" not in rec.kwargs
     assert "language" not in rec.kwargs
     assert rec.kwargs["file"].closed
 
