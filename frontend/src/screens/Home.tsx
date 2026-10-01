@@ -6,7 +6,8 @@
  * 로컬 파일은 둘로 넣는다 — 끌어 놓기(창 어디에 놓아도) · 파일 고르기로 올리기, inbox에서 고르기. 여러 파일 ·
  * 받지 않는 형식은 보내기 전에 거른다. 올리는 동안은 진행과 멈추기, 다 보내면 파일 확인 중이고, 응답은
  * 등록 응답과 같이 다룬다. 올리다 끊기면 한 줄과 다시 올리기. 올리는 동안 떠나려 하면 먼저 묻는다 —
- * 새로 고침 · 창 닫기는 브라우저 창(beforeunload), 앱 안 링크는 확인 창(leave.ts). 떠나면 멈춘다.
+ * 새로 고침 · 창 닫기는 브라우저 창(beforeunload), 앱 안 링크는 확인 창(leave.ts). 떠나면 멈춘다. 다 보내면
+ * (파일 확인 중) 묻지 않는다 — 서버가 다 받아 멈출 것이 없다.
  * 분석(3.3) · 선택한 파일 분석(4.6)은 등록 응답의 status로 갈 곳을 정한다 — registered면 UI-2, analyzed면
  * UI-4와 짧은 알림, 그 밖은 UI-3. 대기 표시는 누른 버튼에, 그동안은 어느 쪽도 새 요청을 보내지 않는다.
  * 행 휴지통(6.8)은 모든 상태의 행에 있고 UI-6을 연다. 지우면 목록을 다시 받고, 초점은 바로 아래 행 →
@@ -38,7 +39,7 @@ import EmptyBox from "@/components/EmptyBox";
 import { durationLabel } from "@/components/TimeChip";
 import { flash } from "@/components/Toast";
 import { ACCEPTED, analyzedLabel, KINDS, sizeLabel, stageName } from "@/labels";
-import { guardLeave, leaveTo } from "@/leave";
+import { guardLeave, leaveTo, uploading } from "@/leave";
 import Delete, { takeListFocus, TrashIcon } from "@/screens/Delete";
 import Estimate, { Blocked, blockedOf, type BlockedInfo } from "@/screens/Estimate";
 
@@ -425,9 +426,13 @@ export default function Home() {
         alert: true,
       });
     }
-    const { done, abort } = api.upload(file, (sent) => setSending((s) => s && { ...s, sent }));
+    const { done, abort } = api.upload(file, (sent) => {
+      setSending((s) => s && { ...s, sent });
+      // 다 보냈다(파일 확인 중) — 서버가 다 받아 멈출 것이 없으니 떠나기 전에 묻지 않는다
+      if (sent >= file.size) guardLeave(null);
+    });
     stopSending.current = abort;
-    guardLeave(abort); // 떠나기를 고르면 이것으로 멈춘다
+    guardLeave(abort); // 보내는 동안 떠나기를 고르면 이것으로 멈춘다
     setSending({ file, sent: 0, abort });
     try {
       route(await done);
@@ -469,14 +474,17 @@ export default function Home() {
     [],
   );
 
-  // 올리는 동안 새로 고침 · 창 닫기 · 주소 바꾸기는 브라우저가 먼저 묻는다(UI-1 규칙)
-  const uploading = sending !== null;
+  // 보내는 동안 새로 고침 · 창 닫기 · 주소 바꾸기는 브라우저가 먼저 묻는다(UI-1 규칙). 보내는 중인지는
+  // leave.ts 한곳이 안다 — 링크의 확인 창과 같은 때 켜지고 꺼진다
   useEffect(() => {
-    if (!uploading) return;
-    const ask = (e: BeforeUnloadEvent) => e.preventDefault();
+    const ask = (e: BeforeUnloadEvent) => {
+      if (!uploading()) return;
+      e.preventDefault();
+      e.returnValue = ""; // 옛 Chromium(119 전)은 이것이 있어야 묻는다
+    };
     window.addEventListener("beforeunload", ask);
     return () => window.removeEventListener("beforeunload", ask);
-  }, [uploading]);
+  }, []);
 
   // 끌어 놓기 — 창 어디에 놓아도 같다. 파일을 끌 때만 덮개(8)를 띄우고, 브라우저가 파일을 열어
   // 버리지 않게 페이지 전체에서 놓기를 받는다(UI-1 규칙)

@@ -249,6 +249,24 @@ test("올리는 동안 떠나려 하면 묻는다 — 새로 고침은 브라우
   expect(dialogs).toEqual(["beforeunload"]);
   await expect(el(page, "4.11")).toBeVisible();
 
+  // 지금 화면과 같은 주소(로고 → '/')는 떠나지 않아 묻지 않는다. 목록 행(6.1)은 묻는다 — 앞 테스트가
+  // 남긴 행이 있으면
+  const asked: string[] = [];
+  page.on("dialog", (d) => {
+    asked.push(d.type());
+    void d.dismiss();
+  });
+  await page.getByRole("link", { name: "Video Agent" }).click();
+  await expect(el(page, "4.11")).toBeVisible();
+  const rows = await el(page, "6.1").count();
+  if (rows) {
+    await el(page, "6.1").click();
+    await expect(el(page, "4.11")).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+  }
+  page.removeAllListeners("dialog");
+  expect(asked).toEqual(rows ? ["confirm"] : []);
+
   // 앱 안 링크 — 확인 창. 취소면 이 화면에서 그대로 올린다
   page.once("dialog", (d) => {
     dialogs.push(`${d.type()}:${d.message()}`);
