@@ -66,6 +66,16 @@ test("한눈에 보기 — 줄마다 Tab 한 번, 화살표로 옮기고 Enter�
   await page.keyboard.press("Shift+Tab");
   await expect(focused).toHaveAttribute("aria-label", "챕터 2 · 0:20:00 데이터를 찾는 시간");
   await expect(el(page, "13.6")).toContainText("데이터를 찾는 시간");
+
+  // 키보드와 마우스가 겹치면 마지막으로 가리킨 쪽 — 마우스로 가리키면 그 칸, 다시 → 하면 초점 칸
+  const bars = page.getByRole("toolbar", { name: "챕터 막대" });
+  await bars.getByRole("button", { name: /^챕터 4 · / }).hover();
+  await expect(el(page, "13.6")).toContainText("실습 준비");
+  await expect(el(page, "13.6")).not.toContainText("옮기기");
+  await page.keyboard.press("ArrowRight");
+  await expect(focused).toHaveAttribute("aria-label", /^챕터 3 · /);
+  await expect(el(page, "13.6")).toContainText("카탈로그 후보");
+  await expect(el(page, "13.6")).toContainText("← → 옮기기 · Enter 이동");
 });
 
 test("마우스로 가리킨 칸 — 범례 자리에 이름, 카드를 나가면 범례", async ({ page }) => {

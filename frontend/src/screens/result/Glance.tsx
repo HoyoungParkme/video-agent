@@ -189,8 +189,9 @@ function useRow(row: Row, count: number, current: number, onPoint: (p: Pointed |
  * 13 타임라인 카드 — (파트 띠) · 인사이트 점 · 챕터 막대 · 시각 눈금 · 범례. 칸은 점 · 눈금과 같은 비례로
  * 놓는다 — flex 몫으로 늘리면 틈이 쌓여 긴 영상에서 칸 경계가 점 · 눈금과 14px까지 어긋났다(UI-4 규칙).
  * 띠 · 점 · 막대는 줄마다 Tab 한 번(useRow)이다. 키보드 초점이 줄에 있거나 마우스가 칸을 가리키면 범례(13.5)
- * 자리에 그 칸의 이름(13.6)을 보인다 — 좁은 칸은 칸 안에 이름이 들어가지 않는다. 마우스가 카드 안에 있는 동안은
- * 마지막으로 가리킨 칸이 남고(WCAG 1.4.13), Esc로 닫는다. 화면 읽기 프로그램은 칸의 aria-label을 읽는다.
+ * 자리에 그 칸의 이름(13.6)을 보인다 — 좁은 칸은 칸 안에 이름이 들어가지 않는다. 둘이 겹치면 마지막으로 가리킨
+ * 쪽이다. 마우스로 가리킨 이름은 카드 안에 있는 동안 남고(WCAG 1.4.13) 카드를 나가면, 키보드로 가리킨 이름은
+ * 초점이 줄을 떠나면 거둔다. Esc로 닫는다. 화면 읽기 프로그램은 칸의 aria-label을 읽는다.
  */
 function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "onToggle">) {
   const [track, width] = useWidth<HTMLDivElement>();
@@ -206,18 +207,22 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
   const rowCount = Math.max(0, ...rows) + 1;
   const marks = ticks(duration, long);
 
-  const [focusPoint, setFocusPoint] = useState<Pointed | null>(null);
-  const [hoverPoint, setHoverPoint] = useState<Pointed | null>(null);
+  // 13.6에 보일 칸 — 키보드든 마우스든 마지막으로 가리킨 것
+  const [pointed, setPointed] = useState<Pointed | null>(null);
   const [hushed, setHushed] = useState(false);
+  const point = (p: Pointed) => {
+    setPointed(p);
+    setHushed(false);
+  };
+  // 마우스로 누른 초점은 가리킴(hover)이 이미 알렸다. 초점이 줄을 떠나면 키보드로 가리킨 이름만 거둔다
   const pointFocus = (p: Pointed | null) => {
-    setFocusPoint(p);
-    setHushed(false);
+    if (p === null) setPointed((cur) => (cur?.keys ? null : cur));
+    else if (p.keys) point(p);
   };
-  const pointHover = (row: Row, index: number) => {
-    setHoverPoint({ row, index, keys: false });
-    setHushed(false);
-  };
-  const shown = hushed ? null : focusPoint?.keys ? focusPoint : hoverPoint;
+  const pointHover = (row: Row, index: number) => point({ row, index, keys: false });
+  // 카드를 나가면 마우스로 가리킨 이름만 거둔다 — 키보드 초점은 아직 줄에 있다
+  const leaveCard = () => setPointed((cur) => (cur?.keys ? cur : null));
+  const shown = hushed ? null : pointed;
   // 이름 줄이 떠 있는 동안 Esc로 닫는다 — 마우스로 띄웠으면 초점이 카드 밖에 있을 수 있다
   const showing = shown !== null;
   useEffect(() => {
@@ -267,7 +272,7 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
   const named = shown ? label(shown) : null;
 
   return (
-    <div className="timeline" data-el="13" onMouseLeave={() => setHoverPoint(null)}>
+    <div className="timeline" data-el="13" onMouseLeave={leaveCard}>
       {parts.length > 0 && (
         <div className="timeline-band" aria-label="파트 띠" {...band.toolbar}>
           {parts.map((p, i) => (
