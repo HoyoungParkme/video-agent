@@ -1825,7 +1825,7 @@ components:
 
 - [x] 분석이 도는 동안 새 분석 — 결정: 대기열(`status = queued`, `queue_position`). 409 `another-job-running`은 없앴다(5장 8, 사용자 결정 2026-09-21)
 - [x] 웹에서 받은 키의 저장 위치 — 결정: `.env` 파일 하나, 앱이 그 줄을 고친다. `KeyStatus.stored_in`은 '.env에 저장됨' 고정([[VA-INFRA-001#C6]], 사용자 결정 2026-09-21)
-- [ ] 예상 비용의 텍스트 모델 몫(`Estimate.text_cost_usd`) 추정식 — MINISPEC
+- [x] 예상 비용의 텍스트 모델 몫(`Estimate.text_cost_usd`) 추정식 — 반영: MINISPEC 작업 서비스 `JobService.estimate` 5번(영상 길이로 입력 토큰을 어림해 요약 · 챕터 · 추천 질문 세 번 × 입력 단가 + 출력 단가)
 - [x] 인포그래픽 `low` 한 장 값(`ImageQualityOption.price_usd`) — 결정: $0.01. 카드 D3에서 실제 한 장이 $0.0096이었다([[VA-INFRA-001]] 9장)
 - [ ] 인포그래픽 `medium` 한 장 값 — 재지 않아 첫 값 $0.05(외부 가격 정리) 그대로다. 처음 만들 때 사용량으로 고친다([[VA-INFRA-001]] 9장)
 - [x] 올리기 요청의 시간 제한 — 결정: 그대로 둔다. 카드 D4 실측: 588MB가 약 3초(같은 PC, 진짜 스택). web의 API 라우트는 Node `http.request`로 넘겨 기다림 제한이 없고, 남은 제한은 web(Node 서버)이 요청 전체를 받는 300초(`requestTimeout` 기본값)다 — 같은 PC 속도면 수십 GB다(MINISPEC 영상 서비스 3장과 같은 항목)
@@ -1833,9 +1833,9 @@ components:
 - [x] 조각이 없는 단계의 `Job.remaining_sec` 계산 — 결정: 예상 전체 시간 − 지난 시간, 0이면 화면이 비운다(MINISPEC 작업 서비스 `JobService.remaining_sec`). 바꿈(사용자 결정, 2026-09-23): 작업 전체가 끝날 때까지, 끝난 단계의 오차는 넘기지 않는다 — 받아쓰기에 요약 세 단계 몫을 더하고 요약 세 단계는 그 몫에서 뺀다([[VA-UI-001]] 8장)
 - [ ] inbox 파일 길이 재기 비용 — 파일마다 ffprobe. 수십 개면 첫 응답이 느릴 수 있어 수정 시각 기준 캐시를 둘지 MINISPEC
 - [x] 내보내기 파일 이름 규칙(제목 → 파일 이름, 금지 문자, 같은 이름) — 반영: MINISPEC 결과 서비스 `AnalysisService.filename_for`. 같은 이름은 덮어쓴다 — `-{id}`를 붙이지 않는다(사용자 결정 2026-09-28)
-- [ ] 서버 재시작으로 죽은 작업 — 시작 때 `running`인 작업을 `failed`(kind `unknown`)로 돌려 다시 시도할 수 있게. 클래스 명세 · MINISPEC
+- [x] 서버 재시작으로 죽은 작업 — 반영: 시작 때 `running`인 작업을 `failed`(kind `unknown`, '서버가 다시 시작됨')로 되돌려 다시 시도로 이어 간다(MINISPEC 작업 서비스 `JobService.fail_orphans`, 카드 B1)
 - [x] 작업 없는 영상(`registered`)과 `status` · `stage` 분리를 [[VA-DOM-001#Video]] · [[VA-DOM-001#AnalysisJob]]과 다시 쓸 클래스 명세에 반영(5장 1 · 2) — 반영: 도메인 모델 v3 · 클래스 명세 v10
 - [x] `Video.status`가 `failed`인 영상을 목록에서 구분하는 것 — 반영: 도메인 모델 v3 Video(완료 · 진행 중 · 대기 중 · 실패)
-- [ ] 설정 서비스가 사는 곳 — 키 · 모델은 도메인이 아니다([[VA-DOM-001]] 1장). `SettingsService`를 `core/`에 둘지 클래스 명세에서
+- [x] 설정 서비스가 사는 곳 — 결정: `core/settings.py`. 키 · 모델은 도메인이 아니다([[VA-DOM-001]] 1장, [[VA-DOM-002]] 1장 폴더 구조)
 - [x] (반영: ERD v4 `queued_at` · 작업 서비스 MINISPEC v2) **되먹임** 대기열의 순서 기준 — 다시 시도한 작업은 대기열 끝으로 간다(3.4 다시 시도 3번). `started_at`은 다시 시도해도 그대로라 순서 기준으로 쓸 수 없다. `analysis_jobs`에 대기열에 들어간 때(`queued_at`)가 필요하다 — ERD · MINISPEC(작업 서비스)
 - [x] (반영: 설정 서비스 MINISPEC v2 `require_key` · 화면 설계 v6 UI-1 규칙 · 클래스 명세 v12) **되먹임** 연결 실패 뒤 다시 확인(5장 11) — MINISPEC(설정 서비스)의 「마지막 결과로 막기」가 마지막 결과가 `network`면 한 번 다시 확인하게 고친다. [[VA-UI-001#UI-1]] 규칙에도 「연결 실패는 막지 않는다」 한 문장([[VA-UI-002]] 2장의 같은 되먹임)
