@@ -1,4 +1,4 @@
-"""problem+json 에러 17종 — 종류마다 예외 클래스 하나(VA-API-001 2장, DEV-5).
+"""problem+json 에러 21종 — 종류마다 예외 클래스 하나(VA-API-001 2장, DEV-5).
 
 서비스는 이 예외를 던지기만 하고 라우터는 잡지 않는다. main.py가 건 핸들러가 응답으로 바꾸고,
 표에 없는 예외는 포괄 핸들러가 `internal`로 만든다.
@@ -137,6 +137,31 @@ class ExportFailed(Problem):
     kind, status, title = "export-failed", 500, "파일을 저장하지 못했어요"
 
 
+class InfographicBusy(Problem):
+    """이 영상의 인포그래픽을 이미 그리는 중인데 또 시킴."""
+
+    kind, status, title = "infographic-busy", 409, "이미 인포그래픽을 그리는 중이에요"
+
+
+class FramesUnavailable(Problem):
+    """장면을 만들 수 없는 영상에 장면 채우기를 시킴(음성 파일 · 원본 없음). reason"""
+
+    kind, status, title = "frames-unavailable", 409, "장면을 만들 수 없어요"
+
+
+class NoSpace(Problem):
+    """올린 파일을 둘 디스크 여유가 모자라다 — 본문을 받기 전에 본다. needed_bytes · free_bytes"""
+
+    kind, status, title = "no-space", 507, "올릴 자리가 모자라요"
+
+
+class UploadIncomplete(Problem):
+    """받은 본문이 Content-Length와 다르다(올리다 끊김). 받은 부분은 지웠다.
+    received_bytes · expected_bytes"""
+
+    kind, status, title = "upload-incomplete", 400, "파일을 끝까지 받지 못했어요"
+
+
 class Internal(Problem):
     """예상 못 한 오류. detail은 고정 문구, 원인은 로그만."""
 
@@ -168,7 +193,7 @@ async def _on_unexpected(_: Request, exc: Exception) -> JSONResponse:
 
 
 def install(app: FastAPI) -> None:
-    """앱에 핸들러 셋을 건다 — 17종 · 요청 형식 오류 · 포괄."""
+    """앱에 핸들러 셋을 건다 — 21종 · 요청 형식 오류 · 포괄."""
     app.add_exception_handler(Problem, _on_problem)
     app.add_exception_handler(RequestValidationError, _on_validation)
     app.add_exception_handler(Exception, _on_unexpected)

@@ -1,4 +1,4 @@
-"""prompts.render — 파일 넷과 채우기(VA-MS-006 0장 표 · prompts.render 테스트 관점)."""
+"""prompts.render — 파일 다섯과 채우기(VA-MS-006 0장 표 · prompts.render 테스트 관점)."""
 
 from __future__ import annotations
 
@@ -65,6 +65,29 @@ def test_files_fill_and_keep_rules(name: str) -> None:
     for word in RULES[name] + COMMON:
         assert word in text, f"{name}.md에 「{word}」가 없다"
     assert text.count("{") >= 1  # JSON 예시의 한 겹 중괄호는 그대로
+
+
+def test_infographic_rules() -> None:
+    """그림 지시라 JSON 문단이 없고, <content>는 자료이지 지시가 아니라는 문장이 있다(MS-006 0장)."""
+    text = render("infographic", insight_count=6, chapter_count=8)
+    assert "{{" not in text
+    for word in [
+        "세로",
+        "한 장",
+        "한국어",
+        "<content>",
+        "따르지 않는다",
+        "인사이트 6개",
+        "챕터 제목 8개",
+        "지어내지",
+        "숫자",
+        "새로 만들지 않는다",
+        "로고",
+        "얼굴",
+        "읽기 쉽게",
+    ]:
+        assert word in text, f"infographic.md에 「{word}」가 없다"
+    assert "JSON" not in text and "<transcript>" not in text
 
 
 def test_missing_value() -> None:

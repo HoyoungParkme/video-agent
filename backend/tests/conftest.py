@@ -56,9 +56,14 @@ from app.domains.analysis.models import TranscriptSource  # noqa: E402
 from app.domains.analysis.schemas import (  # noqa: E402
     CaptionLine,
     ChapterDraft,
+    FrameShot,
+    FrameSource,
+    ImageShot,
+    InfographicBrief,
     Segment,
     SummaryDraft,
 )
+from app.domains.analysis.service import AnalysisService  # noqa: E402
 from app.domains.chat.models import ChatTurnRow  # noqa: E402
 from app.domains.chat.schemas import AnswerDraft, ChatTurn  # noqa: E402
 from app.domains.job.models import (  # noqa: E402
@@ -169,6 +174,8 @@ async def db(migrated: None) -> AsyncIterator[AsyncSession]:
         await s.commit()
         JobService.work_event.clear()
         JobService.tasks.clear()
+        AnalysisService._making.clear()
+        AnalysisService._frame_tasks.clear()
         yield s
 
 
@@ -433,6 +440,75 @@ def summarizer() -> FakeSummarizer:
 
 
 @dataclass
+class FakeFrames:
+    """FrameSourcePort 자리 — 시각마다 작은 그림 파일을 쓰고 FrameShot을 낸다. 받은 것을 적는다.
+
+    none_at: 그 차례(0부터)는 None · fail_at: 그 차례에서 통째로 실패 · gate: 첫 장 앞에서 기다린다.
+    """
+
+    source: FrameSource = FrameSource.storyboard
+    none_at: set[int] = field(default_factory=set)
+    fail_at: int | None = None
+    gate: asyncio.Event | None = None
+    calls: list[tuple[str, list[float], str]] = field(default_factory=list)
+
+    async def frames(
+        self, source: str, secs: list[float], dest_dir: str
+    ) -> AsyncIterator[FrameShot | None]:
+        self.calls.append((source, secs, dest_dir))
+        if self.gate is not None:
+            await self.gate.wait()
+        for i, sec in enumerate(secs):
+            if i == self.fail_at:
+                raise RuntimeError("스토리보드가 없음")
+            if i in self.none_at:
+                yield None
+                continue
+            path = Path(dest_dir) / f"shot-{i}.jpg"
+            path.write_bytes(b"jpeg")
+            yield FrameShot(sec + 1, self.source, 320, 180, str(path))
+
+
+@dataclass
+class FakeImageMaker:
+    """ImageMakerPort 자리 — dest에 작은 그림을 쓰고 ImageShot을 낸다. 받은 재료를 적는다.
+
+    fail: 이 예외로 실패 · gate: 그리기 앞에서 기다린다(그리는 중을 붙잡아 둔다).
+    """
+
+    fail: Exception | None = None
+    gate: asyncio.Event | None = None
+    picture: bytes = b"png-new"
+    calls: list[tuple[InfographicBrief, str, str]] = field(default_factory=list)
+
+    async def infographic(
+        self, brief: InfographicBrief, model: str, quality: str, dest: str
+    ) -> ImageShot:
+        self.calls.append((brief, model, str(quality)))
+        if self.gate is not None:
+            await self.gate.wait()
+        if self.fail is not None:
+            raise self.fail
+        Path(dest).write_bytes(self.picture)
+        return ImageShot(1024, 1536, dest)
+
+
+@pytest.fixture
+def image_maker() -> FakeImageMaker:
+    return FakeImageMaker()
+
+
+@pytest.fixture
+def storyboard() -> FakeFrames:
+    return FakeFrames()
+
+
+@pytest.fixture
+def local_frames() -> FakeFrames:
+    return FakeFrames(source=FrameSource.local_frame)
+
+
+@dataclass
 class FakeAnswerer:
     """AnswererPort 자리 — 근거 있는 답(기본) · 근거 없는 답(draft를 바꾼다) · 실패(error).
     받은 질문 · 맥락 · 앞선 턴 · 모델을 적는다."""
@@ -566,7 +642,7 @@ def stt() -> FakeStt:
 
 @pytest.fixture
 async def api(
-    db, youtube, probe, summarizer, answerer, monkeypatch
+    db, youtube, probe, summarizer, answerer, storyboard, local_frames, image_maker, monkeypatch
 ) -> AsyncIterator[httpx.AsyncClient]:
     """앱에 바로 붙는 클라이언트 — 시작 이벤트(워커) 없이, 어댑터는 가짜로."""
     from app.main import app
@@ -575,6 +651,9 @@ async def api(
     monkeypatch.setattr(app.state, "media_probe", probe)
     monkeypatch.setattr(app.state, "summarizer", summarizer)
     monkeypatch.setattr(app.state, "answerer", answerer)
+    monkeypatch.setattr(app.state, "storyboard", storyboard)
+    monkeypatch.setattr(app.state, "local_frames", local_frames)
+    monkeypatch.setattr(app.state, "image_maker", image_maker)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c

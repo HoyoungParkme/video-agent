@@ -11,7 +11,7 @@ async def test_post_job_starts(api, key, make) -> None:
     assert r.status_code == 201
     body = r.json()
     assert (body["status"], body["stage"], body["queue_position"]) == ("queued", "pending", 1)
-    assert body["stages"] == ["download", "summarize", "chapter", "suggest"]
+    assert body["stages"] == ["download", "summarize", "chapter", "suggest", "frames"]
     assert body["models"] == {"stt": None, "text": "gpt-5-mini"}
     again = await api.post(f"/api/videos/{row.id}/job")
     assert (again.status_code, again.json()["type"], again.json()["job_status"]) == (
@@ -39,6 +39,22 @@ async def test_get_job(api, make) -> None:
         None,
     )
     assert (await api.get("/api/videos/999/job")).json()["resource"] == "video"
+
+
+async def test_get_job_has_frame_cells(api, make) -> None:
+    row = await make.video()
+    stages = ["download", "summarize", "chapter", "suggest", "frames"]
+    await make.job(row.id, JobStatus.running, stages=stages, stage="frames", progress_pct=90)
+    await make.chapters(row.id, [(0.0, "하나", []), (600.0, "둘", [])])
+    body = (await api.get(f"/api/videos/{row.id}/job")).json()
+    assert body["frames"] == {
+        "done": 0,
+        "total": 2,
+        "items": [
+            {"chapter_seq": 1, "state": "waiting", "url": None},
+            {"chapter_seq": 2, "state": "waiting", "url": None},
+        ],
+    }
 
 
 async def test_retry(api, key, make) -> None:

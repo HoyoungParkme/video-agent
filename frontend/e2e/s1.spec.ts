@@ -1,6 +1,7 @@
 /**
- * S1 — 자막 있는 YouTube 하나를 주소 → 사전 안내 → 4단계 → 결과까지(VA-SCN-001 S1 · S3, VA-CODE-001 B1).
- * 결과에서는 인사이트 칩 · 챕터 카드 · 구간 줄 어디를 눌러도 같은 이동이다(공통 1.3).
+ * S1 — 자막 있는 YouTube 하나를 주소 → 사전 안내 → 5단계 → 결과까지(VA-SCN-001 S1 · S3, VA-CODE-001 B1 · D1 · D2).
+ * 결과에서는 인사이트 칩 · 챕터 카드 · 구간 줄과 한눈에 보기의 막대 · 점 · 마인드맵 노드 어디를 눌러도
+ * 같은 이동이다(공통 1.3). 그 시각이 든 챕터가 막대 · 마인드맵에서 함께 강조된다.
  * 같은 주소를 다른 꼴로 다시 넣으면 UI-2 없이 결과와 '이미 분석한 영상입니다'.
  * 자막 없는 YouTube는 받아쓰기 필요 판이 열린다(받아쓰기 흐름은 e2e/s2.spec.ts).
  */
@@ -35,7 +36,7 @@ test("자막 있는 YouTube — 사전 안내부터 결과와 시각 이동까�
 
   await inDialog(page, "6.3").click();
 
-  // UI-3 — 단계 넷(자막 가져오기 → 핵심 요약 → 챕터 → 추천 질문)
+  // UI-3 — 단계 다섯(자막 가져오기 → 핵심 요약 → 챕터 → 추천 질문 → 장면)
   await expect(page).toHaveURL(/\/videos\/\d+\/progress$/);
   await expect(el(page, "2.3")).toHaveText("YouTube · 50:12 · 자막 있음");
   await expect(page.locator(".step-name")).toHaveText([
@@ -43,6 +44,7 @@ test("자막 있는 YouTube — 사전 안내부터 결과와 시각 이동까�
     "핵심 요약",
     "챕터",
     "추천 질문",
+    "장면",
   ]);
   await expect(el(page, "3.1")).toHaveText(
     /핵심 요약을 만드는 중|챕터를 만드는 중|추천 질문을 만드는 중/,
@@ -85,6 +87,64 @@ test("자막 있는 YouTube — 사전 안내부터 결과와 시각 이동까�
     .click();
   await expect(el(page, "8.2")).toHaveText("05:00");
   await expect(page.locator('.chapter[aria-pressed="true"]')).toHaveCount(0);
+
+  // 한눈에 보기(12) — 1시간 이하라 파트 띠 없이 점 · 막대 · 눈금 · 범례, 마인드맵은 챕터 노드와 요점
+  await expect(el(page, "12.1")).toHaveText("챕터 5 · 인사이트 6");
+  await expect(el(page, "13.1")).toHaveCount(0);
+  await expect(page.locator(".dot")).toHaveText(["01", "02", "03", "04", "05", "06"]);
+  await expect(page.locator(".bar-cell")).toHaveCount(5);
+  await expect(el(page, "13.4").locator("span")).toHaveText([
+    "00:00",
+    "10:00",
+    "20:00",
+    "30:00",
+    "40:00",
+    "50:12",
+  ]);
+  await expect(el(page, "13.5")).toHaveText(
+    "막대 = 챕터 5개(길이만큼)점 = 인사이트 6개(첫 근거 시각)",
+  );
+  await expect(page.locator(".mind-node")).toHaveCount(5);
+  await expect(el(page, "14.3")).toHaveText("· 팀과 서비스 소개");
+  // 05:00이 든 챕터(발표자 소개)의 막대 · 노드가 이미 강조돼 있고, 05:00이 근거인 점 02가 채워져 있다
+  const bar = page.locator('.bar-cell[aria-pressed="true"]');
+  const node = page.locator('.mind-node[aria-pressed="true"]');
+  const dot = page.locator('.dot[aria-pressed="true"]');
+  await expect(bar).toHaveAccessibleName("챕터 1 · 00:00 발표자 소개");
+  await expect(node).toContainText("발표자 소개");
+  await expect(dot).toHaveText("02");
+
+  // 막대 칸 → 그 챕터 시작 시각. 같은 챕터가 막대 · 마인드맵 · 챕터 카드 세 곳에서 함께
+  // 마인드맵 노드도 같은 이름이라(14.2 aria-label) 타임라인 카드 안에서 찾는다
+  await el(page, "13").getByRole("button", { name: "챕터 3 · 20:00 pgvector 선택" }).click();
+  await expect(el(page, "8.2")).toHaveText("20:00");
+  await expect(selected).toContainText("13번째 문장");
+  await expect(bar).toHaveAccessibleName("챕터 3 · 20:00 pgvector 선택");
+  await expect(node).toHaveAccessibleName("챕터 3 · 20:00 pgvector 선택");
+  await expect(page.locator('.chapter[aria-pressed="true"]')).toHaveText(/pgvector 선택/);
+  await expect(dot).toHaveText("04");
+
+  // 인사이트 점 → 첫 근거 시각(03은 10:00 · 11:40 중 10:00). 그 시각이 든 챕터의 막대 · 노드가 강조되고,
+  // 챕터 카드는 시작 시각이 같을 때만(01:40이면 없다)
+  await page.getByRole("button", { name: "인사이트 03 · 10:00" }).click();
+  await expect(el(page, "8.2")).toHaveText("10:00");
+  await expect(dot).toHaveText("03");
+  await expect(bar).toHaveAccessibleName("챕터 2 · 10:00 청킹 다시 보기");
+  await expect(page.locator('.chapter[aria-pressed="true"]')).toHaveText(/청킹 다시 보기/);
+  await page.getByRole("button", { name: "인사이트 01 · 01:40" }).click();
+  await expect(el(page, "8.2")).toHaveText("01:40");
+  await expect(bar).toHaveAccessibleName("챕터 1 · 00:00 발표자 소개");
+  await expect(page.locator('.chapter[aria-pressed="true"]')).toHaveCount(0);
+
+  // 마인드맵 챕터 노드 → 같은 동작. 스크립트 탭으로 돌아온다
+  await el(page, "7.2").click();
+  await page.locator(".mind-node", { hasText: "운영과 리뷰" }).click();
+  await expect(el(page, "7.1")).toHaveAttribute("aria-selected", "true");
+  await expect(el(page, "8.2")).toHaveText("40:00");
+  await expect(selected).toContainText("25번째 문장");
+  await expect(node).toContainText("운영과 리뷰");
+  await expect(bar).toHaveAccessibleName("챕터 5 · 40:00 운영과 리뷰");
+  await expect(page.locator('.chapter[aria-pressed="true"]')).toHaveText(/운영과 리뷰/);
 
   // 목록 — 완료 행
   await el(page, "1.1").click();

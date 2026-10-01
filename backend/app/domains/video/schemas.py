@@ -31,6 +31,8 @@ class Video(BaseModel):
     channel: str | None
     duration_sec: int
     origin: str
+    uploaded: bool
+    upload_bytes: int | None  # 올린 사본이 아직 있으면 그 크기(UI-6 '올린 사본({크기})')
     has_captions: bool
     caption_language: str | None
     caption_kind: CaptionKind | None
@@ -88,7 +90,7 @@ class InboxListing(BaseModel):
 
 
 class SourceInfo(BaseModel):
-    """출처에서 읽은 영상 정보 — 포트가 만들어 VideoService.register가 행으로 쓴다."""
+    """출처에서 읽은 영상 정보 — 포트 · 영상 서비스가 만들어 register · upload가 행으로 쓴다."""
 
     source_kind: SourceKind
     source_id: str
@@ -96,6 +98,7 @@ class SourceInfo(BaseModel):
     channel: str | None
     duration_sec: int
     origin: str
+    uploaded: bool = False  # 원본 자리가 올린 사본인가 — 올리기(upload)만 true
     has_captions: bool
     caption_language: str | None
     caption_kind: CaptionKind | None

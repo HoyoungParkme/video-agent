@@ -16,14 +16,18 @@ interface Props {
   describedBy?: string;
   /** 폭(px) — UI-2 620 · UI-6 540 · UI-7 660 */
   width: number;
-  /** 위 여백(px) — UI-2 104 · UI-6 180 · UI-7 80 */
+  /** 위 여백(px) — UI-2 104 · UI-6 180 · UI-7 48 */
   top: number;
+  /** 안쪽 여백 — 기본 32px, UI-7은 28px 32px(VA-UI-001 3.3) */
+  padding?: string;
   onClose: () => void;
   closeOnOverlay?: boolean;
   /** 처음 초점을 받을 요소의 CSS 선택자. 없으면 첫 초점 가능한 요소 */
   initialFocus?: string;
   /** 요소 번호(data-el) — UI-6 · UI-7은 다이얼로그 자체가 1이다 */
   el?: string;
+  /** 짙은 덮개 — 그림을 보는 UI-9(VA-UI-001 3.1 크게 보기 덮개) */
+  dark?: boolean;
   children: ReactNode;
 }
 
@@ -36,10 +40,12 @@ export default function Dialog({
   describedBy,
   width,
   top,
+  padding,
   onClose,
   closeOnOverlay = true,
   initialFocus,
   el,
+  dark = false,
   children,
 }: Props) {
   const box = useRef<HTMLDivElement>(null);
@@ -83,7 +89,7 @@ export default function Dialog({
 
   return createPortal(
     <div
-      className="dialog-overlay"
+      className={`dialog-overlay${dark ? " is-dark" : ""}`}
       style={{ paddingTop: top }}
       onMouseDown={(e) => {
         if (closeOnOverlay && e.target === e.currentTarget) onClose();
@@ -92,7 +98,7 @@ export default function Dialog({
       <div
         ref={box}
         className="dialog"
-        style={{ maxWidth: width }}
+        style={{ maxWidth: width, padding }}
         role={role}
         aria-modal="true"
         aria-labelledby={labelledBy}

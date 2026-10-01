@@ -12,6 +12,10 @@ from sqlalchemy import select
 from app.core.config import config
 from app.core.db import SessionLocal
 from app.core.settings import settings
+from app.domains.analysis.adapters.frames_local import FramesLocal
+from app.domains.analysis.adapters.frames_storyboard import FramesStoryboard
+from app.domains.analysis.adapters.image_openai import ImageOpenAI
+from app.domains.analysis.models import InfographicRow, InfographicState
 from app.domains.job import pipeline
 from app.domains.job.models import AnalysisJobRow, AudioChunkRow, ChunkState, ErrorKind, JobStatus
 from app.domains.job.service import JobService
@@ -163,3 +167,49 @@ async def test_load_video(db, make) -> None:
     row = await make.video()
     assert (await load_video(row.id)).id == row.id
     assert await load_video(999) is None  # 그 사이 지워진 영상
+
+
+def test_frame_adapters_are_shared() -> None:
+    """장면 어댑터는 하나씩 — 결과 라우터(app.state)와 파이프라인(모듈 속성)이 같은 것을 쓴다."""
+    assert isinstance(app.state.storyboard, FramesStoryboard)
+    assert isinstance(app.state.local_frames, FramesLocal)
+    assert pipeline.storyboard is app.state.storyboard
+    assert pipeline.local_frames is app.state.local_frames
+
+
+async def test_lifespan_fails_drawing_infographics(db, make, env_file, verify, monkeypatch) -> None:
+    """서버가 죽어 그리는 중(making)으로 남은 인포그래픽은 시작 때 failed('서버가 다시 시작됨')."""
+    row = await make.video()
+    db.add(InfographicRow(video_id=row.id, state=InfographicState.making))
+    await db.commit()
+    monkeypatch.setattr(settings, "last_check", settings.last_check)  # 끝나면 되돌린다
+    async with app.router.lifespan_context(app):
+        pass
+    got = await db.scalar(
+        select(InfographicRow)
+        .where(InfographicRow.video_id == row.id)
+        .execution_options(populate_existing=True)
+    )
+    assert (got.state, got.error_reason) == ("failed", "서버가 다시 시작됨")
+
+
+def test_image_maker_is_openai() -> None:
+    assert isinstance(app.state.image_maker, ImageOpenAI)
+
+
+async def test_lifespan_sweeps_uploads(db, make, env_file, verify, monkeypatch, tmp_path, caplog):
+    """시작 때 올린 사본 청소(SEQ-13) — 올리다 만 것은 지우고, 죽어서 되돌린 작업의 사본은 남긴다."""
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "last_check", settings.last_check)
+    caplog.set_level(logging.INFO, logger="app")
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    (uploads / ".part-x.mp4").write_bytes(b"x")  # 서버가 올리는 도중에 죽었다
+    sha = "a" * 64
+    row = await make.video(source_kind="local", source_id=sha, origin="t.mp4", uploaded=True)
+    await make.job(row.id, JobStatus.running, stage="transcribe")  # 죽어서 멈췄다 → failed
+    (uploads / f"{sha}.mp4").write_bytes(b"x")
+    async with app.router.lifespan_context(app):
+        pass
+    assert [p.name for p in uploads.iterdir()] == [f"{sha}.mp4"]  # 다시 시도가 읽는다
+    assert "올린 사본 1개를 지웠다" in caplog.text

@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.core.config import ImageQuality
 from app.core.settings import Settings, settings
 
 router = APIRouter(prefix="/api/settings", tags=["설정"])
@@ -20,10 +21,12 @@ class KeyRequest(BaseModel):
 
 
 class ModelsRequest(BaseModel):
-    """모델 선택(VA-API-001 4장)."""
+    """모델 선택(VA-API-001 4장). 이미지 값은 없으면 그대로 둔다."""
 
     stt_model: str
     text_model: str
+    image_model: str | None = None
+    image_quality: ImageQuality | None = None
 
 
 @router.get("")
@@ -41,4 +44,4 @@ async def post_key(req: KeyRequest) -> Settings:
 @router.put("/models")
 def put_models(req: ModelsRequest) -> Settings:
     """모델 선택 저장."""
-    return settings.set_models(req.stt_model, req.text_model)
+    return settings.set_models(req.stt_model, req.text_model, req.image_model, req.image_quality)

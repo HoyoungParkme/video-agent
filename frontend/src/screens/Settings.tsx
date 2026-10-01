@@ -1,29 +1,33 @@
 /**
  * VA-UI-002#UI-5 설정 — 1 제목 · 2 키 카드(2.1 상태 배지 · 2.2 지금 쓰는 키 · 2.3 새 키 · 2.4 확인하고 저장 ·
- * 2.5 키 확인 오류 · 2.6 도움말) · 3 모델 카드(3.1 · 3.2 받아쓰기 · 3.3 · 3.4 요약) · 4 폴더(4.1) ·
- * 5 밖으로 나가는 데이터(5.1 · 5.2) · 6 버튼 줄(6.1 취소 · 6.2 저장)
+ * 2.5 키 확인 오류 · 2.6 도움말) · 3 모델 카드(3.1 · 3.2 받아쓰기 · 3.3 · 3.4 요약) · 7 인포그래픽 카드(7.1
+ * 이미지 모델 · 7.2 · 7.3 품질 · 7.4 품질 줄 · 7.5 품질 도움말) · 4 로컬 파일(4.1 inbox · 4.2 올린 사본 자리) ·
+ * 5 밖으로 나가는 데이터(5.1 · 5.2) · 6 버튼 줄(6.1 취소 · 6.2 저장). 품질의 한 장 값은 서버 값 그대로다 —
+ * 화면에서 계산하지 않는다.
  */
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { ApiError, api, publishSettings, useSettings, type ModelOption } from "@/api/client";
+import {
+  ApiError,
+  api,
+  publishSettings,
+  useSettings,
+  type ImageQuality,
+  type ModelOption,
+} from "@/api/client";
 import { Button } from "@/components/buttons";
+import { usd } from "@/labels";
 
 const OUTGOING = [
   ["OpenAI", "음성 조각", "자막 없는 영상을 받아쓸 때"],
   ["OpenAI", "스크립트 텍스트", "요약 · 챕터 · 추천 질문을 만들 때"],
   ["OpenAI", "질문, 앞선 대화, 관련 스크립트", "질문할 때"],
-  ["YouTube", "영상 주소", "정보 · 자막 · 음성을 받을 때"],
+  ["OpenAI", "한 줄 요약 · 인사이트 · 챕터 제목", "인포그래픽을 만들 때"],
+  ["YouTube", "영상 주소", "정보 · 자막 · 음성 · 미리 보기 썸네일을 받을 때"],
 ];
-
-/** '$0.006' · '$0.25' · '$15.00' — 소수 둘째 자리까지는 늘 쓰고, 더 있으면 그대로 */
-function usd(value: number | undefined): string {
-  if (value === undefined) return "—";
-  const digits = Math.max(2, (String(value).split(".")[1] ?? "").length);
-  return `$${value.toFixed(digits)}`;
-}
 
 /** '오늘 14:02' 또는 '9월 12일'(VA-UI-002 UI-5 규칙, UI-1 목록 행과 같다) */
 function when(iso: string): string {
@@ -53,6 +57,9 @@ export default function Settings() {
   // 고른 모델. 고르기 전에는 저장된 모델이 골라져 있다
   const [stt, setStt] = useState<string | null>(null);
   const [text, setText] = useState<string | null>(null);
+  // 고른 인포그래픽 이미지 모델 · 품질. 고르기 전에는 저장된 것이 골라져 있다
+  const [imageModel, setImageModel] = useState<string | null>(null);
+  const [quality, setQuality] = useState<ImageQuality | null>(null);
   const [saving, setSaving] = useState(false);
 
   if (!settings) return <main className="settings" aria-busy="true" />;
@@ -63,6 +70,15 @@ export default function Settings() {
   const error = keyError?.text ?? stored;
   const sttOption = pick(settings.model_options.stt, stt ?? settings.models.stt);
   const textOption = pick(settings.model_options.text, text ?? settings.models.text);
+  const image = settings.image;
+  const pickedModel = imageModel ?? image.model;
+  const picked = quality ?? image.quality;
+  const [low, medium] = image.qualities;
+  // 7.5 — 품질마다 한 줄. 중간은 낮음의 몇 배인지 서버가 준 한 장 값으로 센다
+  const qualityHelp =
+    picked === low?.id || !low || !medium
+      ? "값이 가장 싸요. 그림 속 작은 글자는 흐릴 수 있어요."
+      : `글자가 더 또렷해요. 값은 낮음의 약 ${Math.round(medium.price_usd / low.price_usd)}배예요.`;
 
   async function checkAndSave() {
     if (!newKey.trim() || checking) return; // 비어 있으면 보내지 않는다
@@ -86,7 +102,12 @@ export default function Settings() {
     setSaving(true);
     setModelsError(null);
     try {
-      publishSettings(await api.saveModels(sttOption.id, textOption.id));
+      publishSettings(
+        await api.saveModels(sttOption.id, textOption.id, {
+          image_model: pickedModel,
+          image_quality: picked,
+        }),
+      );
       router.push("/");
     } catch (e) {
       // 오류는 생긴 자리에 보인다(VA-UI-001 4.5). 모양은 디자인 보강 전 임시
@@ -233,13 +254,77 @@ export default function Settings() {
         </div>
       </section>
 
+      <section aria-labelledby="img-title" className="card settings-card" data-el="7">
+        <div className="settings-card-head">
+          <h2 id="img-title" className="settings-h2">
+            인포그래픽
+          </h2>
+          <span className="field-help">결과 화면에서 누를 때만 만들어요</span>
+        </div>
+        <div className="settings-models">
+          <div className="field">
+            <label htmlFor="img-model" className="field-label">
+              이미지 모델
+            </label>
+            <span className="field-wrap" data-el="7.1">
+              <select
+                id="img-model"
+                className="field-select"
+                value={pickedModel}
+                onChange={(e) => setImageModel(e.target.value)}
+              >
+                {image.models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </span>
+            <span className="field-help" data-el="7.2">
+              세로 한 장. 한 줄 요약 · 인사이트 · 챕터 제목만 보내요
+            </span>
+          </div>
+          <div className="field">
+            <span id="img-quality-label" className="field-label">
+              품질
+            </span>
+            <div
+              role="radiogroup"
+              aria-labelledby="img-quality-label"
+              className="quality-options"
+              data-el="7.3"
+            >
+              {image.qualities.map((q, i) => (
+                <label
+                  key={q.id}
+                  className={`quality-option${q.id === picked ? " is-picked" : ""}`}
+                  data-el={i === 0 ? "7.4" : undefined}
+                >
+                  <input
+                    type="radio"
+                    name="img-quality"
+                    checked={q.id === picked}
+                    onChange={() => setQuality(q.id)}
+                  />
+                  <span className="quality-name">{i === 0 ? `${q.label} (기본)` : q.label}</span>
+                  <span className="quality-price mono">한 장 약 {usd(q.price_usd)}</span>
+                </label>
+              ))}
+            </div>
+            <span className="field-help" data-el="7.5">
+              {qualityHelp}
+            </span>
+          </div>
+        </div>
+      </section>
+
       <section
         aria-labelledby="inbox-title"
         className="card settings-card settings-card-tight"
         data-el="4"
       >
         <h2 id="inbox-title" className="settings-h2">
-          로컬 파일 폴더
+          로컬 파일
         </h2>
         <div className="value-box value-box-folder" data-el="4.1">
           <svg className="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -248,8 +333,19 @@ export default function Settings() {
           <span className="value-box-text">{settings.inbox_path}</span>
           <span className="value-box-caption">읽기 전용</span>
         </div>
+        {/* 올린 사본 자리 — 앱 폴더 안이라 바꾸지 않고, 남은 사본의 수 · 크기는 보이지 않는다(UI-5 규칙) */}
+        <div className="value-box value-box-folder" data-el="4.2">
+          <svg className="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <path d="m17 8-5-5-5 5" />
+            <path d="M12 3v12" />
+          </svg>
+          <span className="value-box-text">data/uploads</span>
+          <span className="value-box-caption">끌어 놓은 파일의 사본 · 분석이 끝나면 지워요</span>
+        </div>
         <span className="field-help">
-          이 폴더의 파일을 읽기만 하고 고치거나 지우지 않아요. 위치는 docker-compose.yml에서 바꿀 수
+          inbox 폴더의 파일은 읽기만 하고 고치거나 지우지 않아요. 화면에 끌어 놓은 파일은 원본을
+          그대로 두고 앱 폴더의 사본으로 분석해요. inbox 위치는 docker-compose.yml에서 바꿀 수
           있습니다.
         </span>
       </section>

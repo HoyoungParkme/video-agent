@@ -1,4 +1,4 @@
-"""core/errors — problem+json 17종과 핸들러 셋(VA-API-001 2장)."""
+"""core/errors — problem+json 21종과 핸들러 셋(VA-API-001 2장)."""
 
 from __future__ import annotations
 
@@ -26,11 +26,15 @@ TABLE = {
     "result-not-ready": 409,
     "llm-unavailable": 502,
     "export-failed": 500,
+    "frames-unavailable": 409,
+    "infographic-busy": 409,
+    "no-space": 507,
+    "upload-incomplete": 400,
     "internal": 500,
 }
 
 
-def test_seventeen_kinds() -> None:
+def test_error_kinds() -> None:
     classes = errors.Problem.__subclasses__()  # 카드 스텁의 not-implemented는 B4에서 지웠다
     assert {c.kind: c.status for c in classes} | {"internal": errors.Internal.status} == TABLE
 

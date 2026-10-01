@@ -53,6 +53,15 @@ async def test_get_settings(client, env_file) -> None:
         "input_per_mtok_usd": 0.25,
         "output_per_mtok_usd": 2.0,
     }
+    assert body["image"] == {
+        "model": "gpt-image-2",
+        "quality": "low",
+        "models": ["gpt-image-2"],
+        "qualities": [
+            {"id": "low", "label": "낮음", "price_usd": 0.01},
+            {"id": "medium", "label": "중간", "price_usd": 0.05},
+        ],
+    }
     assert "inbox_path" in body
 
 
@@ -104,6 +113,21 @@ async def test_put_models(client, env_file) -> None:
     assert r.status_code == 200
     assert r.json()["models"] == {"stt": "whisper-1", "text": "gpt-5.4-mini"}
     assert "TEXT_MODEL=gpt-5.4-mini" in env_file.read_text()
+
+
+async def test_put_models_image(client, env_file) -> None:
+    env_file.write_text(f"OPENAI_API_KEY={KEY}\n")
+    r = await client.put(
+        "/api/settings/models",
+        json={"stt_model": "whisper-1", "text_model": "gpt-5-mini", "image_quality": "medium"},
+    )
+    assert (r.status_code, r.json()["image"]["quality"]) == (200, "medium")
+    r = await client.put(
+        "/api/settings/models",
+        json={"stt_model": "whisper-1", "text_model": "gpt-5-mini", "image_quality": "high"},
+    )
+    assert (r.status_code, r.json()["type"]) == (422, "urn:va:validation")
+    assert "IMAGE_QUALITY=medium" in env_file.read_text()
 
 
 async def test_put_models_unknown(client, env_file) -> None:

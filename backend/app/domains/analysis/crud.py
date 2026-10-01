@@ -1,15 +1,23 @@
-"""결과 테이블 일곱 접근 — DB만. 판단은 service가 한다.
+"""결과 테이블 여덟 접근 — DB만. 판단은 service가 한다.
 
 여러 줄을 넣을 때는 한 번에(executemany) — 3,000줄 스크립트도 쿼리 하나다.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import delete, insert, select
+from datetime import datetime
+
+from sqlalchemy import delete, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import ImageQuality
 from app.domains.analysis.models import (
+    ChapterFrameRow,
     ChapterRow,
+    FrameSource,
+    InfographicRow,
+    InfographicState,
     InsightRow,
     PartRow,
     SegmentRow,
@@ -19,6 +27,7 @@ from app.domains.analysis.models import (
     TranscriptSource,
 )
 from app.domains.analysis.schemas import CaptionLine
+from app.domains.video.models import VideoRow
 
 
 async def replace_transcript(
@@ -188,3 +197,131 @@ async def questions(session: AsyncSession, video_id: int) -> list[SuggestedQuest
             .order_by(SuggestedQuestionRow.seq)
         )
     )
+
+
+async def chapter_rows(session: AsyncSession, video_id: int) -> list[ChapterRow]:
+    """챕터 행, 번호순."""
+    return list(
+        await session.scalars(
+            select(ChapterRow).where(ChapterRow.video_id == video_id).order_by(ChapterRow.seq)
+        )
+    )
+
+
+async def frames(session: AsyncSession, video_id: int) -> list[ChapterFrameRow]:
+    """영상의 장면 행(그림 컬럼이 null인 「해 봤다」 행 포함) — 챕터와 조인, 챕터 번호순."""
+    return list(
+        await session.scalars(
+            select(ChapterFrameRow)
+            .join(ChapterRow, ChapterRow.id == ChapterFrameRow.chapter_id)
+            .where(ChapterRow.video_id == video_id)
+            .order_by(ChapterRow.seq)
+        )
+    )
+
+
+async def add_frame(
+    session: AsyncSession,
+    chapter_id: int,
+    sec: float | None = None,
+    source: FrameSource | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    path: str | None = None,
+) -> None:
+    """장면 행 하나. 그림 없이 부르면 「해 봤지만 없다」 행이다(CHECK — 모두 있거나 모두 null)."""
+    session.add(
+        ChapterFrameRow(
+            chapter_id=chapter_id, sec=sec, source=source, width=width, height=height, path=path
+        )
+    )
+    await session.flush()
+
+
+async def frame_by_seq(session: AsyncSession, video_id: int, seq: int) -> ChapterFrameRow | None:
+    """그 영상의 seq번 챕터의 장면 행."""
+    return await session.scalar(
+        select(ChapterFrameRow)
+        .join(ChapterRow, ChapterRow.id == ChapterFrameRow.chapter_id)
+        .where(ChapterRow.video_id == video_id, ChapterRow.seq == seq)
+    )
+
+
+async def infographic(session: AsyncSession, video_id: int) -> InfographicRow | None:
+    """그 영상의 인포그래픽 행. 없으면 None(만든 적 없음). 행은 SQL 한 문장(claim · finish)으로도
+    바뀌어 세션에 든 옛 값을 쓰지 않게 늘 새로 읽는다."""
+    return await session.scalar(
+        select(InfographicRow)
+        .where(InfographicRow.video_id == video_id)
+        .execution_options(populate_existing=True)
+    )
+
+
+async def claim_infographic(session: AsyncSession, video_id: int) -> bool:
+    """그리는 중(making)으로 — 행이 없으면 만들고, making이 아니면 바꾼다. 한 문장이라 겹친 요청은
+    하나만 바꾼다. 그림 컬럼은 건드리지 않는다(이전 그림이 보인다). 이미 making이면 False."""
+    stmt = (
+        pg_insert(InfographicRow)
+        .values(video_id=video_id, state=InfographicState.making)
+        .on_conflict_do_update(
+            index_elements=[InfographicRow.video_id],
+            set_={"state": InfographicState.making, "error_reason": None},
+            where=InfographicRow.state != InfographicState.making,
+        )
+        .returning(InfographicRow.id)
+    )
+    return await session.scalar(stmt) is not None
+
+
+async def video_title(session: AsyncSession, video_id: int) -> str | None:
+    """영상 제목 — 인포그래픽 재료. 뒤 태스크는 영상 DTO가 없어 id로 읽는다."""
+    return await session.scalar(select(VideoRow.title).where(VideoRow.id == video_id))
+
+
+async def finish_infographic(
+    session: AsyncSession,
+    video_id: int,
+    *,
+    model: str,
+    quality: ImageQuality,
+    width: int,
+    height: int,
+    cost_usd: float,
+    path: str,
+    created_at: datetime,
+) -> None:
+    """다 그렸다 — done과 새 그림 컬럼, 실패 이유는 지운다."""
+    await session.execute(
+        update(InfographicRow)
+        .where(InfographicRow.video_id == video_id)
+        .values(
+            state=InfographicState.done,
+            model=model,
+            quality=quality,
+            width=width,
+            height=height,
+            cost_usd=cost_usd,
+            path=path,
+            created_at=created_at,
+            error_reason=None,
+        )
+    )
+
+
+async def fail_infographic(session: AsyncSession, video_id: int, reason: str) -> None:
+    """그리지 못했다 — failed와 이유. 그림 컬럼은 그대로(이전 그림이 남는다)."""
+    await session.execute(
+        update(InfographicRow)
+        .where(InfographicRow.video_id == video_id)
+        .values(state=InfographicState.failed, error_reason=reason)
+    )
+
+
+async def fail_making_infographics(session: AsyncSession, reason: str) -> int:
+    """그리는 중(making)인 행 전부를 failed와 이유로 — 그림 컬럼은 그대로. 바꾼 행 수."""
+    result = await session.execute(
+        update(InfographicRow)
+        .where(InfographicRow.state == InfographicState.making)
+        .values(state=InfographicState.failed, error_reason=reason)
+    )
+    return result.rowcount

@@ -1,4 +1,5 @@
-"""job/pipeline — 오류 종류 · 이유 한 줄 · 받아쓰기 · 첫 단계부터 · 이어서 · 대기열 워커(VA-MS-002 pipeline).
+"""job/pipeline — 오류 종류 · 이유 한 줄 · 받아쓰기 · 첫 단계부터 · 이어서 · 장면 단계 · 대기열 워커
+(VA-MS-002 pipeline).
 
 포트는 가짜로.
 """
@@ -20,6 +21,7 @@ from sqlalchemy import select
 from app.core.config import config
 from app.core.db import SessionLocal
 from app.core.errors import UnsupportedFile
+from app.domains.analysis import crud as analysis_crud
 from app.domains.analysis.models import SegmentRow, SummaryRow, TranscriptRow
 from app.domains.job import pipeline
 from app.domains.job.models import (
@@ -42,9 +44,28 @@ REQ = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
 STT_STAGES = ["download", "transcribe", "summarize", "chapter", "suggest"]
 
 
+class Released:
+    """release_upload 자리 — 놓으라고 받은 영상 id를 적는다. error면 던진다."""
+
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+        self.error: Exception | None = None
+
+    async def __call__(self, video) -> None:
+        self.calls.append(video.id)
+        if self.error is not None:
+            raise self.error
+
+
 @pytest.fixture
-def ports(monkeypatch, audio_source, audio_split, stt, summarizer, tmp_path):
+def released() -> Released:
+    return Released()
+
+
+@pytest.fixture
+def ports(monkeypatch, audio_source, audio_split, stt, summarizer, released, tmp_path):
     """파이프라인에 가짜 포트를 끼우고 data · inbox 폴더를 임시로."""
+    monkeypatch.setattr(pipeline, "release_upload", released)
     monkeypatch.setattr(pipeline, "audio_source", audio_source)
     monkeypatch.setattr(pipeline, "audio_split", audio_split)
     monkeypatch.setattr(pipeline, "stt", stt)
@@ -286,6 +307,38 @@ async def test_run_local_video_extracts(db, make, ports, tmp_path) -> None:
     }
 
 
+def _uploaded(origin: str = "Talk.MP4", sha: str = "f" * 64) -> dict:
+    return _local(origin) | {"source_id": sha, "uploaded": True}
+
+
+async def test_run_uploaded_video_reads_copy_then_releases(db, make, ports, released, tmp_path):
+    audio_source, _ = ports
+    copy = tmp_path / "uploads" / f"{'f' * 64}.mp4"  # 원래 이름의 확장자(소문자)
+    copy.parent.mkdir()
+    copy.write_bytes(b"mp4")
+    video, job = await _stt_job(make, ["extract", *STT_STAGES[1:]], **_uploaded())
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done
+    assert audio_source.audio_calls[0][:2] == ("extract", str(copy))  # 사본을 읽는다
+    assert released.calls == [video.id]  # done 뒤 한 번
+
+
+async def test_run_failure_keeps_copy(db, make, ports, released) -> None:
+    _, summarizer = ports
+    summarizer.fail = {"summary": ValueError("요약 실패")}
+    video, job = await _stt_job(make, ["extract", *STT_STAGES[1:]], **_uploaded())
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.failed
+    assert released.calls == []  # 사본을 남긴다 — 다시 시도가 읽는다
+
+
+async def test_run_release_failure_still_done(db, make, ports, released) -> None:
+    released.error = OSError("사본을 지우지 못했다")
+    video, job = await _stt_job(make, ["extract", *STT_STAGES[1:]], **_uploaded())
+    await pipeline.run(job.id, video)
+    assert (await _row(job.id)).status == JobStatus.done  # 남은 사본은 다음 시작의 청소가 지운다
+
+
 async def test_run_audio_download_fails_removes_tmp(db, make, ports, tmp_path) -> None:
     audio_source, _ = ports
     audio_source.audio_error = YtdlpError("ERROR: [youtube] abc: Video unavailable", "unavailable")
@@ -483,6 +536,50 @@ async def test_resume_local_audio_converts_again(db, make, ports, audio_split, t
     assert [c[0] for c in audio_source.audio_calls] == ["extract"]
 
 
+# --- 장면 단계(카드 D2)
+
+FRAME_STAGES = ["download", "summarize", "chapter", "suggest", "frames"]
+
+
+async def test_run_frames_stage_after_suggest(db, make, ports, monkeypatch, storyboard) -> None:
+    monkeypatch.setattr(pipeline, "storyboard", storyboard)
+    row = await make.video()
+    job = await make.job(row.id, JobStatus.running, stages=FRAME_STAGES)
+    video = VideoService.to_dto(row, None, 0)
+    await pipeline.run(job.id, video)
+    done = await _row(job.id)
+    assert (done.status, done.stage) == (JobStatus.done, JobStage.frames)
+    chapters = await analysis_crud.chapter_rows(db, video.id)
+    frames = await analysis_crud.frames(db, video.id)
+    assert len(frames) == len(chapters) > 0 and all(f.path for f in frames)
+    assert storyboard.calls[0][0] == video.source_id
+
+
+async def test_run_frames_failure_still_done(db, make, ports, monkeypatch, storyboard) -> None:
+    storyboard.fail_at = 0  # 스토리보드가 없다
+    monkeypatch.setattr(pipeline, "storyboard", storyboard)
+    row = await make.video()
+    job = await make.job(row.id, JobStatus.running, stages=FRAME_STAGES)
+    await pipeline.run(job.id, VideoService.to_dto(row, None, 0))
+    assert (await _row(job.id)).status == JobStatus.done  # 장면은 작업을 실패로 만들지 않는다
+    assert all(f.path is None for f in await analysis_crud.frames(db, row.id))
+
+
+async def test_resume_from_frames_gets_only_untried(db, make, ports, monkeypatch, storyboard):
+    monkeypatch.setattr(pipeline, "storyboard", storyboard)
+    row = await make.video()
+    job = await make.job(row.id, JobStatus.running, stages=FRAME_STAGES, stage="frames")
+    await make.chapters(row.id, [(0.0, "하나", []), (600.0, "둘", []), (1200.0, "셋", [])])
+    first = (await analysis_crud.chapter_rows(db, row.id))[0]
+    await analysis_crud.add_frame(db, first.id)  # 서버가 장면 단계에서 죽기 전에 해 본 챕터
+    await db.commit()
+    _, summarizer = ports
+    await pipeline.resume(job.id, VideoService.to_dto(row, None, 0))
+    assert (await _row(job.id)).status == JobStatus.done
+    assert storyboard.calls[0][1] == [600.0, 1200.0]  # 해 보지 않은 챕터만
+    assert summarizer.calls == []  # 요약 단계들은 다시 하지 않는다
+
+
 async def test_run_cancelled_writes_nothing(db, make, ports) -> None:
     _, summarizer = ports
     summarizer.delay = 5
@@ -506,8 +603,8 @@ async def load_video(video_id: int):
         return (await VideoService(s, None, None).get(video_id)).video
 
 
-def _worker(load=load_video) -> asyncio.Task:
-    return asyncio.create_task(pipeline.worker(load))
+def _worker(load=load_video, release=None) -> asyncio.Task:
+    return asyncio.create_task(pipeline.worker(load, release or Released()))
 
 
 async def _stop(task: asyncio.Task) -> None:
@@ -547,9 +644,11 @@ async def test_worker_runs_queue_one_by_one(db, make, ports, monkeypatch) -> Non
     monkeypatch.setattr(pipeline, "run", fake_run)
     first = await make.job((await make.video()).id, JobStatus.queued, at=T0)
     second = await make.job((await make.video()).id, JobStatus.queued, at=T0 + timedelta(seconds=1))
-    worker = _worker()
+    release = Released()
+    worker = _worker(release=release)
     try:
         await _wait_status(second.id, JobStatus.done)  # 첫 작업이 예외로 끝나도 둘째가 돈다
+        assert pipeline.release_upload is release  # run · resume이 끝에서 부르게 둔다
     finally:
         await _stop(worker)
     assert running_seen == [1, 1]  # 동시에 running 둘이 없다

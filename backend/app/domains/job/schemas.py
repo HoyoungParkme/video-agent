@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -71,6 +72,27 @@ class Estimate(BaseModel):
     text_model: str
 
 
+# 장면 칸 — 만드는 쪽은 AnalysisService.frame_progress지만 작업 폴링 응답(Job.frames)의
+# 일부라 여기 둔다. 결과 스키마에 두면 analysis → video → job → analysis로 import가 한 바퀴
+# 돈다(VA-DOM-002 1장)
+
+
+class FrameProgressItem(BaseModel):
+    """진행 화면(UI-3)의 장면 칸 하나. missing = 얻지 못함(장면 없이 넘어감)."""
+
+    chapter_seq: int
+    state: Literal["waiting", "in_flight", "done", "missing"]
+    url: str | None
+
+
+class FrameProgress(BaseModel):
+    """장면 단계의 칸들 — done / total이 '{n} / {m}'."""
+
+    done: int
+    total: int
+    items: list[FrameProgressItem]
+
+
 class Job(BaseModel):
     """폴링 응답 — UI-3이 그리는 값 전부(VA-API-001 GET …/job의 요소 ↔ 필드 표)."""
 
@@ -84,6 +106,7 @@ class Job(BaseModel):
     progress_pct: int
     remaining_sec: int | None
     chunks: Chunks | None
+    frames: FrameProgress | None  # 장면 단계가 없는 작업(로컬 음성)은 None
     concurrency: int | None
     models: Models
     error: JobError | None

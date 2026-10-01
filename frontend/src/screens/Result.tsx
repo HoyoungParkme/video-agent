@@ -1,21 +1,30 @@
 /**
  * VA-UI-002#UI-4 결과 — 왼쪽 본문: 1 머리 줄(1.1 뒤로 링크) · 2 제목 블록(2.1 칩 셋 · 2.2 제목 · 2.3 메타 줄 ·
- * 2.4 원본 영상 열기) · 3 한 줄 요약 · 4 핵심 인사이트(4.1 · 4.2 · 4.3 시각 칩) · 5 추천 질문(5.1 알약) ·
- * 6 챕터(6.1 · 6.2 · 6.3 카드, 1시간 넘으면 6.4 파트 카드 · 6.5 파트 머리 · 6.6 파트 안 챕터 카드).
+ * 2.4 원본 영상 열기) · 3 한 줄 요약 · 12 한눈에 보기(13 타임라인 · 14 마인드맵 — screens/result/Glance) ·
+ * 4 핵심 인사이트(4.1 · 4.2 · 4.3 시각 칩) · 5 추천 질문(5.1 알약) ·
+ * 6 챕터(6.1 · 6.2 · 6.3 카드, 1시간 넘으면 6.4 파트 카드 · 6.5 파트 머리 · 6.6 파트 안 챕터 카드,
+ * 카드 오른쪽 6.7 대표 장면 · 6.8 장면 가져오는 중).
  * 오른쪽 7 패널 — 7.1 스크립트 탭 · 7.2 질문하기 탭(7.3 질문 수 배지) · 8 스크립트(8.1 출처 · 8.2 선택한 시각 ·
  * 8.3 구간) · 9 대화 목록(9.1 빈 상태 · 9.2 턴 · 9.3 질문 말풍선 · 9.4 답 · 9.5 근거 칩 · 9.6 영상에 없는 내용 ·
  * 9.7 답 대기 · 9.8 답변 실패 · 9.9 다시 시도) · 10 질문 입력(10.1 추천 칩 · 10.2 키 없음 안내 · 10.3 입력칸 ·
  * 10.4 보내기 · 10.5 전송 안내). 11 짧은 알림 — UI-1에서 이미 분석한 영상을 넣어 열렸을 때.
- * 시각을 누르는 곳(4.3 · 6.3 · 6.6 · 8.3 · 9.5)은 모두 같은 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와
- * 스크롤 · 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
+ * 시각을 누르는 곳(4.3 · 6.3 · 6.6 · 8.3 · 9.5와 한눈에 보기의 13.1 · 13.2 · 13.3 · 14.2 · 14.5)은 모두 같은
+ * 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤 · 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
  * 서버에 잠깐 닿지 못하면 2초 뒤 다시 받는다.
- * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다.
+ * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다. 마인드맵의 파트
+ * 노드(14.4)와 챕터 목록의 파트 머리(6.5)는 같은 펼침 상태를 쓴다.
  * 질문 기록은 질문하기 탭을 처음 열 때 받는다. 추천 질문(5.1 · 10.1)을 누르면 그 탭으로 바뀌고 바로 보낸다.
  * 기록과 답은 id로 합친다 — 기록을 받는 사이에 온 답도 한 번씩 보인다.
  * 답을 기다리는 동안이나 키가 막혔을 때는 보내지 않는다(알약은 탭만 바꾼다). 실패한 질문은 저장되지 않아
  * 마지막 턴에만 실패 줄과 다시 시도가 있고, 새 질문을 보내면 빠진다.
  * 머리의 내보내기(1.2)는 UI-7, 휴지통(1.3)은 UI-6을 연다. 내보내면 짧은 알림(11)으로 알리고, 지우면
  * UI-1로 방문 기록을 바꿔치기해 가며 그 화면의 「분석한 영상」 제목에 초점을 둔다(UI-6 규칙).
+ * 한눈에 보기 맨 아래 인포그래픽 카드(15)는 UI-8(만들기) · UI-9(크게 보기)를 연다 — 그리는 동안(making)
+ * 3초마다 인포그래픽 상태를 다시 받는다. 다른 화면에 갔다 와도 서버는 계속 그린다.
+ * 장면 단계 전에 분석한 결과(frames_state = absent)는 열 때 장면 채우기를 한 번 맡기고, 채우는
+ * 동안(making) 3초마다 장면만 다시 받아 온 장면부터 6.8을 6.7로 바꾼다. 끝나면 장면이 없는 챕터의
+ * 6.8을 거둔다. 채우기가 장면 없이 끝나 다시 absent가 되면 다시 맡기지 않고 6.8을 거둔다 — 다음에
+ * 열 때 다시 맡긴다(UI-4 규칙, UC-H3 1a).
  */
 "use client";
 
@@ -31,6 +40,7 @@ import {
   useSettings,
   type Chapter,
   type ChatTurn,
+  type FrameSet,
   type KeyStatus,
   type Result as ResultData,
 } from "@/api/client";
@@ -41,10 +51,18 @@ import TimeChip, { durationLabel, isLong, timeLabel } from "@/components/TimeChi
 import Toast, { takeFlash } from "@/components/Toast";
 import Delete, { markListFocus, TrashIcon } from "@/screens/Delete";
 import Export, { DownloadIcon } from "@/screens/Export";
+import Infographic from "@/screens/Infographic";
+import InfographicView from "@/screens/InfographicView";
+import Glance from "@/screens/result/Glance";
+import InfographicCard from "@/screens/result/InfographicCard";
 import { analyzedLabel, languageName } from "@/labels";
 
 // 결과를 받지 못했는데 서버에 잠깐 닿지 못한 것이면 다시 받는 간격(UI-4 규칙)
 const RETRY_MS = 2000;
+// 장면을 채우는 동안 장면만 다시 받는 간격(VA-API-001 GET …/frames)
+const FRAMES_POLL_MS = 3000;
+// 인포그래픽을 그리는 동안 상태를 다시 받는 간격(VA-API-001 GET …/infographic)
+const INFOGRAPHIC_POLL_MS = 3000;
 
 type Tab = "script" | "chat";
 /** 보낸 질문 — error가 null이면 답을 기다리는 중, 아니면 답변 실패 한 줄(9.8) */
@@ -95,6 +113,16 @@ function sourceLabel(r: ResultData): string {
   }
 }
 
+/** 받은 장면을 결과에 싣는다 — 장면이 온 챕터만 바꾸고 상태를 새로 둔다. */
+function withFrames(r: ResultData, set: FrameSet): ResultData {
+  const bySeq = new Map(set.frames.map((f) => [f.chapter_seq, f]));
+  return {
+    ...r,
+    frames_state: set.state,
+    chapters: r.chapters.map((c) => ({ ...c, frame: bySeq.get(c.seq) ?? c.frame })),
+  };
+}
+
 /** 그 시각이 든 구간 — 시작이 그 시각 이하인 마지막 구간. */
 function segmentAt(r: ResultData, sec: number): number | null {
   let found: number | null = null;
@@ -105,29 +133,54 @@ function segmentAt(r: ResultData, sec: number): number | null {
   return found ?? r.transcript.segments[0]?.seq ?? null;
 }
 
-/** 챕터 카드(6.3 · 6.6) — 시작 시각 · 제목 · 요점. 카드 전체가 시각 누르기다(공통 1.3). */
+/**
+ * 챕터 카드(6.3 · 6.6) — 시작 시각 · 제목 · 요점, 장면이 있으면 오른쪽에 대표 장면(6.7), 장면을 채우는
+ * 동안 아직 없으면 그 자리에 가져오는 중(6.8). 카드 전체가 시각 누르기다(공통 1.3).
+ */
 function ChapterCard({
   c,
   long,
   selected,
+  waiting,
   onSelect,
   el,
 }: {
   c: Chapter;
   long: boolean;
   selected: boolean;
+  /** 장면을 채우는 중 — 장면이 아직 없으면 6.8 */
+  waiting: boolean;
   onSelect: (sec: number) => void;
   el?: string;
 }) {
+  const time = timeLabel(c.start_sec, long);
+  let shot = null;
+  if (c.frame) {
+    shot = (
+      <span
+        role="img"
+        aria-label={`${time} 장면`}
+        className="chapter-frame"
+        style={{ backgroundImage: `url("${c.frame.url}")` }}
+        data-el={el ? "6.7" : undefined}
+      />
+    );
+  } else if (waiting) {
+    shot = (
+      <span className="chapter-frame-wait va-pulse" data-el={el ? "6.8" : undefined}>
+        장면 가져오는 중
+      </span>
+    );
+  }
   return (
     <button
       type="button"
-      className={`chapter${selected ? " is-selected" : ""}`}
+      className={`chapter${selected ? " is-selected" : ""}${shot ? " has-frame" : ""}`}
       aria-pressed={selected}
       data-el={el}
       onClick={() => onSelect(c.start_sec)}
     >
-      <span className="chapter-time mono">{timeLabel(c.start_sec, long)}</span>
+      <span className="chapter-time mono">{time}</span>
       <span className="chapter-body">
         <span className="chapter-title">{c.title}</span>
         {c.bullets.map((b) => (
@@ -139,6 +192,7 @@ function ChapterCard({
           </span>
         ))}
       </span>
+      {shot}
     </button>
   );
 }
@@ -203,7 +257,9 @@ export default function Result({ id }: { id: number }) {
   const [open, setOpen] = useState<Set<number>>(() => new Set([1]));
   const [tab, setTab] = useState<Tab>("script");
   // 머리에서 연 다이얼로그 — 내보내기(UI-7) · 삭제 확인(UI-6)
-  const [dialog, setDialog] = useState<"export" | "delete" | null>(null);
+  const [dialog, setDialog] = useState<"export" | "delete" | "infographic" | "view" | null>(null);
+  // 인포그래픽 맡기기가 서버에서 거절된 이유(키 확인 실패 등) — 행이 없어 카드가 들고 있다
+  const [rejected, setRejected] = useState<string | null>(null);
   // 질문 기록 — 질문하기 탭을 처음 열 때 받는다(받기 전에는 null)
   const [turns, setTurns] = useState<ChatTurn[] | null>(null);
   // 이 화면에서 받은 답 — 기록이 답보다 늦게 오거나 저장 전에 읽은 것이어도 받을 때 합친다
@@ -248,6 +304,61 @@ export default function Result({ id }: { id: number }) {
     };
   }, [id, router]);
 
+  // 장면 채우기 — absent면 한 번 맡기고, making이면 3초마다 장면만 받는다. 상태가 바뀌면 다시 돈다
+  const framesState = result?.frames_state;
+  useEffect(() => {
+    if (framesState !== "absent" && framesState !== "making") return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const apply = (set: FrameSet) => setResult((r) => r && withFrames(r, set));
+    const ask = async () => {
+      try {
+        const set = await (framesState === "absent" ? api.fillFrames(id) : api.frames(id));
+        if (!alive) return;
+        // 채우던 것이 다시 absent — 서버가 장면을 쓰지 못하고 끝났다. absent로 두면 이 효과가 다시
+        // 돌아 3초마다 채우기를 맡기므로 끝난 것으로 둔다(열 때 한 번, UI-4 규칙)
+        apply(framesState === "making" && set.state === "absent" ? { ...set, state: "done" } : set);
+        if (set.state === "making") timer = setTimeout(ask, FRAMES_POLL_MS); // 같은 상태면 이어서
+      } catch (e) {
+        if (!alive) return;
+        // 서버가 답한 거절(채울 수 없음 등)이면 장면 없이 둔다 — 6.8이 끝없이 깜빡이지 않게.
+        // 닿지 못했으면 다시
+        if (e instanceof ApiError && e.kind !== "unknown") apply({ state: "done", frames: [] });
+        else timer = setTimeout(ask, framesState === "absent" ? RETRY_MS : FRAMES_POLL_MS);
+      }
+    };
+    // 채우기는 바로 맡기고, 폴링은 한 간격 뒤부터(방금 받은 결과가 지금 상태다)
+    if (framesState === "absent") void ask();
+    else timer = setTimeout(ask, FRAMES_POLL_MS);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [framesState, id]);
+
+  // 인포그래픽 — 그리는 동안(making) 3초마다 상태를 다시 받는다. 다 되거나 실패하면 멈춘다
+  const drawing = result?.infographic.state === "making";
+  useEffect(() => {
+    if (!drawing) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const next = await api.infographic(id);
+        if (!alive) return;
+        setResult((r) => r && { ...r, infographic: next });
+        if (next.state === "making") timer = setTimeout(poll, INFOGRAPHIC_POLL_MS);
+      } catch {
+        if (alive) timer = setTimeout(poll, INFOGRAPHIC_POLL_MS); // 잠깐 닿지 못하면 다시
+      }
+    };
+    timer = setTimeout(poll, INFOGRAPHIC_POLL_MS);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [drawing, id]);
+
   const segSeq = result && selected !== null ? segmentAt(result, selected) : null;
 
   // 고른 구간을 패널 안에서 보이게 — 창 전체는 움직이지 않는다
@@ -289,6 +400,8 @@ export default function Result({ id }: { id: number }) {
 
   const { video } = result;
   const long = isLong(video.duration_sec);
+  // 장면을 채우는 중(맡기기 전 absent 포함) — 장면이 아직 없는 챕터에 6.8
+  const framesWaiting = result.frames_state === "absent" || result.frames_state === "making";
   // 시각 누르기 — 패널은 스크립트 탭으로(공통 1.3)
   const select = (sec: number) => {
     setSelected(sec);
@@ -418,6 +531,23 @@ export default function Result({ id }: { id: number }) {
           <p className="result-one-liner">{result.summary.one_liner}</p>
         </section>
 
+        <Glance
+          result={result}
+          long={long}
+          selected={selected}
+          open={open}
+          onSelect={select}
+          onToggle={toggle}
+        >
+          <InfographicCard
+            infographic={result.infographic}
+            settings={settings}
+            rejected={rejected}
+            onMake={() => (keyBlocked ? router.push("/settings") : setDialog("infographic"))}
+            onView={() => setDialog("view")}
+          />
+        </Glance>
+
         <section aria-labelledby="insight-title" className="result-section" data-el="4">
           <div className="result-section-head">
             <h2 id="insight-title" className="section-title">
@@ -498,6 +628,7 @@ export default function Result({ id }: { id: number }) {
                     c={c}
                     long={long}
                     selected={selected === c.start_sec}
+                    waiting={framesWaiting}
                     onSelect={select}
                     el={i === 0 ? "6.3" : undefined}
                   />
@@ -536,6 +667,7 @@ export default function Result({ id }: { id: number }) {
                                 c={c}
                                 long={long}
                                 selected={selected === c.start_sec}
+                                waiting={framesWaiting}
                                 onSelect={select}
                                 el={pi === 0 && ci === 0 ? "6.6" : undefined}
                               />
@@ -760,6 +892,32 @@ export default function Result({ id }: { id: number }) {
             setDialog(null);
             setNotice(message);
           }}
+        />
+      )}
+      {dialog === "infographic" && settings && (
+        <Infographic
+          videoId={video.id}
+          insightCount={result.summary.insights.length}
+          chapterCount={result.chapters.length}
+          hasImage={result.infographic.image !== null}
+          image={settings.image}
+          onClose={() => setDialog(null)}
+          onStarted={(next) => {
+            setDialog(null);
+            setRejected(null);
+            setResult((r) => r && { ...r, infographic: next });
+          }}
+          onRejected={(reason) => {
+            setDialog(null);
+            setRejected(reason);
+          }}
+        />
+      )}
+      {dialog === "view" && result.infographic.image && (
+        <InfographicView
+          image={result.infographic.image}
+          title={video.title}
+          onClose={() => setDialog(null)}
         />
       )}
       {dialog === "delete" && (

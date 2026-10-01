@@ -64,6 +64,11 @@ def test_read_env_rules(svc, env_file) -> None:
     }
 
 
+def test_read_env_image_lines(svc, env_file) -> None:
+    env_file.write_text("IMAGE_MODEL=gpt-image-2\nIMAGE_QUALITY=medium\n")
+    assert svc.read_env() == {"IMAGE_MODEL": "gpt-image-2", "IMAGE_QUALITY": "medium"}
+
+
 def test_read_env_inline_comments_and_quotes(svc, env_file) -> None:
     env_file.write_text(
         "TEXT_MODEL=gpt-5.4 # 비싸다\nSTT_MODEL=whisper-1#붙은 건 값\n"
@@ -105,6 +110,15 @@ def test_write_env_appends_missing_line(svc, env_file) -> None:
     env_file.write_text("POSTGRES_USER=va")  # 끝에 줄바꿈이 없는 파일
     svc.write_env({"STT_MODEL": "whisper-1"})
     assert env_file.read_text() == "POSTGRES_USER=va\nSTT_MODEL=whisper-1\n"
+
+
+def test_write_env_image_lines(svc, env_file) -> None:
+    before = _write(env_file)
+    svc.write_env({"IMAGE_MODEL": "gpt-image-2", "IMAGE_QUALITY": "medium"})
+    assert env_file.read_text() == before + "IMAGE_MODEL=gpt-image-2\nIMAGE_QUALITY=medium\n"
+    svc.write_env({"IMAGE_QUALITY": "low"})  # 그 줄만 바뀐다
+    assert svc.read_env()["IMAGE_QUALITY"] == "low"
+    assert env_file.read_text().count("IMAGE_QUALITY=") == 1
 
 
 def test_write_env_creates_file(svc, env_file) -> None:
@@ -154,6 +168,21 @@ def test_current_models_defaults_and_prices(svc, env_file) -> None:
     assert m.text.price.output_per_mtok_usd == 15.00
 
 
+def test_current_models_image(svc, env_file) -> None:
+    _write(env_file)  # 이미지 줄이 없다 — gpt-image-2 · 낮음 한 장 $0.01
+    m = svc.current_models()
+    assert (m.image_model, m.image_quality.id, m.image_quality.price_usd) == (
+        "gpt-image-2",
+        "low",
+        0.01,
+    )
+    env_file.write_text("IMAGE_QUALITY=medium\n")
+    assert svc.current_models().image_quality.price_usd == 0.05
+    env_file.write_text("IMAGE_MODEL=dall-e-9\nIMAGE_QUALITY=high\n")  # 목록에 없으면 기본값
+    m = svc.current_models()
+    assert (m.image_model, m.image_quality.id) == ("gpt-image-2", "low")
+
+
 def test_api_key(svc, env_file, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG, logger="app")
     _write(env_file)
@@ -178,6 +207,16 @@ def test_get_masks_and_sends_nothing(svc, env_file, verify, monkeypatch) -> None
     assert s.model_options == config.MODEL_OPTIONS
     assert s.inbox_path == config.INBOX_DISPLAY_PATH
     assert verify.calls == []
+
+
+def test_get_image_settings(svc, env_file) -> None:
+    _write(env_file)  # 이미지 줄이 없다
+    image = svc.get().image
+    assert (image.model, image.quality, image.models) == ("gpt-image-2", "low", ["gpt-image-2"])
+    assert [(q.id, q.label, q.price_usd) for q in image.qualities] == [
+        ("low", "낮음", 0.01),
+        ("medium", "중간", 0.05),
+    ]
 
 
 def test_get_key_deleted_by_hand(svc, env_file, verify) -> None:
@@ -358,6 +397,29 @@ def test_set_models(svc, env_file) -> None:
     assert s.models.text == "gpt-5.4"
     assert svc.current_models().text.id == "gpt-5.4"
     assert svc.read_env()["OPENAI_API_KEY"] == KEY
+
+
+def test_set_models_image(svc, env_file) -> None:
+    _write(env_file)
+    svc.set_models("whisper-1", "gpt-5-mini", image_quality="medium")
+    assert svc.read_env()["IMAGE_QUALITY"] == "medium"
+    assert "IMAGE_MODEL" not in svc.read_env()  # 안 보낸 줄은 그대로(없던 줄은 없다)
+    assert svc.current_models().image_quality.price_usd == 0.05
+    svc.set_models("whisper-1", "gpt-5-mini")  # 이미지 값을 안 보내면 이미지 줄이 그대로
+    assert svc.read_env()["IMAGE_QUALITY"] == "medium"
+    assert svc.read_env()["OPENAI_API_KEY"] == KEY
+
+
+@pytest.mark.parametrize(
+    ("kw", "field"),
+    [({"image_quality": "high"}, "image_quality"), ({"image_model": "dall-e-3"}, "image_model")],
+)
+def test_set_models_image_unknown(svc, env_file, kw, field) -> None:
+    before = _write(env_file)
+    with pytest.raises(Validation) as e:
+        svc.set_models("whisper-1", "gpt-5-mini", **kw)
+    assert [x["field"] for x in e.value.extra["errors"]] == [field]
+    assert env_file.read_text() == before
 
 
 def test_set_models_unknown(svc, env_file) -> None:

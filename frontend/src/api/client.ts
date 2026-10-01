@@ -28,10 +28,29 @@ export interface ModelOption {
   price: ModelPrice;
 }
 
+export type ImageQuality = "low" | "medium";
+
+export interface ImageQualityOption {
+  id: ImageQuality;
+  /** '낮음' · '중간' */
+  label: string;
+  /** 한 장 값 — UI-4 카드 · UI-5 · UI-8이 같이 쓴다 */
+  price_usd: number;
+}
+
+export interface ImageSettings {
+  model: string;
+  quality: ImageQuality;
+  models: string[];
+  qualities: ImageQualityOption[];
+}
+
 export interface Settings {
   key: KeyStatus;
   models: Models;
   model_options: { stt: ModelOption[]; text: ModelOption[] };
+  /** 인포그래픽 이미지 모델 · 품질과 품질마다 한 장 값 */
+  image: ImageSettings;
   inbox_path: string;
 }
 
@@ -40,7 +59,14 @@ export type CaptionKind = "manual" | "auto";
 export type VideoStatus = "registered" | "in_progress" | "failed" | "analyzed";
 export type JobStatus = "queued" | "running" | "failed" | "done";
 export type JobStage =
-  "pending" | "download" | "extract" | "transcribe" | "summarize" | "chapter" | "suggest";
+  | "pending"
+  | "download"
+  | "extract"
+  | "transcribe"
+  | "summarize"
+  | "chapter"
+  | "suggest"
+  | "frames";
 export type ChunkState = "waiting" | "in_flight" | "done" | "failed";
 export type ErrorKind = "network" | "openai" | "youtube" | "ffmpeg" | "disk" | "unknown";
 export type TranscriptSource = "caption_manual" | "caption_auto" | "stt";
@@ -58,6 +84,10 @@ export interface Video {
   channel: string | null;
   duration_sec: number;
   origin: string;
+  /** 끌어 놓아 올린 파일인가(원본 자리 = 올린 사본) — UI-1 부제 '올린 파일', UI-6 「남는 것」 */
+  uploaded: boolean;
+  /** 올린 사본이 아직 남아 있으면 그 크기 — UI-6 '올린 사본({크기})' */
+  upload_bytes: number | null;
   has_captions: boolean;
   caption_language: string | null;
   caption_kind: CaptionKind | null;
@@ -132,6 +162,17 @@ export interface Chunks {
   items: { seq: number; state: ChunkState }[];
 }
 
+/** 진행 화면의 장면 칸(UI-3 4.9) — missing은 얻지 못하고 넘어간 칸. url은 done일 때만 */
+export interface FrameProgress {
+  done: number;
+  total: number;
+  items: {
+    chapter_seq: number;
+    state: "waiting" | "in_flight" | "done" | "missing";
+    url: string | null;
+  }[];
+}
+
 export interface JobError {
   kind: ErrorKind;
   reason: string;
@@ -150,6 +191,8 @@ export interface Job {
   progress_pct: number;
   remaining_sec: number | null;
   chunks: Chunks | null;
+  /** 장면 단계가 있는 작업만 */
+  frames: FrameProgress | null;
   concurrency: number | null;
   models: Models;
   error: JobError | null;
@@ -167,12 +210,57 @@ export interface Segment {
   text: string;
 }
 
+export type FrameSource = "storyboard" | "local_frame";
+/** absent = 장면 단계 전 결과(채울 수 있다) · making = 채우는 중 · unavailable = 음성 파일 · 원본 없음 */
+export type FramesState = "absent" | "making" | "done" | "unavailable";
+
+export interface Frame {
+  chapter_seq: number;
+  /** 실제로 잘라 온 장면의 시각 — 챕터 시작과 몇 초 다를 수 있다 */
+  sec: number;
+  source: FrameSource;
+  width: number;
+  height: number;
+  /** /api/videos/{id}/frames/{seq} */
+  url: string;
+}
+
+export interface FrameSet {
+  state: FramesState;
+  /** 장면이 있는 챕터만, 챕터 순서대로 */
+  frames: Frame[];
+}
+
+/** none = 만든 적 없음 · making = 그리는 중 · done = 그림 있음 · failed = 마지막 그리기 실패 */
+export type InfographicState = "none" | "making" | "done" | "failed";
+
+export interface InfographicImage {
+  /** /api/videos/{id}/infographic/image?v={만든 시각} — 그림이 바뀌면 주소가 바뀐다 */
+  url: string;
+  model: string;
+  quality: ImageQuality;
+  width: number;
+  height: number;
+  created_at: string;
+  cost_usd: number;
+}
+
+export interface Infographic {
+  state: InfographicState;
+  /** 지금 쓰는 그림 — 다시 만들기가 실패해도 이전 그림이 남는다 */
+  image: InfographicImage | null;
+  /** failed일 때 한 줄 */
+  error_reason: string | null;
+}
+
 export interface Chapter {
   seq: number;
   part_seq: number | null;
   start_sec: number;
   title: string;
   bullets: string[];
+  /** 대표 장면. 없으면 null(UI-4 6.7이 없다) */
+  frame: Frame | null;
 }
 
 export interface Result {
@@ -199,6 +287,10 @@ export interface Result {
   suggested_questions: { seq: number; text: string }[];
   models: Models;
   analyzed_at: string;
+  /** 대표 장면 — making이면 UI-4가 3초마다 장면을 다시 받는다, absent면 한 번 채우기를 맡긴다 */
+  frames_state: FramesState;
+  /** 인포그래픽 — making이면 UI-4가 3초마다 다시 받는다 */
+  infographic: Infographic;
 }
 
 /** 질문 하나와 답(VA-API-001 4장 ChatTurn). cited_secs가 비면 '영상에 없는 내용'. */
@@ -210,18 +302,36 @@ export interface ChatTurn {
   asked_at: string;
 }
 
-/** 내보낼 마크다운 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`. */
+/**
+ * 내보내는 방법 — 파일이면 그림 줄과 `## 스크립트` 절이 든 노트, 클립보드면 둘 다 없는 노트
+ * (VA-API-001 GET export).
+ */
+export type ExportMethod = "file" | "clipboard";
+
+/** 함께 쓸 파일 하나 — UI-7 2.3 칩. name은 data/export/ 안의 파일 이름. */
+export interface ExportFile {
+  kind: "note" | "script" | "frame" | "infographic";
+  name: string;
+}
+
+/**
+ * 내보낼 노트 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`.
+ * files는 method=file일 때 함께 쓸 파일, clipboard면 빈 배열.
+ */
 export interface ExportPreview {
   filename: string;
   path: string;
   markdown: string;
+  files: ExportFile[];
 }
 
-/** 쓴 파일 — path는 짧은 알림 '{path}에 저장했어요'에 들어간다. */
+/** 쓴 파일 — path는 짧은 알림 '{path}에 저장했어요'에, images(쓴 그림 수)는 '· 그림 {n}장'에. */
 export interface ExportResult {
   filename: string;
   path: string;
   bytes: number;
+  images: number;
+  files: ExportFile[];
 }
 
 /** problem+json 하나. kind는 `urn:va:` 뒤 — key-rejected · validation 등(VA-API-001 2장). */
@@ -242,6 +352,45 @@ export class ApiError extends Error {
   get reason(): string {
     return typeof this.body.reason === "string" ? this.body.reason : this.message;
   }
+}
+
+/** 올리는 중인 요청 하나 — 응답(done)과 멈추기(abort) */
+export interface Upload {
+  done: Promise<RegisterResponse>;
+  abort: () => void;
+}
+
+/** 멈추기(abort)로 끝난 올리기 — 서버 오류가 아니다 */
+export class UploadAborted extends Error {}
+
+/**
+ * POST /api/uploads — 파일 하나를 본문 그대로 올려 등록한다(VA-API-001). 이것만 XHR이다 — fetch는
+ * 올리는 쪽 진행을 주지 않는다(VA-DOM-002 1장). onProgress는 보낸 바이트를 받는다(다 보내면 파일
+ * 크기). 서버가 거절하면 ApiError, 닿지 못하면 TypeError, 멈추면 UploadAborted로 끝난다.
+ */
+function upload(file: File, onProgress: (sent: number) => void): Upload {
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<RegisterResponse>((resolve, reject) => {
+    xhr.open("POST", "/api/uploads");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+    xhr.upload.onprogress = (e) => onProgress(e.loaded);
+    xhr.upload.onload = () => onProgress(file.size); // 다 보냈다 — 서버가 파일을 확인하는 중
+    xhr.onload = () => {
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse(xhr.responseText) as Record<string, unknown>;
+      } catch {
+        // 평문 오류(web이 api에 닿지 못해 대신 답한 경우 등)도 ApiError로
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body as unknown as RegisterResponse);
+      else reject(new ApiError(xhr.status, body));
+    };
+    xhr.onerror = () => reject(new TypeError("서버에 연결할 수 없음"));
+    xhr.onabort = () => reject(new UploadAborted("올리기를 멈췄다"));
+    xhr.send(file);
+  });
+  return { done, abort: () => xhr.abort() };
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -278,14 +427,19 @@ export const api = {
   /** POST /api/settings/key — 확인이 통과해야 저장된다. */
   saveKey: (key: string) => call<Settings>("POST", "/api/settings/key", { key }),
   /** PUT /api/settings/models */
-  saveModels: (stt_model: string, text_model: string) =>
-    call<Settings>("PUT", "/api/settings/models", { stt_model, text_model }),
+  saveModels: (
+    stt_model: string,
+    text_model: string,
+    image?: { image_model: string; image_quality: ImageQuality },
+  ) => call<Settings>("PUT", "/api/settings/models", { stt_model, text_model, ...image }),
   /** POST /api/videos — YouTube 주소를 등록하고 사전 안내 예상치를 받는다. 중복이면 기존 영상 */
   register: (url: string) =>
     call<RegisterResponse>("POST", "/api/videos", { source: "youtube", url }),
   /** POST /api/videos — inbox 파일을 등록한다. 같은 내용이면 기존 영상 */
   registerLocal: (path: string) =>
     call<RegisterResponse>("POST", "/api/videos", { source: "local", path }),
+  /** POST /api/uploads — 끌어 놓거나 고른 파일을 올려 등록한다. 같은 내용이면 기존 영상 */
+  upload,
   /** GET /api/inbox — inbox 파일 목록(길이까지), 수정 시각 최근 순 */
   inbox: () => call<InboxListing>("GET", "/api/inbox"),
   /** GET /api/videos — 작업이 있는 영상, 작업 시작 최근 순 */
@@ -300,15 +454,23 @@ export const api = {
   retry: (id: number) => call<Job>("POST", `/api/videos/${id}/job/retry`),
   /** GET /api/videos/{id}/result — 결과 전부 */
   result: (id: number) => call<Result>("GET", `/api/videos/${id}/result`),
+  /** GET /api/videos/{id}/frames — 장면 상태와 장면들. UI-4가 채우는 동안 3초마다 */
+  frames: (id: number) => call<FrameSet>("GET", `/api/videos/${id}/frames`),
+  /** POST /api/videos/{id}/frames — 옛 결과에 장면 채우기를 맡긴다(202). 두 번 불러도 같다 */
+  fillFrames: (id: number) => call<FrameSet>("POST", `/api/videos/${id}/frames`),
+  /** GET /api/videos/{id}/infographic — 상태와 지금 그림. UI-4가 그리는 동안 3초마다 */
+  infographic: (id: number) => call<Infographic>("GET", `/api/videos/${id}/infographic`),
+  /** POST /api/videos/{id}/infographic — 그리기를 맡긴다(202). 그리는 중이면 409, 키가 없으면 503 */
+  makeInfographic: (id: number) => call<Infographic>("POST", `/api/videos/${id}/infographic`),
   /** GET /api/videos/{id}/chat — 질문 · 답변 기록, 시간순 */
   chat: (id: number) => call<ChatTurn[]>("GET", `/api/videos/${id}/chat`),
   /** POST /api/videos/{id}/chat — 질문하고 답을 받는다. 실패하면 저장되지 않는다 */
   ask: (id: number, question: string) =>
     call<ChatTurn>("POST", `/api/videos/${id}/chat`, { question }),
-  /** GET /api/videos/{id}/export — 내보낼 마크다운 전체와 파일 이름. UI-7이 열 때 · 3을 바꿀 때 */
-  exportPreview: (id: number, withChat: boolean) =>
-    call<ExportPreview>("GET", `/api/videos/${id}/export?with_chat=${withChat}`),
-  /** POST /api/videos/{id}/export — 같은 마크다운을 서버가 data/export/에 쓴다 */
+  /** GET /api/videos/{id}/export — 고른 방법의 노트 전체와 파일 이름. UI-7이 열 때 · 방법이나 3을 바꿀 때 */
+  exportPreview: (id: number, withChat: boolean, method: ExportMethod) =>
+    call<ExportPreview>("GET", `/api/videos/${id}/export?with_chat=${withChat}&method=${method}`),
+  /** POST /api/videos/{id}/export — 파일 방법의 노트와 스크립트(그림이 있으면 그림도)를 서버가 data/export/에 쓴다 */
   exportFile: (id: number, withChat: boolean) =>
     call<ExportResult>("POST", `/api/videos/${id}/export`, { with_chat: withChat }),
   /** DELETE /api/videos/{id} — 영상과 딸린 것 전부. 도는 분석은 멈추고 대기 중이면 대기열에서 빠진다 */

@@ -10,12 +10,13 @@ from app.domains.video.schemas import SourceInfo
 
 # 작업이 있는 영상만 고를 때 — 작업 테이블은 이름과 열 하나만 안다(작업 묶음의 ORM을 쓰지 않는다)
 _jobs = table("analysis_jobs", column("video_id"))
-# 다시 넣을 때 덮어쓰는 값. id · 출처 · created_at은 그대로
+# 다시 넣을 때 덮어쓰는 값. id · 출처 · created_at은 그대로. 원본 자리(uploaded)도 새 것을 따른다
 _OVERWRITE = (
     "title",
     "channel",
     "duration_sec",
     "origin",
+    "uploaded",
     "has_captions",
     "caption_language",
     "caption_kind",
@@ -29,6 +30,13 @@ async def by_id(session: AsyncSession, video_id: int) -> VideoRow | None:
 async def by_source_id(session: AsyncSession, source_id: str) -> VideoRow | None:
     """출처 식별자(YouTube 영상 ID · 파일 내용 해시)로 — 중복 판정."""
     return await session.scalar(select(VideoRow).where(VideoRow.source_id == source_id))
+
+
+async def by_source_ids(session: AsyncSession, source_ids: set[str]) -> list[VideoRow]:
+    """출처 식별자 여럿으로 — 시작 청소가 사본마다 주인을 한 번에 찾는다."""
+    if not source_ids:
+        return []
+    return list(await session.scalars(select(VideoRow).where(VideoRow.source_id.in_(source_ids))))
 
 
 async def with_jobs(session: AsyncSession) -> list[VideoRow]:
@@ -52,7 +60,7 @@ def overwrite(row: VideoRow, info: SourceInfo) -> None:
 
 
 def rename(row: VideoRow, origin: str) -> None:
-    """로컬 파일의 지금 이름 — 작업이 있어도 origin만 고친다(다시 시도가 이 경로를 읽는다)."""
+    """inbox 파일의 지금 이름 — 작업이 있어도 origin만 고친다(다시 시도가 이 경로를 읽는다)."""
     row.origin = origin
 
 

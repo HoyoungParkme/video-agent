@@ -20,7 +20,13 @@ from app.domains.analysis.models import (
     TranscriptRow,
     TranscriptSource,
 )
-from app.domains.analysis.schemas import CaptionLine, ChapterDraft, Segment, SummaryDraft
+from app.domains.analysis.schemas import (
+    CaptionLine,
+    ChapterDraft,
+    ExportMethod,
+    Segment,
+    SummaryDraft,
+)
 from app.domains.analysis.service import SCRIPT_SUFFIX, AnalysisService
 from app.domains.chat.schemas import ChatTurn
 from app.domains.job.models import JobStatus
@@ -248,6 +254,23 @@ async def test_generate_chapters_50_minutes(db, make, summarizer, env_file) -> N
     assert await _count(db, PartRow) == 0
 
 
+async def test_generate_chapters_same_second_is_one(db, make, summarizer, env_file) -> None:
+    """같은 초에 시작하는 챕터 둘은 하나 — 시각 표기 · 장면 그림 이름이 겹치지 않게(이슈 #16)."""
+    video = await _video(db, make, duration_sec=3000)
+    await make.transcript(video.id, ["x"] * 30, step=96.7)  # 마지막 구간이 2804.3초에 시작한다
+    summarizer.chapter_draft = ChapterDraft(
+        parts=[],
+        chapters=[
+            (None, 0.0, "첫째", ["a"]),
+            (None, 2804.0, "끝", ["a"]),
+            (None, 5000.0, "길이 밖", ["a"]),  # 마지막 구간(2804.3초)으로 — 2804.0과 같은 초
+        ],
+    )
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    rows = list(await db.scalars(select(ChapterRow).order_by(ChapterRow.seq)))
+    assert [(r.start_sec, r.title) for r in rows] == [(0, "첫째"), (2804, "끝")]
+
+
 async def test_generate_chapters_twice_one_set(db, make, summarizer, env_file) -> None:
     video = await _video(db, make, duration_sec=3000)
     await make.transcript(video.id, ["x"] * 30, step=100)
@@ -278,9 +301,31 @@ async def test_generate_chapters_150_minutes_model_parts(db, make, summarizer, e
     )
     await AnalysisService(db, summarizer).generate_chapters(video)
     parts, chapters = await _parts_and_chapters(db, summarizer, video.id)
-    # 시각순 · 첫 파트 0초로 당김 · 챕터가 없는 파트(8900초)는 빠진다
-    assert parts == [(1, "오전 1", 0), (2, "오전 2", 2400), (3, "오후", 5400)]
+    # 시각순 · 첫 파트 0초로 당김 · 챕터가 없는 파트(8900초)는 빠진다 · 파트 시작은 그 파트 첫 챕터의
+    # 시작(2400 → 2500, 5400 → 6000 — 이슈 #14). 챕터가 드는 파트는 그대로다
+    assert parts == [(1, "오전 1", 0), (2, "오전 2", 2500), (3, "오후", 6000)]
     assert chapters == [(1, 0), (1, 1200), (2, 2500), (2, 3600), (3, 6000)]
+
+
+async def test_generate_chapters_part_start_is_its_first_chapter(
+    db, make, summarizer, env_file
+) -> None:
+    # 모델이 둘째 파트를 1:15:00에 두고 챕터가 1:14:30 · 1:16:30이면 — 1:14:30은 첫 파트에 남고
+    # 둘째 파트는 1:16:30에서 시작한다(이슈 #14)
+    video = await _video(db, make, duration_sec=9000)
+    await make.transcript(video.id, ["x"] * 90, step=100)
+    summarizer.chapter_draft = ChapterDraft(
+        parts=[("앞", 0.0), ("뒤", 4500.0)],
+        chapters=[
+            (1, 0.0, "시작", ["a", "b"]),
+            (1, 4470.0, "앞의 끝", ["a", "b"]),
+            (2, 4590.0, "뒤의 처음", ["a", "b"]),
+        ],
+    )
+    await AnalysisService(db, summarizer).generate_chapters(video)
+    parts, chapters = await _parts_and_chapters(db, summarizer, video.id)
+    assert parts == [(1, "앞", 0), (2, "뒤", 4590)]
+    assert chapters == [(1, 0), (1, 4470), (2, 4590)]
 
 
 async def test_generate_chapters_one_model_part_groups_by_hour(
@@ -367,7 +412,7 @@ async def test_result_of(db, make, summarizer, youtube, env_file, queries) -> No
     done = (await VideoService(db, youtube, None).get(video.id)).video
     queries.clear()
     result = await svc.result_of(done)
-    assert len(queries) <= 6  # 쿼리 여섯을 넘지 않는다
+    assert len(queries) <= 8  # 쿼리 여덟을 넘지 않는다(장면 · 인포그래픽까지)
     assert len(result.transcript.segments) == 30
     assert (result.transcript.source, result.models.stt, result.models.text) == (
         "caption_manual",
@@ -379,6 +424,8 @@ async def test_result_of(db, make, summarizer, youtube, env_file, queries) -> No
     assert [q.text for q in result.suggested_questions] == summarizer.question_list
     assert result.analyzed_at == done.analyzed_at
     assert result.video == done
+    assert result.frames_state == "absent"  # 장면 단계 전 결과 — 채우기는 시작하지 않는다
+    assert all(c.frame is None for c in result.chapters)
 
 
 async def test_result_of_parts_end_and_counts(db, make, summarizer, env_file) -> None:
@@ -441,10 +488,12 @@ async def test_filename_for(db, make) -> None:
     assert await name("a\tb\x7fc") == "a_b_c"  # 제어 문자도 _
     # 위키링크에서 뜻이 있는 글자도 _ — 노트의 [[{이름} 스크립트]]가 깨지지 않게(MS-003 v9)
     assert await name("[EP.1] RAG #shorts ^v2") == "_EP.1_ RAG _shorts _v2"
-    assert await name("가" * 200) == "가" * 79  # 한글 80자는 240바이트 — 238바이트에 맞춰 79자
+    assert await name("가" * 200) == "가" * 78  # 한글 80자는 240바이트 — 235바이트에 맞춰 78자
     emoji = await name("🔥" * 80)  # 4바이트 글자 — 80자면 320바이트
-    assert len(emoji.encode()) <= 238 and emoji == "🔥" * 59
+    assert len(emoji.encode()) <= 235 and emoji == "🔥" * 58
     assert len(f"{emoji}{SCRIPT_SUFFIX}.md".encode()) <= 255  # 스크립트 파일 이름까지(MS-003 v8)
+    # 가장 긴 꼬리 — 인포그래픽 그림 파일 이름까지 255바이트 안(MS-003 v14)
+    assert len(export.infographic_name("가" * 78).encode()) <= 255
     local = {"source_kind": "local", "origin": "workshop_0912.mp4", "channel": None}
     assert await name("workshop_0912.mp4", **local) == "workshop_0912"  # 로컬 파일은 확장자를 뗀다
     empty = await _video(db, make, title=" . ")
@@ -467,23 +516,34 @@ async def test_export_markdown(db, make, summarizer, youtube, env_file) -> None:
     svc = AnalysisService(db)  # 읽기만 — 요약 포트 없이
     at = video.analyzed_at
     turns = [ChatTurn(id=1, question="왜?", answer="그래서.", cited_secs=[], asked_at=at)]
-    pre = await svc.export_markdown(video, False, turns)
+    pre = await svc.export_markdown(video, False, turns, ExportMethod.file)
     assert (pre.filename, pre.path) == (
         "RAG 서비스 1년 운영기",
         "data/export/RAG 서비스 1년 운영기.md",  # 보일 경로 — 컨테이너 안 경로가 아니다
     )
     assert pre.markdown.startswith("# RAG 서비스 1년 운영기\n원본: [https://")
     assert "## 질문 기록" not in pre.markdown  # with_chat이 거짓이면 턴을 받아도 없다
-    empty = await svc.export_markdown(video, True, [])
+    # 파일로 저장 — 저장할 노트와 같다(스크립트 파일 링크) · 함께 쓸 파일은 노트 · 스크립트
+    assert pre.markdown.endswith("## 스크립트\n[[RAG 서비스 1년 운영기 스크립트]]\n")
+    assert pre.markdown == export.build(await svc.result_of(video), None, pre.filename)
+    assert [(f.kind, f.name) for f in pre.files] == [
+        ("note", "RAG 서비스 1년 운영기.md"),
+        ("script", "RAG 서비스 1년 운영기 스크립트.md"),
+    ]
+    # 복사 — 가리킬 파일이 없어 스크립트 절도 파일 목록도 없다. 한눈에 보기는 들어간다
+    copy = await svc.export_markdown(video, False, turns, ExportMethod.clipboard)
+    assert "## 스크립트" not in copy.markdown and copy.files == []
+    assert "## 한눈에 보기\n```mermaid\ngantt" in copy.markdown
+    empty = await svc.export_markdown(video, True, [], ExportMethod.clipboard)
     assert empty.markdown.endswith("## 질문 기록\n질문 기록이 없습니다\n")
-    chat = await svc.export_markdown(video, True, turns)
+    chat = await svc.export_markdown(video, True, turns, ExportMethod.clipboard)
     assert chat.markdown.endswith("## 질문 기록\n**Q.** 왜?\n**A.** 그래서.\n")
 
 
 async def test_export_markdown_needs_result(db, make) -> None:
     video = await _video(db, make, JobStatus.running)
     with pytest.raises(ResultNotReady):
-        await AnalysisService(db).export_markdown(video, False, [])
+        await AnalysisService(db).export_markdown(video, False, [], ExportMethod.file)
 
 
 async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path, monkeypatch):
@@ -496,15 +556,18 @@ async def test_export_to_file(db, make, summarizer, youtube, env_file, tmp_path,
     note = folder / "RAG 서비스 1년 운영기.md"
     script = folder / "RAG 서비스 1년 운영기 스크립트.md"
     # 노트는 스크립트 파일을 가리키는 절이 붙고, 스크립트는 따로(MS-003 v8)
-    assert note.read_text(encoding="utf-8") == export.build(
-        result, None, "RAG 서비스 1년 운영기 스크립트"
-    )
+    assert note.read_text(encoding="utf-8") == export.build(result, None, "RAG 서비스 1년 운영기")
     assert script.read_text(encoding="utf-8") == export.build_script(result)
     assert (done.filename, done.path, done.bytes) == (
         "RAG 서비스 1년 운영기",
         "data/export/RAG 서비스 1년 운영기.md",
         note.stat().st_size + script.stat().st_size,  # 두 파일 합
     )
+    # 쓴 파일 — 미리 보기(file)의 files와 같은 목록이고 실제로 쓴 파일과 같다. 그림은 장면 ·
+    # 인포그래픽 카드(D2 · D3)부터
+    assert done.images == 0
+    assert done.files == (await svc.export_markdown(video, False, [], ExportMethod.file)).files
+    assert sorted(f.name for f in done.files) == sorted(p.name for p in folder.iterdir())
     for f in (note, script):
         assert oct(f.stat().st_mode & 0o777) == oct(0o644)  # 노트 앱이 읽는 보통 파일
     await svc.export_to_file(video, True, [])  # 두 번 저장하면 둘 다 덮어쓴다

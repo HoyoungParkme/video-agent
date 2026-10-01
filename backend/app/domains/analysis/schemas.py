@@ -1,17 +1,21 @@
 """결과 묶음의 응답 형태(VA-API-001 4장)와 내부 타입(VA-DOM-002 2.6).
 
-내부 타입 — CaptionLine · SummaryDraft · ChapterDraft. 포트와 서비스 사이에서만 오간다.
+내부 타입 — CaptionLine · SummaryDraft · ChapterDraft · FrameShot · InfographicBrief · ImageShot.
+포트와 서비스 사이에서만 오간다.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel
 
+from app.core.config import ImageQuality
 from app.core.settings import Models
-from app.domains.analysis.models import TranscriptSource
+from app.domains.analysis.models import FrameSource, InfographicState, TranscriptSource
 from app.domains.video.schemas import Video
 
 
@@ -53,12 +57,61 @@ class Part(BaseModel):
     chapter_count: int
 
 
+class FramesState(StrEnum):
+    """결과의 장면 상태 — absent: 장면 단계 전 결과(채울 수 있다) · making: 만드는 중 · done: 끝남 ·
+    unavailable: 음성 파일 · 원본 없음(VA-API-001 FramesState)."""
+
+    absent = "absent"
+    making = "making"
+    done = "done"
+    unavailable = "unavailable"
+
+
+class Frame(BaseModel):
+    """챕터의 대표 장면. sec는 실제로 잘라 온 장면의 시각(챕터 시작과 다를 수 있다)."""
+
+    chapter_seq: int
+    sec: float
+    source: FrameSource
+    width: int
+    height: int
+    url: str
+
+
+class FrameSet(BaseModel):
+    """장면 상태와 장면이 있는 챕터의 장면(챕터 순서)."""
+
+    state: FramesState
+    frames: list[Frame]
+
+
+class InfographicImage(BaseModel):
+    """지금 쓰는 인포그래픽 그림. url의 ?v=는 만든 시각이라 그림이 바뀌면 주소가 바뀐다."""
+
+    url: str
+    model: str
+    quality: ImageQuality
+    width: int
+    height: int
+    created_at: datetime
+    cost_usd: float
+
+
+class Infographic(BaseModel):
+    """인포그래픽 상태와 지금 쓰는 그림 — 다시 만들기가 실패해도 이전 그림이 남는다(UC-H9 4a)."""
+
+    state: InfographicState
+    image: InfographicImage | None
+    error_reason: str | None
+
+
 class Chapter(BaseModel):
     seq: int
     part_seq: int | None
     start_sec: float
     title: str
     bullets: list[str]
+    frame: Frame | None = None  # 대표 장면 — 없으면 null(UI-4 6.7이 없다)
 
 
 class SuggestedQuestion(BaseModel):
@@ -77,22 +130,48 @@ class Result(BaseModel):
     suggested_questions: list[SuggestedQuestion]
     models: Models
     analyzed_at: datetime
+    frames_state: FramesState
+    infographic: Infographic
+
+
+class ExportMethod(StrEnum):
+    """내보내기 방법(미리 보기의 쿼리 `method`). 파일로 저장한 노트에만 스크립트 절 · 그림 줄."""
+
+    file = "file"
+    clipboard = "clipboard"
+
+
+class ExportFile(BaseModel):
+    """함께 쓰는 파일 하나(UI-7 2.3 칩). name은 `data/export/` 안의 파일 이름."""
+
+    kind: Literal["note", "script", "frame", "infographic"]
+    name: str
 
 
 class ExportPreview(BaseModel):
-    """내보낼 마크다운 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`."""
+    """내보낼 마크다운 전체와 파일 이름. path는 보일 경로 `data/export/{filename}.md`.
+
+    files는 파일로 저장할 때 함께 쓸 파일(노트 · 스크립트, 있으면 장면 · 인포그래픽).
+    복사는 빈 목록이다.
+    """
 
     filename: str
     path: str
     markdown: str
+    files: list[ExportFile]
 
 
 class ExportResult(BaseModel):
-    """쓴 파일 — path는 보일 경로, bytes는 쓴 바이트 수."""
+    """쓴 파일 — path는 노트의 보일 경로, bytes는 쓴 파일 전부의 바이트 합.
+
+    images는 쓴 그림 수(장면 + 인포그래픽) — 짧은 알림의 '· 그림 {n}장'. files는 쓴 파일.
+    """
 
     filename: str
     path: str
     bytes: int
+    images: int
+    files: list[ExportFile]
 
 
 class ExportRequest(BaseModel):
@@ -124,3 +203,33 @@ class ChapterDraft:
 
     parts: list[tuple[str, float]]
     chapters: list[tuple[int | None, float, str, list[str]]]
+
+
+@dataclass(frozen=True)
+class FrameShot:
+    """얻은 장면 한 장 — 실제 칸의 시각(챕터 시작과 몇 초 다를 수 있다) · 크기 · 임시 파일 경로."""
+
+    sec: float
+    source: FrameSource
+    width: int
+    height: int
+    path: str
+
+
+@dataclass(frozen=True)
+class InfographicBrief:
+    """인포그래픽 재료 — 제목 · 한 줄 요약 · 인사이트 · 챕터 제목뿐. 스크립트는 없다(UC-H9 4번)."""
+
+    title: str
+    one_liner: str
+    insights: list[str]
+    chapter_titles: list[str]
+
+
+@dataclass(frozen=True)
+class ImageShot:
+    """그린 인포그래픽 한 장 — 크기와 쓴 파일 경로."""
+
+    width: int
+    height: int
+    path: str

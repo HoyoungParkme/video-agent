@@ -24,7 +24,7 @@ from openai import APIConnectionError, APITimeoutError, OpenAIError
 from app.core.config import config
 from app.core.db import SessionLocal
 from app.domains.analysis.models import TranscriptSource
-from app.domains.analysis.ports import SummarizerPort
+from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
 from app.domains.analysis.schemas import CaptionLine
 from app.domains.analysis.service import AnalysisService
 from app.domains.job import crud
@@ -34,6 +34,7 @@ from app.domains.job.schemas import JobError
 from app.domains.job.service import JobService
 from app.infra import openai, ytdlp
 from app.infra.errors import FfmpegError, OpenAIOutputError, YtdlpError
+from app.shared import sources
 
 if TYPE_CHECKING:
     from app.domains.video.schemas import Video
@@ -45,6 +46,10 @@ audio_source: AudioSourcePort | None = None
 audio_split: AudioSplitPort | None = None
 stt: SttPort | None = None
 summarizer: SummarizerPort | None = None
+storyboard: FrameSourcePort | None = None
+local_frames: FrameSourcePort | None = None
+# 끝난 작업의 올린 사본을 놓는 함수 — 워커가 main.py에서 받아 둔다(VideoService.release_upload)
+release_upload: Callable[[Video], Awaitable[None]] | None = None
 
 # 내려받기 · 추출 · 로컬 음성 변환이 쓰는 이름(infra/ffmpeg.extract_audio)
 AUDIO_NAME = "audio.mp3"
@@ -228,7 +233,9 @@ async def run(job_id: int, video: Video) -> None:
     """VA-MS-002#pipeline.run
 
     첫 단계부터 끝까지. 워커가 띄운 태스크 안에서 돈다. 단계마다 mark_stage 뒤 실행하고,
-    끝나면 finish와 임시 폴더 정리. 실패하면 fail로 접고, 취소되면 아무것도 쓰지 않는다.
+    끝나면 finish · 올린 사본 놓기(release_upload) · 임시 폴더 정리. 실패하면 fail로 접고 사본은
+    남긴다(다시 시도가 읽는다). 취소되면 아무것도 쓰지 않는다. 로컬 원본은 inbox 파일이거나
+    올린 사본이다(sources.local_path).
 
     Args:
         job_id: 작업 id
@@ -273,6 +280,7 @@ async def _drive(job_id: int, video: Video, resume: bool) -> None:
             audio = await _stage(stage, job_id, video, stages, tmp, audio)
         async with SessionLocal() as s:
             await JobService(s).finish(job_id)
+        await _release(video)  # 장면을 뽑은 뒤다 — 로컬 장면이 사본을 읽는다
         shutil.rmtree(tmp, ignore_errors=True)
     except asyncio.CancelledError:
         raise  # 삭제 · 서버 종료 — 행과 조각 파일은 그대로 둔다
@@ -325,18 +333,27 @@ async def _stage(
             return None
         return await source.download_audio(video.source_id, str(tmp))
     if stage == JobStage.extract:
-        return await source.extract_audio(str(Path(config.INBOX_DIR) / video.origin), str(tmp))
+        return await source.extract_audio(_original(video), str(tmp))
     if stage == JobStage.transcribe:
         if audio is None:
             async with SessionLocal() as s:
                 has_chunks = await crud.has_chunks(s, job_id)
             if not has_chunks and _local_audio(stages):
-                # 로컬 음성 — 추출 단계가 없어 여기서 mp3로 바꾼다. inbox 원본은 읽기만 한다
-                inbox = str(Path(config.INBOX_DIR) / video.origin)
-                audio = await source.extract_audio(inbox, str(tmp))
+                # 로컬 음성 — 추출 단계가 없어 여기서 mp3로 바꾼다. 원본은 읽기만 한다
+                audio = await source.extract_audio(_original(video), str(tmp))
             elif not has_chunks:
                 audio = str(tmp / AUDIO_NAME)  # 다시 시도 — 앞 단계가 다 써 둔 음성
         await transcribe_stage(job_id, video, audio, str(tmp))
+        return None
+    if stage == JobStage.frames:
+        # 장면은 작업을 실패로 만들지 않는다(UC-S6 1b) — 취소만 올리고 나머지는 로그 한 줄
+        try:
+            async with SessionLocal() as s:
+                await AnalysisService(
+                    s, storyboard=storyboard, local_frames=local_frames
+                ).make_frames(video)
+        except Exception as e:
+            log.warning("작업 %d의 장면 단계가 실패: %s", job_id, type(e).__name__)
         return None
     async with SessionLocal() as s:
         analysis = AnalysisService(s, _need(summarizer, "summarizer"))
@@ -349,11 +366,28 @@ async def _stage(
     return None
 
 
+def _original(video: Video) -> str:
+    # 로컬 영상의 원본 — inbox 파일 또는 올린 사본
+    return str(sources.local_path(video.origin, video.source_id, video.uploaded))
+
+
+async def _release(video: Video) -> None:
+    # 끝난 작업의 올린 사본을 놓는다 — 작업은 이미 done이라 예외는 로그로만 남긴다(남은 사본은
+    # 다음 시작의 청소가 지운다)
+    try:
+        await _need(release_upload, "release_upload")(video)
+    except Exception:
+        log.exception("영상 %d의 올린 사본을 놓지 못했다", video.id)
+
+
 def _error_of(e: Exception) -> JobError:
     return JobError(kind=error_kind(e), reason=reason_of(e), chunk_seq=None, attempts=1)
 
 
-async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
+async def worker(
+    load_video: Callable[[int], Awaitable[Video | None]],
+    release_upload: Callable[[Video], Awaitable[None]],
+) -> None:
     """VA-MS-002#pipeline.worker
 
     대기열 워커 — 한 번에 하나씩 차례로 돌린다. main.py lifespan이 태스크 하나로 띄우고
@@ -363,7 +397,10 @@ async def worker(load_video: Callable[[int], Awaitable[Video | None]]) -> None:
 
     Args:
         load_video: 영상 id → Video(없으면 None). main.py가 VideoService.get을 감싸 넘긴다
+        release_upload: 끝난 작업의 올린 사본을 놓는 함수(VideoService.release_upload). 모듈
+            속성에 두고 run · resume이 끝에서 부른다 — 작업 묶음은 영상 묶음을 import하지 않는다
     """
+    globals()["release_upload"] = release_upload  # 모듈 속성 pipeline.release_upload(이름이 같다)
     while True:
         JobService.work_event.clear()  # 확인하기 전에 — 확인과 잠들기 사이에 온 신호를 잃지 않게
         try:
