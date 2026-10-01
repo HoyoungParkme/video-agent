@@ -97,8 +97,9 @@ async def _alembic(action: str, target: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_retry_wait(monkeypatch) -> None:
-    """조각을 다시 보내기 전의 기다림(2초 · 4초)을 없앤다 — 기다림을 보는 테스트만 값을 준다."""
+    """조각 · 토막을 다시 보내기 전의 기다림을 없앤다 — 기다림을 보는 테스트만 값을 준다."""
     monkeypatch.setattr(config, "CHUNK_RETRY_WAIT_SEC", 0)
+    monkeypatch.setattr(config, "PIECE_RETRY_WAIT_SEC", 0)
 
 
 @pytest.fixture(scope="session")
@@ -614,12 +615,14 @@ class FakeStt:
     delay: float = 0
     delays: dict[int, float] = field(default_factory=dict)
     calls: list[int] = field(default_factory=list)
+    models: list[str] = field(default_factory=list)
     running: int = 0
     peak: int = 0
 
     async def transcribe(self, path: str, model: str) -> list[SttSegment]:
         seq = int(Path(path).stem)
         self.calls.append(seq)
+        self.models.append(model)
         self.running += 1
         self.peak = max(self.peak, self.running)
         try:

@@ -178,7 +178,7 @@ test("자막 없는 YouTube — 받아쓰기 필요 판", async ({ page }) => {
   await expect(inDialog(page, "3.2")).toHaveText(
     "음성을 뽑아 3개 조각으로 나누고, 3개씩 동시에 받아씁니다.",
   );
-  await expect(inDialog(page, "4.2")).toHaveText("받아쓰기 30분 × $0.006$0.18");
+  await expect(inDialog(page, "4.2")).toHaveText("받아쓰기 30분 × $0.0045$0.14");
   await expect(inDialog(page, "5")).toHaveText(
     "받아쓰기에는 음성 조각이, 요약에는 스크립트 텍스트가 OpenAI로 전송됩니다. 영상은 전송되지 않아요.",
   );

@@ -319,7 +319,7 @@ test("받아쓰기가 실패한 올린 영상 — 사본이 남아 삭제 창이
   page,
   request,
 }) => {
-  await fakeOpenAI(request, { stt_fail: { seq: 2, times: 3 } });
+  await fakeOpenAI(request, { stt_fail: { seq: 2, times: 9 } }); // 토막 세 번 × 조각 세 번
   await page.goto("/");
   await pick(page, media("fail_upload.mp4")); // 25분 — 조각 셋
   await inDialog(page, "6.3").click();

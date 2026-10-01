@@ -159,12 +159,13 @@ def test_write_env_read_only(svc, env_file) -> None:
 def test_current_models_defaults_and_prices(svc, env_file) -> None:
     _write(env_file)
     m = svc.current_models()
-    assert (m.stt.id, m.text.id) == ("whisper-1", "gpt-5.6-luna")
-    assert m.stt.price.per_min_usd == 0.006
+    assert (m.stt.id, m.text.id) == ("gpt-transcribe", "gpt-5.6-luna")
+    assert m.stt.price.per_min_usd == 0.0045
     assert m.text.price.input_per_mtok_usd == 0.20
-    env_file.write_text("STT_MODEL=whisper-9\nTEXT_MODEL=gpt-5.4\n")
+    env_file.write_text("STT_MODEL=whisper-1\nTEXT_MODEL=gpt-5.4\n")
     m = svc.current_models()
-    assert (m.stt.id, m.text.id) == ("whisper-1", "gpt-5.4")  # 목록에 없으면 기본값
+    # 목록에 없으면 기본값 — 뺀 whisper-1이 저장돼 있어도(2026-10-01)
+    assert (m.stt.id, m.text.id) == ("gpt-transcribe", "gpt-5.4")
     assert m.text.price.output_per_mtok_usd == 15.00
 
 
@@ -203,7 +204,7 @@ def test_get_masks_and_sends_nothing(svc, env_file, verify, monkeypatch) -> None
     s = svc.get()
     assert s.key.masked == "sk-…1234"  # 환경 변수가 아니라 파일 것
     assert s.key.stored_in == ".env에 저장됨"
-    assert s.models.model_dump() == {"stt": "whisper-1", "text": "gpt-5.6-luna"}
+    assert s.models.model_dump() == {"stt": "gpt-transcribe", "text": "gpt-5.6-luna"}
     assert s.model_options == config.MODEL_OPTIONS
     assert s.inbox_path == config.INBOX_DISPLAY_PATH
     assert verify.calls == []
@@ -393,7 +394,7 @@ async def test_set_key_write_failure(svc, env_file, verify, monkeypatch) -> None
 
 def test_set_models(svc, env_file) -> None:
     _write(env_file)
-    s = svc.set_models("whisper-1", "gpt-5.4")
+    s = svc.set_models("gpt-transcribe", "gpt-5.4")
     assert s.models.text == "gpt-5.4"
     assert svc.current_models().text.id == "gpt-5.4"
     assert svc.read_env()["OPENAI_API_KEY"] == KEY
@@ -401,11 +402,11 @@ def test_set_models(svc, env_file) -> None:
 
 def test_set_models_image(svc, env_file) -> None:
     _write(env_file)
-    svc.set_models("whisper-1", "gpt-5-mini", image_quality="medium")
+    svc.set_models("gpt-transcribe", "gpt-5-mini", image_quality="medium")
     assert svc.read_env()["IMAGE_QUALITY"] == "medium"
     assert "IMAGE_MODEL" not in svc.read_env()  # 안 보낸 줄은 그대로(없던 줄은 없다)
     assert svc.current_models().image_quality.price_usd == 0.05
-    svc.set_models("whisper-1", "gpt-5-mini")  # 이미지 값을 안 보내면 이미지 줄이 그대로
+    svc.set_models("gpt-transcribe", "gpt-5-mini")  # 이미지 값을 안 보내면 이미지 줄이 그대로
     assert svc.read_env()["IMAGE_QUALITY"] == "medium"
     assert svc.read_env()["OPENAI_API_KEY"] == KEY
 
@@ -417,7 +418,7 @@ def test_set_models_image(svc, env_file) -> None:
 def test_set_models_image_unknown(svc, env_file, kw, field) -> None:
     before = _write(env_file)
     with pytest.raises(Validation) as e:
-        svc.set_models("whisper-1", "gpt-5-mini", **kw)
+        svc.set_models("gpt-transcribe", "gpt-5-mini", **kw)
     assert [x["field"] for x in e.value.extra["errors"]] == [field]
     assert env_file.read_text() == before
 
@@ -425,6 +426,6 @@ def test_set_models_image_unknown(svc, env_file, kw, field) -> None:
 def test_set_models_unknown(svc, env_file) -> None:
     before = _write(env_file)
     with pytest.raises(Validation) as e:
-        svc.set_models("whisper-1", "gpt-4o")
+        svc.set_models("gpt-transcribe", "gpt-4o")
     assert e.value.extra["errors"] == [{"field": "text_model", "message": "목록에 없는 모델이에요"}]
     assert env_file.read_text() == before

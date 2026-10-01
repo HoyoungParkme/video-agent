@@ -40,9 +40,9 @@ async def test_get_settings(client, env_file) -> None:
         "reason_kind": None,
         "reason": None,
     }
-    assert body["models"] == {"stt": "whisper-1", "text": "gpt-5.6-luna"}
+    assert body["models"] == {"stt": "gpt-transcribe", "text": "gpt-5.6-luna"}
     assert body["model_options"]["stt"] == [
-        {"id": "whisper-1", "label": "whisper-1", "price": {"per_min_usd": 0.006}}
+        {"id": "gpt-transcribe", "label": "gpt-transcribe", "price": {"per_min_usd": 0.0045}}
     ]
     assert [o["id"] for o in body["model_options"]["text"]] == [
         "gpt-5.6-luna",
@@ -111,10 +111,10 @@ async def test_validation_does_not_echo_input(client) -> None:
 
 async def test_put_models(client, env_file) -> None:
     r = await client.put(
-        "/api/settings/models", json={"stt_model": "whisper-1", "text_model": "gpt-5.4-mini"}
+        "/api/settings/models", json={"stt_model": "gpt-transcribe", "text_model": "gpt-5.4-mini"}
     )
     assert r.status_code == 200
-    assert r.json()["models"] == {"stt": "whisper-1", "text": "gpt-5.4-mini"}
+    assert r.json()["models"] == {"stt": "gpt-transcribe", "text": "gpt-5.4-mini"}
     assert "TEXT_MODEL=gpt-5.4-mini" in env_file.read_text()
 
 
@@ -122,12 +122,12 @@ async def test_put_models_image(client, env_file) -> None:
     env_file.write_text(f"OPENAI_API_KEY={KEY}\n")
     r = await client.put(
         "/api/settings/models",
-        json={"stt_model": "whisper-1", "text_model": "gpt-5-mini", "image_quality": "medium"},
+        json={"stt_model": "gpt-transcribe", "text_model": "gpt-5-mini", "image_quality": "medium"},
     )
     assert (r.status_code, r.json()["image"]["quality"]) == (200, "medium")
     r = await client.put(
         "/api/settings/models",
-        json={"stt_model": "whisper-1", "text_model": "gpt-5-mini", "image_quality": "high"},
+        json={"stt_model": "gpt-transcribe", "text_model": "gpt-5-mini", "image_quality": "high"},
     )
     assert (r.status_code, r.json()["type"]) == (422, "urn:va:validation")
     assert "IMAGE_QUALITY=medium" in env_file.read_text()
@@ -135,7 +135,7 @@ async def test_put_models_image(client, env_file) -> None:
 
 async def test_put_models_unknown(client, env_file) -> None:
     r = await client.put(
-        "/api/settings/models", json={"stt_model": "whisper-1", "text_model": "gpt-4o"}
+        "/api/settings/models", json={"stt_model": "gpt-transcribe", "text_model": "gpt-4o"}
     )
     assert r.status_code == 422
     assert r.json()["type"] == "urn:va:validation"

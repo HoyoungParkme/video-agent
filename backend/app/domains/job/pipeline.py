@@ -23,6 +23,7 @@ from openai import APIConnectionError, APITimeoutError, OpenAIError
 
 from app.core.config import config
 from app.core.db import SessionLocal
+from app.core.settings import settings
 from app.domains.analysis.models import TranscriptSource
 from app.domains.analysis.ports import FrameSourcePort, SummarizerPort
 from app.domains.analysis.schemas import CaptionLine
@@ -162,6 +163,12 @@ async def transcribe_stage(job_id: int, video: Video, audio: str | None, tmp: st
     async with SessionLocal() as s:
         row = await crud.by_id(s, job_id)
         concurrency, model = row.concurrency, row.stt_model or ""
+        if model not in {o.id for o in config.MODEL_OPTIONS.stt}:
+            # 목록에서 뺀 모델(whisper-1, 2026-10-01)로 만든 작업 — 대기열에 있었거나 다시 시도됐다.
+            # 그 모델로 보내면 인자가 맞지 않아 400이다. 지금 모델로 바꿔 적는다(끝난 조각은 그대로)
+            model = settings.current_models().stt.id
+            row.stt_model = model
+            await s.commit()
         chunks = await crud.chunks(s, job_id)
     if not chunks:
         plans = await split_port.split(_need(audio, "audio"), tmp)

@@ -49,7 +49,7 @@ async def test_post_video_local_needs_stt(api, key, probe, tmp_path, monkeypatch
         3,
         150.0,
     )
-    assert est["stt_cost_usd"] == 0.9
+    assert est["stt_cost_usd"] == 0.675  # 150분 × 분당 $0.0045(gpt-transcribe)
 
 
 async def test_post_video_local_without_audio(api, key, probe, tmp_path, monkeypatch) -> None:
