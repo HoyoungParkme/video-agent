@@ -21,6 +21,7 @@ from sqlalchemy import select
 from app.core.config import config
 from app.core.db import SessionLocal
 from app.core.errors import UnsupportedFile
+from app.core.settings import settings
 from app.domains.analysis import crud as analysis_crud
 from app.domains.analysis.models import SegmentRow, SummaryRow, TranscriptRow
 from app.domains.job import pipeline
@@ -274,6 +275,21 @@ async def test_run_youtube_without_captions(db, make, ports, audio_split, stt, t
     assert segs[2] == (600.0, "2번 조각 첫 문장")  # 2번 조각의 0초 → 600초
     assert [name for name, _ in summarizer.calls] == ["summary", "chapters", "questions"]
     assert not tmp.exists()
+
+
+async def test_transcribe_removed_model_uses_current(db, make, ports, audio_split, stt) -> None:
+    # 목록에서 뺀 받아쓰기 모델로 만든 작업(대기 중이었거나 다시 시도) — 그 모델로 보내면 400이다.
+    # 지금 모델로 바꿔 적고 그 모델로 보내며, 스크립트의 모델도 그것이다(MS-002 transcribe_stage 2번)
+    kw = {"has_captions": False, "caption_language": None, "caption_kind": None}
+    row = await make.video(**kw)
+    job = await make.job(row.id, JobStatus.running, stages=STT_STAGES, stt_model="whisper-0")
+    await pipeline.run(job.id, VideoService.to_dto(row, None, 0))
+    now = settings.current_models().stt.id
+    assert now != "whisper-0"
+    assert set(stt.models) == {now}
+    assert (await _row(job.id)).stt_model == now
+    t = await db.scalar(select(TranscriptRow))
+    assert t.model == now
 
 
 async def test_run_local_audio_converts_before_split(db, make, ports, audio_split, tmp_path):

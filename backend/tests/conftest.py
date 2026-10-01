@@ -614,12 +614,14 @@ class FakeStt:
     delay: float = 0
     delays: dict[int, float] = field(default_factory=dict)
     calls: list[int] = field(default_factory=list)
+    models: list[str] = field(default_factory=list)
     running: int = 0
     peak: int = 0
 
     async def transcribe(self, path: str, model: str) -> list[SttSegment]:
         seq = int(Path(path).stem)
         self.calls.append(seq)
+        self.models.append(model)
         self.running += 1
         self.peak = max(self.peak, self.running)
         try:
