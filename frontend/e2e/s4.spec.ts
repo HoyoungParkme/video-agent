@@ -249,14 +249,24 @@ test("탭을 오가도 읽던 대화 위치 — 떠난 사이 답이 오면 맨 
     list.evaluate((e) => Math.round(e.scrollHeight - e.clientHeight - e.scrollTop));
   await expect.poll(fromEnd).toBeLessThanOrEqual(1);
 
-  // 위로 올려 두고 근거 칩으로 스크립트에 다녀온다 — 읽던 자리 그대로
-  await list.evaluate((e) => {
-    e.scrollTop = 0;
+  // 가운데쯤으로 올려 두고, 거기서 보이는 근거 칩으로 스크립트에 다녀온다 — 읽던 자리 그대로
+  const mid = await list.evaluate((e) => {
+    e.scrollTop = Math.round((e.scrollHeight - e.clientHeight) / 2);
+    return e.scrollTop;
   });
-  await el(page, "9.5").click();
+  expect(mid).toBeGreaterThan(0);
+  const shown = await list.evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return [...e.querySelectorAll(".turn .time-chip")].findIndex((c) => {
+      const b = c.getBoundingClientRect();
+      return b.top >= r.top && b.bottom <= r.bottom;
+    });
+  });
+  expect(shown).toBeGreaterThanOrEqual(0);
+  await list.locator(".turn .time-chip").nth(shown).click();
   await expect(el(page, "7.1")).toHaveAttribute("aria-selected", "true");
   await el(page, "7.2").click();
-  expect(await list.evaluate((e) => e.scrollTop)).toBe(0);
+  expect(await list.evaluate((e) => e.scrollTop)).toBe(mid);
 
   // 답을 기다리는 동안 스크립트에 갔다가 답이 온 뒤 돌아오면 맨 아래 — 새 답이 보인다
   await fakeOpenAI(request, { chat_delay_ms: 1500 });

@@ -126,8 +126,9 @@ if (video.error) {
 function vtt({ duration, step = 100, width }) {
   const ts = (s) => {
     const two = (n) => String(n).padStart(2, "0");
-    const whole = Math.floor(s);
-    const ms = String(Math.round((s - whole) * 1000)).padStart(3, "0");
+    const total = Math.round(s * 1000); // 밀리초로 먼저 반올림 — .9995가 1000ms로 넘치지 않게
+    const whole = Math.floor(total / 1000);
+    const ms = String(total % 1000).padStart(3, "0");
     return `${two(Math.floor(whole / 3600))}:${two(Math.floor((whole % 3600) / 60))}:${two(whole % 60)}.${ms}`;
   };
   const cues = [];

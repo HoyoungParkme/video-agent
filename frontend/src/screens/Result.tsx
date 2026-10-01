@@ -137,7 +137,7 @@ function addressTime(duration: number): number | null {
   return sec <= duration ? sec : null;
 }
 
-/** 짧은 알림(11) — 알림마다 번호를 올려 새로 그린다: 같은 글이어도 4초를 처음부터 센다(공통 1.5). */
+/** 짧은 알림(11) — 알림마다 번호(stamp)를 올린다: 같은 글이어도 4초를 처음부터 센다(공통 1.5). */
 interface Notice {
   text: string;
   n: number;
@@ -297,8 +297,7 @@ export default function Result({ id }: { id: number }) {
   const [draft, setDraft] = useState("");
   const script = useRef<HTMLDivElement>(null);
   const chatList = useRef<HTMLDivElement>(null);
-  // 대화 목록의 읽던 위치 — 탭을 오가도 되돌린다. 숨어 있는 사이 새 턴 · 대기 · 실패가 생겼으면 끝(UI-4 규칙)
-  const chatTop = useRef(0);
+  // 대화 목록이 숨어 있는(스크립트 탭) 사이 새 턴 · 대기 · 실패가 생겼는가 — 돌아오면 끝을 보인다(UI-4 규칙)
   const chatMissed = useRef(false);
   const settings = useSettings();
 
@@ -425,12 +424,12 @@ export default function Result({ id }: { id: number }) {
     };
   }, [tab, turns, id]);
 
-  // 질문하기 탭으로 돌아오면 읽던 위치, 떠난 사이 새 턴 · 대기 · 실패가 생겼으면 끝(UI-4 규칙). 아래 효과보다
-  // 먼저 돈다 — 추천 질문처럼 탭과 대기가 함께 바뀌면 끝이 이긴다
+  // 질문하기 탭으로 돌아오면 — 떠난 사이 새 턴 · 대기 · 실패가 생겼으면 끝, 아니면 읽던 위치 그대로다. 숨긴
+  // 패널의 스크롤 위치는 브라우저가 지킨다 — 스크립트(8)와 같다(UI-4 규칙, Chromium 진짜 스택 확인)
   useEffect(() => {
     const box = chatList.current;
-    if (tab !== "chat" || !box) return;
-    box.scrollTop = chatMissed.current ? box.scrollHeight : chatTop.current;
+    if (tab !== "chat" || !box || !chatMissed.current) return;
+    box.scrollTop = box.scrollHeight;
     chatMissed.current = false;
   }, [tab]);
 
@@ -466,8 +465,11 @@ export default function Result({ id }: { id: number }) {
     setSelected(sec);
     setPicks((n) => n + 1);
     setTab("script");
-    // 주소에 남긴다 — 바꿔 써서 방문 기록은 늘지 않는다. 누른 시각 그대로(구간 시각은 소수, 공통 1.3)
-    window.history.replaceState(null, "", `?t=${Math.round(sec * 1000) / 1000}`);
+    // 주소에 남긴다 — 바꿔 써서 방문 기록은 늘지 않는다. 누른 시각 그대로(구간 시각은 소수, 공통 1.3).
+    // t만 바꾸고 다른 값 · #은 그대로 둔다
+    const url = new URL(window.location.href);
+    url.searchParams.set("t", String(Math.round(sec * 1000) / 1000));
+    window.history.replaceState(null, "", url);
   };
   const keyBlocked = settings ? keyBlocks(settings.key) : false;
   const keyNote = settings ? keyNotice(settings.key) : null;
@@ -831,14 +833,7 @@ export default function Result({ id }: { id: number }) {
             className="chat"
             hidden={tab !== "chat"}
           >
-            <div
-              ref={chatList}
-              className="chat-list"
-              data-el="9"
-              onScroll={(e) => {
-                chatTop.current = e.currentTarget.scrollTop;
-              }}
-            >
+            <div ref={chatList} className="chat-list" data-el="9">
               {turns !== null && turns.length === 0 && pending === null && (
                 <EmptyBox
                   compact
@@ -960,7 +955,7 @@ export default function Result({ id }: { id: number }) {
       </aside>
 
       {notice && (
-        <Toast key={notice.n} el="11" message={notice.text} onDone={() => setNotice(null)} />
+        <Toast el="11" message={notice.text} stamp={notice.n} onDone={() => setNotice(null)} />
       )}
       {dialog === "export" && (
         <Export
