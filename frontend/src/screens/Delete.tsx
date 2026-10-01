@@ -65,10 +65,16 @@ export default function Delete({ video, turns, onClose, onDeleted }: Props) {
   useEffect(() => {
     if (video.status !== "analyzed") return;
     let alive = true;
-    Promise.all([api.frames(video.id), api.infographic(video.id)]).then(
-      ([frames, infographic]) => {
-        if (alive)
-          setPictures({ frames: frames.frames.length > 0, infographic: !!infographic.image });
+    // 따로 받는다 — 하나를 받지 못해도 다른 하나는 보인다
+    api.frames(video.id).then(
+      (set) => {
+        if (alive) setPictures((p) => ({ ...p, frames: set.frames.length > 0 }));
+      },
+      () => undefined,
+    );
+    api.infographic(video.id).then(
+      (now) => {
+        if (alive) setPictures((p) => ({ ...p, infographic: !!now.image }));
       },
       () => undefined,
     );
