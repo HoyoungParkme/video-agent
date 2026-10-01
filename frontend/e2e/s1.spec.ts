@@ -30,7 +30,7 @@ test("자막 있는 YouTube — 사전 안내부터 결과와 시각 이동까�
   await expect(inDialog(page, "3.1")).toHaveText("약 1분");
   await expect(inDialog(page, "4.2")).toContainText("받아쓰기 (자막 사용)$0.00");
   await expect(inDialog(page, "4.1")).toHaveText(/^약 \$\d+\.\d\d$/);
-  await expect(inDialog(page, "5")).toContainText("OpenAI(gpt-5-mini)");
+  await expect(inDialog(page, "5")).toContainText("OpenAI(gpt-5.6-luna)");
   await expect(inDialog(page, "6.1")).toHaveCount(0); // 다른 영상이 돌지 않는다
   await expect(inDialog(page, "6.3")).toBeFocused(); // 처음 초점
 
@@ -49,13 +49,13 @@ test("자막 있는 YouTube — 사전 안내부터 결과와 시각 이동까�
   await expect(el(page, "3.1")).toHaveText(
     /핵심 요약을 만드는 중|챕터를 만드는 중|추천 질문을 만드는 중/,
   );
-  await expect(el(page, "6.1")).toContainText("스크립트 텍스트 → OpenAI gpt-5-mini");
+  await expect(el(page, "6.1")).toContainText("스크립트 텍스트 → OpenAI gpt-5.6-luna");
 
   // 끝나면 UI-4가 저절로 — 뒤로 가기가 UI-3으로 오지 않게 바꿔치기
   await expect(page).toHaveURL(/\/videos\/\d+$/, { timeout: 20_000 });
   await expect(el(page, "2.2")).toHaveText("RAG 서비스 1년 운영기");
   await expect(el(page, "2.1")).toHaveText("YouTube50:12자막 · 한국어");
-  await expect(el(page, "2.3")).toHaveText(/^E2E 채널 · 오늘 \d\d:\d\d 분석 · 요약 gpt-5-mini$/);
+  await expect(el(page, "2.3")).toHaveText(/^E2E 채널 · 오늘 \d\d:\d\d 분석 · 요약 gpt-5\.6-luna$/);
   await expect(el(page, "2.4")).toHaveAttribute(
     "href",
     "https://www.youtube.com/watch?v=e2eCaption1",

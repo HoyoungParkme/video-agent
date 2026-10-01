@@ -56,13 +56,13 @@ test("키 없이 열고, 설정에서 키를 넣으면 배너가 사라진다", 
 
 test("모델을 바꾸면 단가 도움말이 따라 바뀐다", async ({ page }) => {
   await page.goto("/settings");
-  await expect(el(page, "3.4")).toHaveText("100만 토큰당 입력 $0.25 · 출력 $2.00");
+  await expect(el(page, "3.4")).toHaveText("100만 토큰당 입력 $0.20 · 출력 $1.20");
   await expect(el(page, "3.2")).toContainText("분당 $0.006");
   await page.locator("#llm-model").selectOption("gpt-5.4");
   await expect(el(page, "3.4")).toHaveText("100만 토큰당 입력 $2.50 · 출력 $15.00");
   await el(page, "6.1").click(); // 취소 — 저장하지 않는다
   await page.goto("/settings");
-  await expect(page.locator("#llm-model")).toHaveValue("gpt-5-mini");
+  await expect(page.locator("#llm-model")).toHaveValue("gpt-5.6-luna");
 });
 
 test.describe("배너 문구 셋", () => {
