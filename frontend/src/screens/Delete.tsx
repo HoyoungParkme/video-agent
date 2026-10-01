@@ -2,14 +2,15 @@
  * VA-UI-002#UI-6 삭제 확인 — UI-1 행 휴지통(6.8)이나 UI-4 머리 휴지통(1.3)이 연다. 1 경고 다이얼로그
  * (1.1 아이콘 타일 · 1.2 제목 · 1.3 대상 제목) · 2 지울 것과 남는 것(2.1 · 2.2) · 3 버튼 줄(3.1 실패 한 줄 ·
  * 3.2 취소 · 3.3 삭제). 올린 사본이 남아 있으면 2.1 끝에 '올린 사본({크기})', 올린 파일이면 2.2가 'PC에
- * 있는 원본 파일'이다 — 원본은 지우지 않는다.
+ * 있는 원본 파일'이다 — 원본은 지우지 않는다. 분석이 끝난 영상이면 열 때 장면 · 인포그래픽 상태를 받아
+ * 있으면 2.1의 챕터 뒤에 '대표 장면' · '인포그래픽'을 더한다(이슈 #18).
  * 덮개를 눌러도 닫히지 않고 Esc는 취소와 같다. 지우는 동안은 두 버튼과 Esc가 잠긴다. 이미 지워졌으면(404)
  * 지운 것과 같다. 지운 뒤 갈 곳과 초점은 연 화면이 정한다 — UI-4에서 지웠으면 UI-1의 「분석한 영상」
  * 제목(5.1)으로 간다(markListFocus · takeListFocus, 사용자 결정 2026-09-28).
  */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api, ApiError, type Video } from "@/api/client";
 import { Button } from "@/components/buttons";
@@ -58,11 +59,29 @@ export function TrashIcon({ size = 18 }: { size?: number }) {
 export default function Delete({ video, turns, onClose, onDeleted }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 대표 장면 · 인포그래픽 — 목록(UI-1)은 그 유무를 모르므로 분석이 끝난 영상이면 열 때 받아 정한다.
+  // 받기 전 · 받지 못하면 두 항목 없이 보인다(UI-6 규칙, 이슈 #18)
+  const [pictures, setPictures] = useState({ frames: false, infographic: false });
+  useEffect(() => {
+    if (video.status !== "analyzed") return;
+    let alive = true;
+    Promise.all([api.frames(video.id), api.infographic(video.id)]).then(
+      ([frames, infographic]) => {
+        if (alive)
+          setPictures({ frames: frames.frames.length > 0, infographic: !!infographic.image });
+      },
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [video.id, video.status]);
   // 분석이 끝나지 않은 영상(진행 중 · 대기 중 · 실패)은 임시 음성 파일도 지운다
   const unfinished = video.status === "in_progress" || video.status === "failed";
   // 올린 사본이 아직 남아 있으면(진행 중 · 대기 중 · 실패한 올린 파일) 맨 끝에 크기와 함께
   const copy = video.upload_bytes === null ? "" : `, 올린 사본(${sizeLabel(video.upload_bytes)})`;
-  const gone = `스크립트, 핵심 요약, 챕터, 추천 질문, 질문 기록 ${turns}개${unfinished ? ", 임시 음성 파일" : ""}${copy}`;
+  const drawn = `${pictures.frames ? ", 대표 장면" : ""}${pictures.infographic ? ", 인포그래픽" : ""}`;
+  const gone = `스크립트, 핵심 요약, 챕터${drawn}, 추천 질문, 질문 기록 ${turns}개${unfinished ? ", 임시 음성 파일" : ""}${copy}`;
   // 남는 것 — 원본은 지우지 않는다. 올린 파일은 앱 폴더의 사본만 지운다(INFRA C4)
   const origin =
     video.source_kind === "youtube"
