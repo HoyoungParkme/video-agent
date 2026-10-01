@@ -228,10 +228,10 @@ CHECK: `uploaded`가 true면 `source_kind = 'local'`.
 | stages | jsonb | not null | 이 출처에 필요한 단계 목록, 순서대로. 시작할 때 정해 바뀌지 않는다. 장면 단계 전에 시작한 작업에는 `frames`가 없다 | `["extract","transcribe","summarize","chapter","suggest","frames"]` |
 | progress_pct | smallint | not null, 0~100 | 진행률. 파이프라인이 갱신 | `38` |
 | est_seconds | int | not null | 시작 전 예상 소요(초). 사전 안내 값의 사본 | `480` |
-| est_cost_usd | numeric(8,4) | not null | 시작 전 예상 비용. 센트 아래 넷째 자리까지 — 분당 단가 $0.006을 곱한 값이 소수 셋째 자리를 넘는다 | `0.9200` |
+| est_cost_usd | numeric(8,4) | not null | 시작 전 예상 비용. 센트 아래 넷째 자리까지 — 분당 단가($0.0045)를 곱한 값이 소수 셋째 자리를 넘는다 | `0.7200` |
 | concurrency | smallint | not null | 동시에 보내는 조각 수. 시작 때 설정에서 복사 | `3` |
-| stt_model | varchar(50) | null 허용 | 받아쓰기 모델. 자막이면 null | `whisper-1` |
-| text_model | varchar(50) | not null | 요약 · 챕터 · 추천 질문 모델 | `gpt-5-mini` |
+| stt_model | varchar(50) | null 허용 | 받아쓰기 모델. 자막이면 null. 2026-10-01 전 작업은 `whisper-1` | `gpt-transcribe` |
+| text_model | varchar(50) | not null | 요약 · 챕터 · 추천 질문 모델 | `gpt-5.6-luna` |
 | error_kind | varchar(10) | null 허용, ErrorKind | 실패 종류. `status = failed`일 때만 | `network` |
 | error_reason | text | null 허용 | 왜 실패했는지 한 줄(한국어). 화면 실패 알림 본문 | `네트워크 시간 초과` |
 | error_chunk_seq | int | null 허용 | 실패한 조각 번호(k). 받아쓰기 밖 단계면 null | `16` |
@@ -271,7 +271,7 @@ CHECK: `status = 'failed'`이면 `error_kind` · `error_reason`이 not null, 아
 | video_id | int | FK videos cascade, UK not null | 영상과 1:1 | |
 | source | varchar(15) | not null, TranscriptSource | caption_manual · caption_auto · stt. 화면이 '자막(수동)' · '자막(자동)' · '받아쓰기'로 | `caption_auto` |
 | language | varchar(10) | not null | 언어 코드. 자막은 자막의 것, 받아쓰기는 모델이 감지한 것 | `ko` |
-| model | varchar(50) | null 허용 | stt일 때 받아쓰기 모델. 자막이면 null | `whisper-1` |
+| model | varchar(50) | null 허용 | stt일 때 받아쓰기 모델. 자막이면 null | `gpt-transcribe` |
 
 ### segments
 
@@ -283,9 +283,9 @@ CHECK: `status = 'failed'`이면 `error_kind` · `error_reason`이 not null, 아
 | seq | int | (transcript_id, seq) UK, ≥ 1 | 시각순 순번 | `412` |
 | start_sec | numeric(9,3) | not null, ≥ 0 | 시작 시각. 화면 · 인사이트 · 답변이 "그 시각을 포함하는 구간"을 찾는 키 | `760.120` |
 | end_sec | numeric(9,3) | not null, ≥ start_sec | 끝 시각 | `764.900` |
-| text | text | not null | 문장. 자막 한 줄 또는 API가 준 segment 하나 | |
+| text | text | not null | 글. 자막 한 줄, 또는 받아쓰기로 15초 이하로 나눠 보낸 한 토막(두세 문장 — [[VA-INFRA-001#C3]]). 2026-10-01 전 받아쓰기는 API가 준 segment 하나 | |
 
-3시간 영상은 3,000행 안팎. 한 영상의 구간을 한 번에 읽는다([[VA-API-001#GET/api/videos/{id}/result]]).
+3시간 영상은 자막이면 3,000행 안팎, 받아쓰기면 약 830행(한 토막 중앙 13초) — whisper-1 때는 약 5,900행이었다. 한 영상의 구간을 한 번에 읽는다([[VA-API-001#GET/api/videos/{id}/result]]).
 
 ### summaries
 
@@ -295,7 +295,7 @@ CHECK: `status = 'failed'`이면 `error_kind` · `error_reason`이 not null, 아
 |---|---|---|---|---|
 | video_id | int | FK videos cascade, UK not null | 영상과 1:1 | |
 | one_liner | text | not null | 한 줄 요약(TL;DR) | |
-| model | varchar(50) | not null | 만든 모델. 모델을 바꿔 다시 만들었을 때 구분 | `gpt-5-mini` |
+| model | varchar(50) | not null | 만든 모델. 모델을 바꿔 다시 만들었을 때 구분 | `gpt-5.6-luna` |
 
 ### insights
 
@@ -388,7 +388,7 @@ CHECK: 그림 컬럼(`model` · `quality` · `width` · `height` · `cost_usd` �
 | question | text | not null | 질문 | |
 | answer | text | not null | 답변. 근거가 없으면 "이 영상에서는 다루지 않습니다" 계열 | |
 | cited_secs | jsonb | not null | 근거 시각들(초). 빈 배열이면 근거 없음 — null이 아니다 | `[]` |
-| model | varchar(50) | not null | 답한 모델 | `gpt-5-mini` |
+| model | varchar(50) | not null | 답한 모델 | `gpt-5.6-luna` |
 | asked_at | timestamptz | not null | 물은 때. 시간순 정렬과 최근 10턴 맥락의 기준 | |
 
 답을 받지 못한 질문은 행이 없다([[VA-API-001#POST/api/videos/{id}/chat]]). 저장은 답을 받은 뒤 한 번이다.
@@ -448,7 +448,7 @@ CHECK: 그림 컬럼(`model` · `quality` · `width` · `height` · `cost_usd` �
 
 - [x] 설정(키 · 모델) 저장 위치 — 결정: `.env` 파일 하나. `settings` 테이블은 만들지 않는다(사용자 결정 2026-09-21)
 - [x] 대기열 — 결정: `status`에 `queued` 값, `queued_at` 컬럼, 부분 인덱스 `(queued_at) where status = 'queued'`([[VA-DOM-002]] 7장 되먹임 반영)
-- [ ] `segments.text` 검색 — 첫 버전은 스크립트 검색이 요구에 없어 인덱스가 없다. 질문 맥락 선별을 임베딩으로 바꾸면(`ChatService.context_for`) 그때 `pgvector` 컬럼과 인덱스를 여기 더한다([[VA-INFRA-001]] 9절)
+- [x] `segments.text` 검색 — 첫 버전은 스크립트 검색이 요구에 없어 인덱스가 없다. 질문 맥락 선별을 임베딩으로 바꾸면(`ChatService.context_for`) 그때 `pgvector` 컬럼과 인덱스를 여기 더한다([[VA-INFRA-001]] 9절) — 결정: 임베딩으로 바꾸지 않는다. 두 글자 조각 BM25는 영상 하나의 구간을 읽어 메모리에서 센다(질문당 2ms) — 테이블 · 인덱스를 더하지 않는다(사용자 결정 2026-10-01)
 - [ ] `audio_chunks` 행의 보존 기간 — 지금은 영상과 함께 영구. 조각 이력이 쓸모없다고 판단되면 작업 완료 때 지우는 것으로 바꿀 수 있다([[VA-DOM-001]] 5장 2의 결정을 뒤집는 것이라 도메인 모델부터)
 - [x] (반영: 클래스 명세 v7) 클래스 명세 2장 각 항목에 `테이블: [[VA-DOM-003#…]]` 참조를 더한다 — [[VA-DOM-002]] 7장에 적힌 일. 이 문서가 생겼으므로 다음 클래스 명세 수정 때
 - [x] (반영: 클래스 명세 v26) `chapter_frames` · `infographics`가 생겼으니 [[VA-DOM-002]] 2장 두 항목의 테이블 참조를 항목 링크로 — 다음 클래스 명세 수정 때
