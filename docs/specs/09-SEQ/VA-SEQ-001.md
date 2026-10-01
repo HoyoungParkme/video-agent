@@ -47,7 +47,7 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | media_probe | MP | `video/adapters/media_probe.py` → `infra/ffmpeg`(ffprobe) | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | audio_source | AU | `job/adapters/audio_source.py` → `infra/ytdlp` · `infra/ffmpeg` | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | audio_split | SP | `job/adapters/audio_split.py` → `infra/ffmpeg` | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
-| stt_openai | ST | `job/adapters/stt_openai.py` → `infra/openai` → OpenAI whisper-1 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
+| stt_openai | ST | `job/adapters/stt_openai.py` → `infra/ffmpeg` · `infra/openai` → OpenAI gpt-transcribe | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | summarizer_openai | SM | `analysis/adapters/summarizer_openai.py` → `infra/openai` → OpenAI 텍스트 모델 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | answerer_openai | AN | `chat/adapters/answerer_openai.py` → `infra/openai` → OpenAI 텍스트 모델 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
 | frames_storyboard | FB | `analysis/adapters/frames_storyboard.py` → `infra/ytdlp`(영상 정보) · `infra/ffmpeg`(칸 자르기) → YouTube 스토리보드 | 어댑터 | [[VA-DOM-002]] 4.6 · 4.7 |
@@ -368,8 +368,13 @@ sequenceDiagram
             PL->>JS: mark_chunk(job_id, seq, in_flight)
             JS->>DB: state · attempts+1
             PL->>ST: transcribe(조각 경로, stt_model)
+            ST->>FS: 무음(-30dB · 0.2초) 가운데에서 15초 이하 토막 파일들 (ffmpeg.silences · cut)
+            par 토막 동시 3 (S3 3b)
+                ST->>ST: openai.transcribe(토막, stt_model) — json · languages ko · en
+            end
+            ST->>FS: 토막 파일 지우기
             alt 성공
-                ST-->>PL: list[SttSegment]
+                ST-->>PL: list[SttSegment] — 토막 하나가 구간 하나, 토막 경계가 시작·끝(조각 기준)
                 PL->>PL: 오프셋을 더해 보관
                 PL->>JS: mark_chunk(job_id, seq, done)
                 JS->>DB: state = done · done_at · progress_pct
@@ -401,6 +406,7 @@ sequenceDiagram
 **읽을 때 볼 것**
 - 조각 상태 넷과 `attempts`는 전부 DB에 있다. 서버가 죽어도 어디까지 됐는지 남는다([[VA-DOM-002]] 5장 6). 화면의 격자([[VA-UI-002#UI-3]])가 이 행을 그대로 그린다
 - 자동 재시도는 조각 단위다. 상한(설정값, 첫 값 3)은 한 번 도는 동안 보낸 횟수다 — 다시 시도하면 새로 센다(`attempts`는 누적). 상한에 닿은 조각 하나가 작업 전체를 `failed`로 만들고, **돌고 있던 다른 조각은 끝까지 기다린다** — 그래야 완료 수(j)가 정확하고, 재시도가 보내는 첫 조각(r)이 실패한 조각(k)과 다를 수 있다는 화면 규칙이 맞는다
+- 받아쓰기 요청은 조각 안에서 15초 이하 **토막**으로 한 번 더 나눈다 — 시각을 주는 모델이 없어 토막의 경계가 구간 시각이다([[VA-INFRA-001#C3]], 2026-10-01). 토막은 어댑터 안의 일이라 DB · 화면은 10분 조각만 안다. 토막 하나가 실패하면 그 조각이 실패한 것과 같다 — 다시 보내면 그 조각의 토막을 모두 다시 보낸다
 - 조각 파일은 조각이 `done`이 될 때마다 지운다. 실패한 작업은 `waiting` · `failed` 조각 파일만 남는다 — 재개용이다([[VA-INFRA-001]] 6절)
 - 이어 붙이기는 메모리에서 한다. 조각의 결과 텍스트는 DB에 두지 않는다 — 재시도가 이미 `done`인 조각을 다시 보내지 않으려면 결과가 있어야 하는데, 지금 설계는 **조각 결과를 잃는다** → 되먹일 것 #1
 - `mark_chunk(in_flight)`가 `attempts`를 올리고 `mark_chunk(done)`이 `progress_pct`를 갱신한다. 클래스 명세의 시그니처는 그대로이고 규칙만 더한다 → 되먹일 것 #2
@@ -679,7 +685,8 @@ sequenceDiagram
     opt 구간 텍스트가 토큰 상한을 넘는다 (H4 3b)
         CS->>AS: chapters_of(video_id)
         AS-->>CS: list[Chapter]
-        CS->>CS: 질문과 관련된 챕터를 고르고 그 시각 범위의 구간만 남긴다
+        CS->>DB: chat_turns where video order by asked_at desc limit 1 (앞 턴의 근거 시각)
+        CS->>CS: 챕터마다 두 글자 조각 BM25 점수(제목 · 요점 + 그 챕터 구간) — 상위 3 + 앞 턴 근거 챕터, 그 시각 범위의 구간만 남긴다
     end
     CS->>DB: chat_turns where video order by asked_at desc limit 10 (H4 1b)
     CS->>SS: current_models()
@@ -1057,7 +1064,11 @@ sequenceDiagram
         VS->>VS: SHA-256 갱신
         W-->>U: upload.onprogress — 진행 막대 · 올린 양 (4.11)
     end
-    alt 받은 크기가 다르다 · 끊김 · [멈추기] (H2 1c)
+    opt 올리는 중에 새로 고침 · 창 닫기 · 앱 안 링크 (H2 1e)
+        W-->>U: 확인 창 — 새로 고침 · 창 닫기는 브라우저 것, 앱 안 링크는 '올리기를 멈추고 이동할까요?'
+        Note over U,W: 머무르면 올리기가 이어진다. 떠나면 [멈추기]와 같다 — 아래 1c 갈래
+    end
+    alt 받은 크기가 다르다 · 끊김 · [멈추기] · 떠나기 (H2 1c)
         VS->>FS: .part 지우기
         VS-->>RV: UploadIncomplete {received_bytes, expected_bytes}
         RV-->>W: 400 upload-incomplete (연결이 살아 있으면)
