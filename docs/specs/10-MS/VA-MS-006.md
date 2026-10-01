@@ -60,10 +60,14 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 | 이름 | 첫 값 | 이유 |
 |---|---|---|
 | `config.CAPTION_LANGS` | `["ko", "en"]` | 자막 언어 우선순위. 없으면 첫 번째 |
-| `config.AUDIO_FORMAT` | mp3 · 64kbps · 모노 · 16kHz | 크기와 whisper-1 정확도 사이([[VA-INFRA-001]] 9절 미결을 이 값으로) |
+| `config.AUDIO_FORMAT` | mp3 · 64kbps · 모노 · 16kHz | 크기와 받아쓰기 정확도 사이([[VA-INFRA-001]] 9절 미결을 이 값으로). 카드 C에서 whisper-1로, 2026-10-01 gpt-transcribe로 확인 |
 | `config.SPLIT_WINDOW_SEC` | 30 | 조각 경계를 찾을 때 목표 시각 앞뒤로 무음을 찾는 폭 |
 | `config.SILENCE_DB` · `config.SILENCE_MIN_SEC` | -35dB · 0.5 | 무음 판정 |
 | `config.CHUNK_MAX_BYTES` | 24MB | 25MB 상한([[VA-INFRA-001#C2]])의 안전선 |
+| `config.PIECE_SEC` | 15 | 받아쓰기 토막 길이 상한 — 구간 시각이 토막 경계라 출처 시각이 실제와 15초 안이다([[VA-INFRA-001#C3]], [[VA-PRD-001]] 4장) |
+| `config.PIECE_MIN_SEC` | 2 | 이보다 앞의 무음에서는 자르지 않는다 — 너무 짧은 토막은 앞뒤 말이 없어 받아쓰기가 흔들린다 |
+| `config.PIECE_SILENCE_DB` · `config.PIECE_SILENCE_MIN_SEC` | -30dB · 0.2 | 토막 경계용 무음 판정. 실측(2026-10-01, 강의 앞 20분): 10분 조각 값(-35dB · 0.5초)이면 96토막 중 51개를 15초에서 그냥 잘랐고 이 값이면 101토막 중 8개 — 같은 창의 whisper-1과 글자 차이가 0.202 → 0.179 |
+| `config.PIECE_CONCURRENCY` | 3 | 조각 하나 안에서 동시에 보내는 토막 수. 조각 동시 3과 곱해 9개(분당 약 470회). 실측 동시 4 · 8 · 12에서 10분 조각 15 · 8 · 5초, 오류 0 — 분당 요청 한도가 낮은 계정을 생각해 작게 잡았다 |
 | `config.LLM_RETRY` | 1 | 출력 형식 실패 때 다시 부르는 횟수 |
 | `config.NOT_COVERED_TEXT` | '이 영상에서는 다루지 않습니다.' | `answer.md`의 `not_covered`와 어댑터의 판정([[#answerer_openai.answer]] 4번)이 같은 문자열을 쓰게 |
 | `config.QUESTION_COUNT` | 3 | 추천 질문 수([[VA-PRD-001#R9]]) |
@@ -85,7 +89,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 | [[#audio_source.download_audio]] | YouTube 음성 내려받기 |
 | [[#audio_source.extract_audio]] | 영상 파일 → mp3 |
 | [[#audio_split.split]] | 무음 근처에서 조각 자르기 |
-| [[#stt_openai.transcribe]] | 조각 → 시각 붙은 구간 |
+| [[#stt_openai.transcribe]] | 조각 → 15초 이하 토막으로 받아쓴 구간(토막 경계가 시각) |
 | [[#summarizer_openai.summary]] | 한 줄 요약 + 인사이트 |
 | [[#summarizer_openai.chapters]] | 챕터 (+ 파트) |
 | [[#summarizer_openai.questions]] | 추천 질문 |
@@ -216,19 +220,24 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 **시그니처** `async def transcribe(path: str, model: str) -> list[SttSegment]`
 
-근거: [[VA-SEQ-001#SEQ-4]] 18~19번 · [[VA-UC-001#UC-S3]] 3번 · [[VA-INFRA-001#C3]] · [[VA-PRD-001#R3]]
+근거: [[VA-SEQ-001#SEQ-4]] 20~24번 · [[VA-UC-001#UC-S3]] 3번 · [[VA-INFRA-001#C3]] · [[VA-PRD-001#R3]]
+
+시각을 주는 받아쓰기 모델이 2027-02-26에 없어져, 조각을 15초 이하 **토막**으로 다시 나눠 따로 보내고 토막의 경계를 구간 시각으로 쓴다(사용자 결정 2026-10-01). 토막은 이 함수 안의 일이다 — 조각 행 · 화면 · 다시 시도는 10분 조각 그대로다. 처음은 `whisper-1`의 `verbose_json` segment 시각을 그대로 받았다.
 
 **처리**
-1. `raw = EXT: openai.transcribe(client_for(), path, model)` — `response_format=verbose_json` · `timestamp_granularities=[segment]` · 언어는 지정하지 않는다(자동 감지, [[VA-UC-001#UC-S3]] 3번)
-2. `lang = raw.language`(ISO 639-1로 정규화 — whisper-1은 `korean` 같은 이름을 준다. 표에 없으면 그대로)
-3. `→ [SttSegment(start_sec=s.start, end_sec=s.end, text=s.text.strip(), language=lang) for s in raw.segments if s.text.strip()]` — 시각은 조각 안 상대 시각. 오프셋은 파이프라인이 더한다
-4. 예외(`APIConnectionError` · `APIStatusError` · 시간 초과)는 그대로 올린다 — 재시도 · 분류 · 이유 한 줄은 파이프라인의 몫([[VA-MS-002#pipeline.transcribe_stage]] · [[VA-MS-002#pipeline.error_kind]] · [[VA-MS-002#pipeline.reason_of]])
+1. `total = EXT: ffmpeg.probe(path).format.duration` · `mids = EXT: ffmpeg.silences(path, config.PIECE_SILENCE_DB, config.PIECE_SILENCE_MIN_SEC)` — 10분 조각을 나눌 때([[#audio_split.split]] 2번)보다 민감하게 찾는다
+2. **토막 나누기** — `start = 0`부터 되풀이: `end` = `(start + config.PIECE_MIN_SEC, start + config.PIECE_SEC]` 안의 가장 늦은 무음 시각, 없으면 `start + config.PIECE_SEC`(낱말이 잘릴 수 있다) · `total − start ≤ config.PIECE_SEC`이면 `end = total` · `total − end < 1`이면 `end = total`(1초 미만 자투리를 따로 보내지 않는다 — 그 토막만 16초까지) · `start = end`
+3. 토막마다 태스크, 동시 `config.PIECE_CONCURRENCY`개 — `EXT: ffmpeg.cut(path, s, e, f"{조각 파일 이름(확장자 뺌)}_{i:03d}.mp3")`(조각과 같은 폴더) · `raw = EXT: openai.transcribe(client_for(), 토막 경로, model)` · 토막 파일을 지운다
+4. 한 토막이라도 예외면 남은 태스크를 취소하고 끝나기를 기다린 뒤 **그 예외를 그대로** 올린다(여러 예외를 묶지 않는다 — 파이프라인이 예외 종류로 분류한다). 토막 하나의 실패는 조각 하나의 실패다 — 재시도 · 분류 · 이유 한 줄은 파이프라인의 몫이고([[VA-MS-002#pipeline.transcribe_stage]] · [[VA-MS-002#pipeline.error_kind]] · [[VA-MS-002#pipeline.reason_of]]), 다시 보내면 그 조각의 토막을 모두 다시 보낸다. 성공하든 실패하든 남은 토막 파일을 지운다
+5. `→ [SttSegment(start_sec=s, end_sec=e, text=raw.text.strip(), language=raw.languages[0].code 또는 "") for 토막 순서대로 if 글이 있음]` — 시각은 조각 안 상대 시각(토막 경계). 오프셋은 파이프라인이 더한다. 언어는 API가 감지한 ISO 코드다(`languages`가 비면 `""` — 파이프라인이 언어가 있는 첫 구간의 것을 쓰고, 없으면 `und`)
 
-**출력** `list[SttSegment]`
+**출력** `list[SttSegment]` — 토막 하나가 구간 하나
 
-**호출하는 것** `openai.transcribe` ([[VA-MS-007#openai.transcribe]])
+**예외** `FfmpegError` · OpenAI SDK 예외(그대로)
 
-**테스트 관점** 가짜 응답으로: `segments` 20개 → 20 `SttSegment`, 빈 텍스트 제외 · `language='korean'` → `ko` · 요청 인자에 `verbose_json`과 `segment`가 들어간다 · 429 → 예외가 그대로 나간다(어댑터가 재시도하지 않는다)
+**호출하는 것** `ffmpeg.probe` · `ffmpeg.silences` · `ffmpeg.cut` · `openai.transcribe` ([[VA-MS-007#ffmpeg.silences]] · [[VA-MS-007#ffmpeg.cut]] · [[VA-MS-007#openai.transcribe]])
+
+**테스트 관점** 가짜 ffmpeg · 가짜 응답으로: 무음이 3초마다 있는 40초 조각 → 모든 토막 경계가 무음이고 각 15초 이하 · 무음 없는 40초 → 15 · 15 · 10초 · 15.5초 → 토막 하나(자투리를 따로 보내지 않는다) · 시작 2초 안의 무음에서는 자르지 않는다 · 구간 시각이 토막 경계 그대로, 글은 토막 순서대로 · 빈 글 토막은 구간이 없다 · `languages=[{code: "ko"}]` → `language='ko'`, 비면 `''` · 동시에 도는 받아쓰기가 `PIECE_CONCURRENCY`를 넘지 않는다(가짜가 센다) · 한 토막이 429 → 그 예외가 그대로 나가고 다른 토막은 취소되며 토막 파일이 남지 않는다 · 성공해도 토막 파일이 남지 않는다
 
 ---
 
@@ -488,7 +497,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 - [x] 스토리보드는 YouTube 내부 형식이라 바뀔 수 있다 — 칸 계산(⌊t × fps⌋, `rows × columns`)이 실제 장과 맞는지 카드 D2에서 42분 영상으로 본다. 어긋나거나 없으면 장면 없이 넘어간다(작업은 성공, [[VA-UC-001#UC-S7]] 3a). 결정(카드 D2, 실제 YouTube 결과 넷): 칸 계산이 실제 장과 맞았다 — 42분 영상 챕터 여덟의 칸이 모두 그 챕터의 슬라이드였고(9:51 「코어 이벤트와 지표 정의」 · 12:18 「성장기」 · 24:14 「성숙기」), 칸 시각은 챕터 시작보다 2.6~6.6초 앞이다(칸 하나가 몇 초를 묶는다). 19 · 30 · 46분 영상도 챕터마다 모두 얻었다. 계산은 그대로 둔다
 - [x] 인포그래픽 프롬프트(`infographic.md`)의 품질 — 결정: 그대로 둔다(사용자 확인 2026-10-01). 카드 D3에서 42분 강의로 낮은 품질 한 장 — 한글 제목 · 인사이트 여덟 · 챕터 여덟이 두 단으로 읽혔다. 그림 속 글자 · 숫자는 모델이 틀릴 수 있어 화면이 그 안내를 늘 함께 보인다([[VA-INFRA-001#C11]])
 - [ ] 로컬 음성 파일(mp3 · m4a · wav)도 mp3 64kbps로 다시 변환한다(`extract_audio`). 이미 작은 mp3면 건너뛸지 — 첫 버전은 항상 변환(형식을 하나로)
-- [ ] whisper-1 언어 이름 → ISO 코드 표 — 자주 나오는 20개만 두고 나머지는 그대로. 음성 형식 미결은 `config.AUDIO_FORMAT`으로 닫혔다([[VA-INFRA-001]] 9절)
+- [x] whisper-1 언어 이름 → ISO 코드 표 — 자주 나오는 20개만 두고 나머지는 그대로. 음성 형식 미결은 `config.AUDIO_FORMAT`으로 닫혔다([[VA-INFRA-001]] 9절) — 결정: 표를 없앤다. `gpt-transcribe`는 감지한 언어를 ISO 코드로 준다([[#stt_openai.transcribe]] 5번, 2026-10-01)
 - [x] JSON 모드가 시각 표기를 `12:40:00`처럼 바꿔 쓰는 것 — 결정: [[#timecode.parse]] 3번. 스크립트 끝을 넘는 세 칸 표기는 앞 두 칸을 `mm:ss`로 읽는다. 실제 응답 표본을 테스트에 넣는다
 - [x] (반영: 클래스 명세 v12) **되먹임** [[VA-DOM-002]] 1장 트리에 `prompts/__init__.py`(`render`)와 `shared/timecode.py`를 더하고, 「`shared/`는 없다」 문장과 7장의 같은 미결을 닫는다. 「`{자리 표시}`」를 「`{{이름}}`」으로 고친다
 - [x] (반영: [[VA-MS-003]] v2) **되먹임** [[VA-MS-003#export.timecode]]가 [[#timecode.label]]을 부르게 한다(`long = duration_sec ≥ 3600`). 같은 규칙이 두 벌이 되지 않게
