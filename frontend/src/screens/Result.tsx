@@ -9,7 +9,8 @@
  * 9.7 답 대기 · 9.8 답변 실패 · 9.9 다시 시도) · 10 질문 입력(10.1 추천 칩 · 10.2 키 없음 안내 · 10.3 입력칸 ·
  * 10.4 보내기 · 10.5 전송 안내). 11 짧은 알림 — UI-1에서 이미 분석한 영상을 넣어 열렸을 때.
  * 시각을 누르는 곳(4.3 · 6.3 · 6.6 · 8.3 · 9.5와 한눈에 보기의 13.1 · 13.2 · 13.3 · 14.2 · 14.5)은 모두 같은
- * 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤 · 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
+ * 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤(이미 다 보이면 그대로, 아니면 가운데 — 같은 시각을
+ * 다시 눌러도) · 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
  * 서버에 잠깐 닿지 못하면 2초 뒤 다시 받는다.
  * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다. 마인드맵의 파트
  * 노드(14.4)와 챕터 목록의 파트 머리(6.5)는 같은 펼침 상태를 쓴다.
@@ -252,6 +253,8 @@ export default function Result({ id }: { id: number }) {
   const router = useRouter();
   const [result, setResult] = useState<ResultData | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // 시각을 누른 횟수 — 같은 시각을 다시 눌러도 스크롤 규칙이 다시 돈다(공통 1.3)
+  const [picks, setPicks] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   // 펼친 파트 — 처음에는 첫 파트만(UI-4 규칙)
   const [open, setOpen] = useState<Set<number>>(() => new Set([1]));
@@ -363,14 +366,17 @@ export default function Result({ id }: { id: number }) {
 
   const segSeq = result && selected !== null ? segmentAt(result, selected) : null;
 
-  // 고른 구간을 패널 안에서 보이게 — 창 전체는 움직이지 않는다
+  // 고른 구간을 패널 안에서 보이게 — 이미 다 보이면 그대로, 아니면 가운데(공통 1.3). 창 전체는 움직이지 않는다
   useEffect(() => {
     if (segSeq === null || !script.current) return;
     const row = script.current.querySelector<HTMLElement>(`[data-seq="${segSeq}"]`);
     if (!row) return;
     const box = script.current; // position: relative — 행의 offsetTop이 이 상자 기준이다
-    box.scrollTop = row.offsetTop - box.clientHeight / 2 + row.clientHeight / 2;
-  }, [segSeq]);
+    const shown =
+      row.offsetTop >= box.scrollTop &&
+      row.offsetTop + row.offsetHeight <= box.scrollTop + box.clientHeight;
+    if (!shown) box.scrollTop = row.offsetTop - box.clientHeight / 2 + row.clientHeight / 2;
+  }, [segSeq, picks]);
 
   // 질문하기 탭을 처음 열 때 기록을 받는다 — 잠깐 닿지 못하면 다시
   useEffect(() => {
@@ -420,6 +426,7 @@ export default function Result({ id }: { id: number }) {
   // 시각 누르기 — 패널은 스크립트 탭으로(공통 1.3)
   const select = (sec: number) => {
     setSelected(sec);
+    setPicks((n) => n + 1);
     setTab("script");
   };
   const keyBlocked = settings ? keyBlocks(settings.key) : false;

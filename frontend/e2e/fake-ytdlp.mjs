@@ -28,6 +28,8 @@ const VIDEOS = {
   },
   // 키보드로 보는 3시간 워크숍 — 한눈에 보기 세 줄(파트 · 점 · 막대)과 탭(a11y)
   e2eA11yLng1: { title: "키보드로 보는 워크숍", duration: 10800, subtitles: { ko: [] } },
+  // 시각을 고른 뒤의 자리 · 주소 ?t= — 37.5초마다라 구간 시각 절반이 소수다(카드 E6)
+  e2eScroll01: { title: "주소에 남는 시각", duration: 3000, subtitles: { ko: [] }, step: 37.5 },
   // 며칠 뒤 다시 열어 묻고 내보내고 지운다 — S5
   e2eNoteVid1: { title: "벡터 DB 운영 노트", duration: 1800, subtitles: { ko: [] } },
   // 대기열에서 지운다 — 도는 영상 · 기다리는 영상 둘(s5)
@@ -116,13 +118,15 @@ if (video.error) {
 }
 
 /**
- * step초마다 한 줄(기본 100초 — 가짜 OpenAI의 시각 01:40 · 10:00 …이 이 안에 든다).
- * width를 주면 줄을 그 글자 수로 채운다 — 긴 스크립트를 만든다.
+ * step초마다 한 줄(기본 100초 — 가짜 OpenAI의 시각 01:40 · 10:00 …이 이 안에 든다). step이 소수면
+ * 줄 시각도 소수다. width를 주면 줄을 그 글자 수로 채운다 — 긴 스크립트를 만든다.
  */
 function vtt({ duration, step = 100, width }) {
   const ts = (s) => {
     const two = (n) => String(n).padStart(2, "0");
-    return `${two(Math.floor(s / 3600))}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}.000`;
+    const whole = Math.floor(s);
+    const ms = String(Math.round((s - whole) * 1000)).padStart(3, "0");
+    return `${two(Math.floor(whole / 3600))}:${two(Math.floor((whole % 3600) / 60))}:${two(whole % 60)}.${ms}`;
   };
   const cues = [];
   for (let s = 0, n = 1; s < duration; s += step, n += 1) {

@@ -2,12 +2,15 @@
  * S3 구간 찾기를 키보드로(VA-SCN-001 S3 · 카드 E5, VA-UI-001 4.6) — 한눈에 보기의 줄마다 Tab 한 번 · ← → · Enter ·
  * 가리킨 칸 이름(UI-4 13.6), 결과 탭 ← →, 키보드 초점 고리와 헤더 밑에 숨지 않게 띄우는 스크롤 여백.
  * 3시간 워크숍이라 파트 띠까지 세 줄이다. 키를 저장하므로 빈 앱을 보는 first-run보다 뒤에 돈다(파일 이름 순).
+ * 시각을 고른 뒤의 자리(카드 E6, 공통 1.3) — 이미 보이는 구간은 움직이지 않고, 안 보이면 가운데, 같은 시각을
+ * 다시 눌러도 같다. 37.5초마다 줄이 있는 50분 발표라 구간 시각 절반이 소수다.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { el, fakeOpenAI, openResult, saveKey } from "./helpers";
 
 const VIDEO = "https://youtu.be/e2eA11yLng1";
+const SCROLL = "https://youtu.be/e2eScroll01";
 
 test.beforeEach(async ({ request }) => {
   await saveKey(request);
@@ -166,4 +169,49 @@ test("초점 고리 — 키보드 초점에 청록 2px, 헤더 밑에 숨지 않
   expect(
     await page.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingTop),
   ).toBe("80px");
+});
+
+/** 고른 구간(8.3)이 스크립트(8) 가운데 언저리에 있는가 — 한 줄 높이 안. */
+const centered = (page: Page) =>
+  page.locator(".script-body").evaluate((box) => {
+    const row = box.querySelector<HTMLElement>(".segment.is-selected");
+    if (!row) return false;
+    const mid = row.offsetTop + row.offsetHeight / 2 - box.scrollTop;
+    return Math.abs(mid - box.clientHeight / 2) <= row.offsetHeight;
+  });
+
+test("시각을 고른 뒤의 자리 — 보이는 구간은 그대로, 안 보이면 가운데, 같은 시각도 다시", async ({
+  page,
+}) => {
+  await openResult(page, SCROLL);
+  const body = page.locator(".script-body");
+  const top = () => body.evaluate((e) => Math.round(e.scrollTop));
+
+  // 이미 다 보이는 구간을 누르면 강조만 옮겨 가고 움직이지 않는다 — 패널 아래쪽의 줄
+  await body.evaluate((e) => {
+    e.scrollTop = 600;
+  });
+  const low = await body.evaluate((box) =>
+    [...box.querySelectorAll<HTMLElement>(".segment")].findIndex(
+      (r) =>
+        r.offsetTop >= box.scrollTop + box.clientHeight - 160 &&
+        r.offsetTop + r.offsetHeight <= box.scrollTop + box.clientHeight,
+    ),
+  );
+  expect(low).toBeGreaterThan(0);
+  await page.locator(".segment").nth(low).click();
+  await expect(page.locator(".segment").nth(low)).toHaveAttribute("aria-pressed", "true");
+  expect(await top()).toBe(600);
+
+  // 안 보이는 시각은 가운데로 — 인사이트 20:00
+  const chip = page.getByRole("button", { name: "20:00 위치의 스크립트로 이동", exact: true });
+  await chip.click();
+  await expect.poll(() => centered(page)).toBe(true);
+
+  // 스크롤해 떠난 뒤 같은 시각을 다시 누르면 돌아온다
+  await body.evaluate((e) => {
+    e.scrollTop = 0;
+  });
+  await chip.click();
+  await expect.poll(() => centered(page)).toBe(true);
 });
