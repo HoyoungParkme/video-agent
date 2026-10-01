@@ -70,6 +70,14 @@ async def test_silences_midpoints(fake) -> None:
     assert args[args.index("-af") + 1] == "silencedetect=noise=-35dB:d=0.5"
 
 
+async def test_silences_threshold_from_caller(fake) -> None:
+    # 15초 토막은 더 민감한 값으로 찾는다(VA-MS-006 stt_openai) — 안 주면 10분 조각 값
+    fake.behave(stderr=SILENCE_LOG)
+    await ffmpeg.silences("piece.mp3", -30, 0.2)
+    [args] = fake.calls()
+    assert args[args.index("-af") + 1] == "silencedetect=noise=-30dB:d=0.2"
+
+
 async def test_silences_none(fake) -> None:
     fake.behave(stderr="size=N/A time=00:00:30.00\n")
     assert await ffmpeg.silences("audio.mp3") == []

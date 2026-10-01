@@ -99,13 +99,18 @@ async def extract_audio(src: str, dest: str) -> str:
     return out
 
 
-async def silences(path: str) -> list[float]:
+async def silences(
+    path: str, noise_db: float = config.SILENCE_DB, min_sec: float = config.SILENCE_MIN_SEC
+) -> list[float]:
     """VA-MS-007#ffmpeg.silences
 
-    무음 구간을 찾아 각 구간의 가운데 시각을 돌려준다. 끝이 없는 마지막 구간은 버린다.
+    무음 구간을 찾아 각 구간의 가운데 시각을 돌려준다. 끝이 없는 마지막 구간은 버린다. 기준은
+    부르는 쪽이 준다 — 10분 조각은 기본값, 15초 토막은 더 민감한 값(VA-MS-006 stt_openai).
 
     Args:
         path: 음성 파일
+        noise_db: 이보다 작은 소리를 무음으로 본다(dB)
+        min_sec: 이만큼 이어져야 무음이다(초)
 
     Returns:
         가운데 시각(초) 오름차순. 무음이 없으면 빈 목록
@@ -117,7 +122,7 @@ async def silences(path: str) -> list[float]:
         "-i",
         path,
         "-af",
-        f"silencedetect=noise={config.SILENCE_DB:g}dB:d={config.SILENCE_MIN_SEC:g}",
+        f"silencedetect=noise={noise_db:g}dB:d={min_sec:g}",
         "-f",
         "null",
         "-",
