@@ -217,7 +217,9 @@ test("시각을 고른 뒤의 자리 — 보이는 구간은 그대로, 안 보�
   await expect.poll(() => centered(page)).toBe(true);
 });
 
-test("고른 시각은 주소에 — 소수 시각 · 새로 고침 · 설정에 다녀오기 · 잘못된 t", async ({ page }) => {
+test("고른 시각은 주소에 — 소수 시각 · 새로 고침 · 설정에 다녀오기 · 잘못된 t", async ({
+  page,
+}) => {
   const url = await openResult(page, SCROLL);
   const entries = await page.evaluate(() => history.length);
 

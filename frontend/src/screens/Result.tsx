@@ -137,6 +137,15 @@ function addressTime(duration: number): number | null {
   return sec <= duration ? sec : null;
 }
 
+/** 짧은 알림(11) — 알림마다 번호를 올려 새로 그린다: 같은 글이어도 4초를 처음부터 센다(공통 1.5). */
+interface Notice {
+  text: string;
+  n: number;
+}
+const noticeOf =
+  (text: string) =>
+  (prev: Notice | null): Notice => ({ text, n: (prev?.n ?? 0) + 1 });
+
 /** 그 시각이 든 구간 — 시작이 그 시각 이하인 마지막 구간. */
 function segmentAt(r: ResultData, sec: number): number | null {
   let found: number | null = null;
@@ -268,7 +277,7 @@ export default function Result({ id }: { id: number }) {
   const [selected, setSelected] = useState<number | null>(null);
   // 시각을 누른 횟수 — 같은 시각을 다시 눌러도 스크롤 규칙이 다시 돈다(공통 1.3)
   const [picks, setPicks] = useState(0);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   // 펼친 파트 — 처음에는 첫 파트만(UI-4 규칙)
   const [open, setOpen] = useState<Set<number>>(() => new Set([1]));
   const [tab, setTab] = useState<Tab>("script");
@@ -302,7 +311,8 @@ export default function Result({ id }: { id: number }) {
         if (!alive) return;
         setResult(got);
         setSelected(addressTime(got.video.duration_sec)); // 새로 고침 · 다녀오기 — 주소의 시각(공통 1.3)
-        setNotice(takeFlash()); // UI-1에서 이미 분석한 영상을 넣어 열렸으면
+        const flashed = takeFlash(); // UI-1에서 이미 분석한 영상을 넣어 열렸으면
+        if (flashed) setNotice(noticeOf(flashed));
       } catch (e) {
         if (!alive) return;
         if (e instanceof ApiError) {
@@ -949,7 +959,9 @@ export default function Result({ id }: { id: number }) {
         </div>
       </aside>
 
-      {notice && <Toast el="11" message={notice} onDone={() => setNotice(null)} />}
+      {notice && (
+        <Toast key={notice.n} el="11" message={notice.text} onDone={() => setNotice(null)} />
+      )}
       {dialog === "export" && (
         <Export
           video={video}
@@ -957,7 +969,7 @@ export default function Result({ id }: { id: number }) {
           onClose={() => setDialog(null)}
           onDone={(message) => {
             setDialog(null);
-            setNotice(message);
+            setNotice(noticeOf(message));
           }}
         />
       )}
