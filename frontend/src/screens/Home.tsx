@@ -38,7 +38,7 @@ import EmptyBox from "@/components/EmptyBox";
 import { durationLabel } from "@/components/TimeChip";
 import { flash } from "@/components/Toast";
 import { ACCEPTED, analyzedLabel, KINDS, sizeLabel, stageName } from "@/labels";
-import { guardLeave } from "@/leave";
+import { guardLeave, leaveTo } from "@/leave";
 import Delete, { takeListFocus, TrashIcon } from "@/screens/Delete";
 import Estimate, { Blocked, blockedOf, type BlockedInfo } from "@/screens/Estimate";
 
@@ -271,7 +271,7 @@ function VideoRow({
   const el = (no: string) => (first ? no : undefined);
   return (
     <div className="video-row" data-video={v.id}>
-      <Link href={href} className="video-row-link" data-el={el("6.1")}>
+      <Link href={href} className="video-row-link" data-el={el("6.1")} onNavigate={leaveTo(href)}>
         <span className="icon-tile" data-el={el("6.2")}>
           <SourceIcon local={v.source_kind === "local"} />
         </span>

@@ -2,7 +2,8 @@
  * 로컬 파일 끌어 놓기 · 고르기(VA-UC-001 UC-H2, VA-UI-002 UI-1 4.7 ~ 4.19 · 8 · UI-2 6.4 · UI-6, VA-CODE-001
  * D4) — [파일 고르기] · 끌어 놓기로 올리면 진행 → 파일 확인 → UI-2 올린 파일 판이 열리고, 분석이 끝나면
  * 사본을 지운다. 올린 파일 판에서 취소해도 지운다. 여러 파일 · 받지 않는 형식은 보내지 않고, 멈추면 받던
- * 것을 지운다. 키 확인이 실패하면 본문 전에 거절한다. 실패한 올린 영상은 사본이 남아 다시 시도가 읽는다.
+ * 것을 지운다. 올리는 동안 떠나려 하면 먼저 묻는다(새로 고침 · 앱 안 링크, CODE-001 E2). 키 확인이
+ * 실패하면 본문 전에 거절한다. 실패한 올린 영상은 사본이 남아 다시 시도가 읽는다.
  * 파일은 가짜 ffprobe가 읽는 길이 · 음성 JSON이다(e2e/fake-ffmpeg.mjs) — pad로 크기를 키운다.
  * 서버 재시작의 청소는 pytest(tests/test_main.py)가 본다.
  */
@@ -210,6 +211,59 @@ test("올리는 동안 진행과 멈추기 — 멈추면 알림, 받던 것은 �
   await expect(el(page, "4.17")).toHaveText("올리기를 멈췄어요 — 올라간 부분은 지웠어요");
   await expect(el(page, "4.7")).toBeVisible();
   await expect.poll(uploads).toEqual([]); // api도 끊긴 것을 알고 받던 것을 지웠다
+});
+
+test("올리는 동안 떠나려 하면 묻는다 — 새로 고침은 브라우저 창, 앱 안 링크는 확인 창(UI-1 규칙)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const dialogs: string[] = [];
+  // 올리지 않을 때는 묻지 않는다 — 설정에 갔다 온다
+  page.on("dialog", (d) => dialogs.push(`${d.type()}:${d.message()}`));
+  await page.getByRole("link", { name: "설정" }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  expect(dialogs).toEqual([]);
+  page.removeAllListeners("dialog");
+
+  // 올리기를 느리게 — 1초에 2MB. 묻는 동안 끝나지 않게
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: 2 << 20,
+  });
+  await pick(page, media("leave_upload.mp4", 1500, 20 << 20));
+  await expect(el(page, "4.11")).toBeVisible();
+  await expect.poll(uploads).toEqual([expect.stringMatching(/^\.part-/)]);
+
+  // 새로 고침 — 브라우저의 떠나기 확인. 머무르면 그대로 올린다
+  page.once("dialog", (d) => {
+    dialogs.push(d.type());
+    void d.dismiss();
+  });
+  await page.reload({ timeout: 3000 }).catch(() => undefined);
+  expect(dialogs).toEqual(["beforeunload"]);
+  await expect(el(page, "4.11")).toBeVisible();
+
+  // 앱 안 링크 — 확인 창. 취소면 이 화면에서 그대로 올린다
+  page.once("dialog", (d) => {
+    dialogs.push(`${d.type()}:${d.message()}`);
+    void d.dismiss();
+  });
+  await page.getByRole("link", { name: "설정" }).click();
+  await expect(el(page, "4.11")).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  expect(dialogs[1]).toBe("confirm:올리기를 멈추고 이동할까요? 올라간 부분은 지워져요.");
+
+  // 확인하면 멈추고 그 화면으로 간다 — 받던 것은 지웠다
+  page.once("dialog", (d) => void d.accept());
+  await page.getByRole("link", { name: "설정" }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect.poll(uploads).toEqual([]);
 });
 
 test("키 확인이 실패하면 — 본문 전에 거절, 배너와 막힌 칸. 막힌 칸은 놓아도 올리지 않고 고르기는 설정으로", async ({
