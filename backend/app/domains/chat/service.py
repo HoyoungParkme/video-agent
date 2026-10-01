@@ -82,6 +82,12 @@ def _bm25(query: list[str], docs: dict[int, list[str]]) -> dict[int, float]:
     return scores
 
 
+def _chapter_at(chapters: list[Chapter], starts: list[float], sec: float) -> Chapter | None:
+    # 그 시각이 든 챕터 — 시작이 그 시각 이하인 마지막 챕터. 첫 챕터 앞이면 None(첫 챕터는 0초다)
+    i = bisect.bisect_right(starts, sec) - 1
+    return chapters[i] if i >= 0 else None
+
+
 class ChatService:
     """대화 턴을 읽고 쓴다.
 
@@ -178,7 +184,7 @@ class ChatService:
 
         맥락 구간. 스크립트가 토큰 상한 안이면 전부. 넘으면 챕터마다 글(제목 · 요점 × 배수 + 그
         챕터의 스크립트)과 질문의 두 글자 조각으로 BM25 점수를 내, 점수순 앞 설정값만큼 고르고 직전
-        턴의 근거 챕터를 1위 바로 뒤에 넣는다(이어지는 질문). 둘 다 없으면 앞 챕터들. 고른 챕터
+        턴의 근거 챕터를 1위 바로 뒤에 둔다(이어지는 질문). 둘 다 없으면 앞 챕터들. 고른 챕터
         범위의 구간을 시각순으로 모으고, 상한을 넘으면 고른 순서의 뒤에서부터 뺀다.
 
         Args:
@@ -195,43 +201,47 @@ class ChatService:
         chapters = sorted(await analysis.chapters_of(video.id), key=lambda c: c.start_sec)
         if not chapters:
             return segments
-        # 범위는 챕터 시작 ~ 다음 챕터 시작(마지막은 영상 끝) — 구간을 시작 시각으로 나눠 담는다
+        # 구간을 챕터에 한 번 나눠 담는다 — 범위는 챕터 시작 ~ 다음 챕터 시작(마지막은 영상 끝).
+        # 점수 · 고르기 · 근거 시각 찾기가 같은 나눔을 쓴다
         starts = [c.start_sec for c in chapters]
-        spoken: dict[int, list[str]] = {c.seq: [] for c in chapters}
+        parts: dict[int, list[Segment]] = {c.seq: [] for c in chapters}
         for s in segments:
-            i = bisect.bisect_right(starts, s.start_sec) - 1
-            if i >= 0:
-                spoken[chapters[i].seq].append(s.text)
+            if (c := _chapter_at(chapters, starts, s.start_sec)) is not None:
+                parts[c.seq].append(s)
         docs = {
             c.seq: _grams(" ".join([c.title, *c.bullets])) * config.CHAT_SUMMARY_WEIGHT
-            + _grams(" ".join(spoken[c.seq]))
+            + _grams(" ".join(s.text for s in parts[c.seq]))
             for c in chapters
         }
         scores = _bm25(_grams(question), docs)
         ranked = sorted(
             (c for c in chapters if scores[c.seq] > 0), key=lambda c: (-scores[c.seq], c.start_sec)
         )[: config.CHAT_CHAPTERS]
-        cited = [c for c in await self._cited_chapters(video.id, chapters) if c not in ranked]
-        # 1위 → 직전 턴 근거 → 2 · 3위. 넘치면 뒤에서부터 빼 1위가 남는다
-        picked = ranked[:1] + cited + ranked[1:] or chapters[: config.CHAT_CHAPTERS]
-        ends = {c.seq: nxt.start_sec for c, nxt in zip(chapters, chapters[1:], strict=False)}
+        cited = await self._cited_chapters(video.id, chapters, starts)
+        # 1위 → 직전 턴 근거(점수로 2 · 3위에 들었어도 이리로) → 나머지. 넘치면 뒤에서부터 빼
+        # 1위가 남고 근거는 2 · 3위보다 오래 남는다
+        picked = ranked[:1] + [c for c in cited if c not in ranked[:1]]
+        picked += [c for c in ranked[1:] if c not in picked]
+        picked = picked or chapters[: config.CHAT_CHAPTERS]
         while True:
-            chosen = [
-                s
-                for s in segments
-                if any(c.start_sec <= s.start_sec < ends.get(c.seq, float("inf")) for c in picked)
-            ]
+            chosen = sorted((s for c in picked for s in parts[c.seq]), key=lambda s: s.seq)
             # 하나만 남으면 넘어도 그대로 — 챕터 안을 자르면 맞는 구간을 잃는다
             if _tokens(chosen) <= config.CHAT_TOKEN_LIMIT or len(picked) == 1:
                 return chosen
             picked = picked[:-1]
 
-    async def _cited_chapters(self, video_id: int, chapters: list[Chapter]) -> list[Chapter]:
-        # 직전 턴의 근거 시각이 든 챕터 — 이어지는 질문('그 실험은 누가 했어요?')은 낱말로 못 찾는다
-        found: list[Chapter] = []
-        for turn in await crud.recent(self.session, video_id, 1):
+    async def _cited_chapters(
+        self, video_id: int, chapters: list[Chapter], starts: list[float]
+    ) -> list[Chapter]:
+        # 근거가 있는 가장 최근 턴의 근거 시각이 든 챕터 — 이어지는 질문('그 실험은 누가 했어요?')은
+        # 낱말로 못 찾는다. 바로 앞 답이 '다루지 않는다'여서 근거가 없으면 그 앞 턴의 것
+        for turn in await crud.recent(self.session, video_id, config.CHAT_HISTORY_TURNS):
+            if not turn.cited_secs:
+                continue
+            found: list[Chapter] = []
             for sec in turn.cited_secs:
-                inside = [c for c in chapters if c.start_sec <= sec]
-                if inside and inside[-1] not in found:
-                    found.append(inside[-1])
-        return found
+                c = _chapter_at(chapters, starts, sec)
+                if c is not None and c not in found:
+                    found.append(c)
+            return found
+        return []

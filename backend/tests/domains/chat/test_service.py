@@ -187,6 +187,28 @@ async def test_context_only_last_turn_counts(db, make, monkeypatch) -> None:
     assert _range(context) == (3600.0, 5340.0, 30)
 
 
+async def test_context_cited_chapter_in_ranked_moves_up(db, make, monkeypatch) -> None:
+    # '번째 비용 선택' → 점수 1 · 2 · 3위가 비용 · pgvector 선택 · 소개. 직전 턴 근거가 '소개'(3위)면
+    # 1위 바로 뒤로 옮긴다 — 두 챕터만 드는 상한이면 1위와 근거가 남는다(MS-004 v7)
+    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 2000)
+    row = await _long_video(make)
+    await make.turn(row.id, "누가 나와?", "카이스트 교수가 나옵니다.", cited=[100.0], at=T0)
+    video = VideoService.to_dto(row, None, 0)
+    context = await ChatService(db).context_for(video, "번째 비용 선택")
+    assert _range(context) == (0.0, 3540.0, 60)
+
+
+async def test_context_follow_up_skips_turn_without_citations(db, make, monkeypatch) -> None:
+    # 바로 앞 답이 '다루지 않는다'여서 근거가 없으면 그 앞 턴의 근거 챕터(MS-004 v7)
+    monkeypatch.setattr(config, "CHAT_TOKEN_LIMIT", 3000)
+    row = await _long_video(make)
+    await make.turn(row.id, "어떤 DB를 썼어?", "pgvector를 썼다고 합니다.", cited=[4000.0], at=T0)
+    later = T0.replace(minute=5)
+    await make.turn(row.id, "매출은?", "이 영상에서는 다루지 않습니다.", cited=[], at=later)
+    context = await ChatService(db).context_for(VideoService.to_dto(row, None, 0), "그거 성능은?")
+    assert _range(context) == (3600.0, 5340.0, 30)
+
+
 # --- ask
 
 
