@@ -3,7 +3,8 @@
  * 문구 셋: 키 없음 · 확인 실패 · 연결을 확인하지 못함(이때는 [키 넣으러 가기]가 없다).
  * UI-5에는 두지 않는다. 요소 번호(1 · 1.1 · 1.2)는 UI-1에서만 붙는다.
  * 배너는 헤더와 함께 창 위에 남는다 — 높이를 재서 --banner-h로 두면 헤더는 그 아래에 붙고, UI-4 패널은
- * 그만큼 줄어 질문 입력 영역이 창 밖으로 밀리지 않는다(VA-UI-002 UI-4 규칙).
+ * 그만큼 줄어 질문 입력 영역이 창 밖으로 밀리지 않는다(VA-UI-002 UI-4 규칙). [키 넣으러 가기]도 올리는
+ * 중이면 떠나기 전에 묻는다(leave.ts) — 키가 막혀 있으면 올리기를 시작하지 않지만 링크는 한곳의 규칙대로.
  */
 "use client";
 
@@ -12,6 +13,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { useSettings } from "@/api/client";
+import { leaveTo } from "@/leave";
 
 const MISSING =
   "OpenAI API 키가 없어서 아직 분석할 수 없어요. 분석해 둔 영상은 키 없이도 읽을 수 있습니다.";
@@ -60,7 +62,12 @@ export default function KeyBanner() {
         {text}
       </span>
       {!offline && (
-        <Link href="/settings" className="btn-banner" data-el={home ? "1.2" : undefined}>
+        <Link
+          href="/settings"
+          className="btn-banner"
+          data-el={home ? "1.2" : undefined}
+          onNavigate={leaveTo("/settings")}
+        >
           키 넣으러 가기
         </Link>
       )}

@@ -147,7 +147,9 @@ function uploaded(body) {
   } catch {
     // 모르는 모양이면 10분으로
   }
-  return { seq: Number.parseInt(name, 10), duration };
+  // `8_012.mp3` → 조각 8 · 토막 12. 토막 번호가 없으면 0(첫 토막)
+  const piece = Number(name.match(/_(\d+)\./)?.[1] ?? 0);
+  return { seq: Number.parseInt(name, 10), piece, duration };
 }
 
 /**
@@ -288,26 +290,28 @@ createServer(async (req, res) => {
     });
   }
   if (req.method === "POST" && req.url?.startsWith("/v1/audio/transcriptions")) {
-    state.transcriptions += 1;
-    const { seq, duration } = uploaded(await readBody(req));
-    if (state.sttDelayMs) await new Promise((r) => setTimeout(r, state.sttDelayMs));
-    if (state.sttFail && state.sttFail.seq === seq && state.sttFail.times > 0) {
-      state.sttFail.times -= 1;
-      if (state.sttFail.drop) return req.socket.destroy(); // 인터넷 끊김 — 응답 없이 연결이 끊긴다
-      return send(res, 500, {
-        error: { message: "The server had an error", type: "server_error" },
-      });
+    // 앱은 10분 조각을 15초 이하 토막으로 나눠 보낸다(VA-MS-006 stt_openai) — 파일 이름 `{조각}_{토막}.mp3`.
+    // 조각 단위로 세고 늦추고 실패시킨다: 첫 토막(_000)만. 첫 토막이 실패하면 그 조각이 실패한다
+    const { seq, piece, duration } = uploaded(await readBody(req));
+    const first = piece === 0;
+    if (first) {
+      state.transcriptions += 1;
+      if (state.sttDelayMs) await new Promise((r) => setTimeout(r, state.sttDelayMs));
+      if (state.sttFail && state.sttFail.seq === seq && state.sttFail.times > 0) {
+        state.sttFail.times -= 1;
+        if (state.sttFail.drop) return req.socket.destroy(); // 인터넷 끊김 — 응답 없이 연결이 끊긴다
+        return send(res, 500, {
+          error: { message: "The server had an error", type: "server_error" },
+        });
+      }
+      state.transcribed.push(seq);
     }
-    state.transcribed.push(seq);
-    const segments = [];
-    for (let t = 0; t < duration; t += 100) {
-      segments.push({
-        start: t,
-        end: Math.min(t + 90, duration),
-        text: `${seq}번 조각 ${t}초 — 워크숍 이야기를 이어 갑니다.`,
-      });
-    }
-    return send(res, 200, { task: "transcribe", language: "korean", duration, text: "", segments });
+    // gpt-transcribe는 json만 준다 — 글 · 감지한 언어 · 쓴 초(시각은 앱이 토막 경계로)
+    return send(res, 200, {
+      text: `${seq}번 조각 ${piece}번 토막 — 워크숍 이야기를 이어 갑니다.`,
+      languages: [{ code: "ko" }],
+      usage: { type: "duration", seconds: Math.ceil(duration) },
+    });
   }
   return send(res, 404, {
     error: { message: "가짜 서버에 없는 경로", type: "invalid_request_error" },

@@ -37,7 +37,7 @@ class ModelOption(BaseModel):
 
 
 class ModelOptions(BaseModel):
-    """받아쓰기 목록(구간 시각을 주는 모델만, INFRA C3)과 텍스트 목록."""
+    """받아쓰기 목록(json을 주는 모델 — 구간 시각은 앱이 나눈 토막 경계, INFRA C3)과 텍스트 목록."""
 
     stt: list[ModelOption]
     text: list[ModelOption]
@@ -103,7 +103,9 @@ class Config(BaseSettings):
     STT_CONCURRENCY: int = 3
     CHUNK_MAX_ATTEMPTS: int = 3
     CHUNK_RETRY_WAIT_SEC: float = 2  # 다시 보내기 전 첫 기다림, 다음은 두 배
-    CHUNK_EST_SEC: int = 45
+    # 조각 하나(10분)의 받아쓰기 예상 — gpt-transcribe 15초 토막 동시 3이면 약 20초
+    # (실측 동시 4 · 8에 15 · 8초, 2026-10-01). 처음 45는 whisper-1(15~57초) 값
+    CHUNK_EST_SEC: int = 20
     # 요약 세 단계 합 — 추론 강도 low 실측 21~22초. 장면 몫과 합쳐 자막 있음이 '약 1분'(카드 D2)
     TEXT_EST_SEC: int = 45
     # 장면 단계 전체의 예상 · 그 단계 안에서 남은 한 장의 예상 — 실측 YouTube 5~13초(칸마다 약 1초),
@@ -125,18 +127,34 @@ class Config(BaseSettings):
     CHAT_HISTORY_TURNS: int = 10
     CHAT_TOKEN_LIMIT: int = 30000
     CHAT_CHAPTERS: int = 3
+    # 맥락 챕터 고르기(두 글자 조각 BM25) — 제목 · 요점 조각을 세는 배수와 BM25의 흔한 값(MS-004).
+    # 실측(2026-10-01, 2:30:30 강의 29문항): 상위 3챕터에 정답 13 → 27
+    CHAT_SUMMARY_WEIGHT: int = 3
+    CHAT_BM25_K1: float = 1.2
+    CHAT_BM25_B: float = 0.75
     CHAT_TIMEOUT_SEC: float = 20
 
-    # 설정 — MS-005. 단가는 2026-09-23 OpenAI 가격표(표준 요금)
+    # 설정 — MS-005. 단가는 OpenAI 가격표(표준 요금) — 2026-09-23 값, gpt-5.6 셋은 2026-10-01 값.
+    # 텍스트는 값 오름차순이다(UI-5 3.3)
     MODEL_OPTIONS: ModelOptions = ModelOptions(
-        stt=[ModelOption(id="whisper-1", label="whisper-1", price=ModelPrice(per_min_usd=0.006))],
+        # 받아쓰기는 gpt-transcribe 하나 — whisper-1은 2027-02-26에 없어져 뺐다
+        # (사용자 결정 2026-10-01)
+        stt=[
+            ModelOption(
+                id="gpt-transcribe", label="gpt-transcribe", price=ModelPrice(per_min_usd=0.0045)
+            )
+        ],
         text=[
+            _text("gpt-5.6-luna", 0.20, 1.20),
             _text("gpt-5-mini", 0.25, 2.00),
             _text("gpt-5.4-mini", 0.75, 4.50),
+            _text("gpt-5.6-terra", 2.00, 12.00),
             _text("gpt-5.4", 2.50, 15.00),
+            _text("gpt-5.6-sol", 4.00, 20.00),
         ],
     )
-    DEFAULT_MODELS: dict[str, str] = {"stt": "whisper-1", "text": "gpt-5-mini"}
+    # 기본 텍스트는 luna — gpt-5-mini보다 싸고 긴 영상에서 빠르다(사용자 결정 2026-10-01)
+    DEFAULT_MODELS: dict[str, str] = {"stt": "gpt-transcribe", "text": "gpt-5.6-luna"}
     # 인포그래픽(INFRA C11) — 낮음은 실측(카드 D3, 세로 한 장 $0.0096), 중간은 외부 가격 정리 값
     IMAGE_OPTIONS: ImageOptions = ImageOptions(
         models=["gpt-image-2"],
@@ -156,6 +174,17 @@ class Config(BaseSettings):
     SILENCE_DB: float = -35
     SILENCE_MIN_SEC: float = 0.5
     CHUNK_MAX_BYTES: int = 24_000_000
+    # 받아쓰기 토막(MS-006 stt_openai) — 구간 시각이 토막 경계라 15초 이하(INFRA C3).
+    # 무음은 10분 조각보다 민감하게 찾는다(실측: 그대로면 절반을 15초에서 그냥 잘랐다).
+    # 동시 수는 조각 하나 안에서 — 조각 동시 3과 곱해 9
+    PIECE_SEC: float = 15
+    PIECE_MIN_SEC: float = 2
+    PIECE_SILENCE_DB: float = -30
+    PIECE_SILENCE_MIN_SEC: float = 0.2
+    PIECE_CONCURRENCY: int = 3
+    # 토막 하나를 일시 오류로 보내는 상한 · 다시 보내기 전 첫 기다림(다음은 두 배) — MS-006
+    PIECE_MAX_ATTEMPTS: int = 3
+    PIECE_RETRY_WAIT_SEC: float = 1
     LLM_RETRY: int = 1
     NOT_COVERED_TEXT: str = "이 영상에서는 다루지 않습니다."
     QUESTION_COUNT: int = 3
@@ -174,6 +203,9 @@ class Config(BaseSettings):
     FFMPEG_BIN: str = "ffmpeg"
     FFPROBE_BIN: str = "ffprobe"
     OPENAI_TIMEOUT_SEC: float = 120
+    # 받아쓰기에 알려 주는 말의 후보(PRD R3 한국어 · 영어) — 주면 응답에 감지한 언어 코드가
+    # 온다(MS-007)
+    STT_LANGUAGES: list[str] = ["ko", "en"]
     # 인포그래픽 한 장의 상한 — 세로 한 장이 수십 초 걸린다. 뒤에서 돌아 web 넘기기 60초와 무관
     IMAGE_TIMEOUT_SEC: float = 180
     OPENAI_BASE_URL: str | None = None  # E2E의 가짜 OpenAI 서버만 채운다
