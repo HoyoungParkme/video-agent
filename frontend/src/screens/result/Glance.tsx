@@ -1,6 +1,6 @@
 /**
  * VA-UI-002#UI-4 12 ~ 14 한눈에 보기 — 한 줄 요약(3)과 핵심 인사이트(4) 사이. 12.1 개수 · 12.2 안내,
- * 13 타임라인 카드(13.1 파트 띠 · 13.2 인사이트 점 · 13.3 챕터 막대 · 13.4 시각 눈금 · 13.5 범례),
+ * 13 타임라인 카드(13.1 파트 띠 · 13.2 인사이트 점 · 13.3 챕터 막대 · 13.4 시각 눈금 · 13.5 범례 · 13.6 가리킨 칸 이름),
  * 14 마인드맵 카드(14.1 뿌리 → 14.2 챕터 노드 · 14.3 요점, 파트가 있으면 14.4 파트 노드 → 14.5 파트 안 챕터 노드),
  * 맨 아래 15 인포그래픽 카드(Result.tsx가 children으로 넘긴다 — screens/result/InfographicCard).
  * 이미 받은 결과로만 그리고 서버에 묻지 않는다. 고른 시각과 펼친 파트는 Result.tsx가 갖고 여기는 그리기만 한다
@@ -12,7 +12,16 @@
  */
 "use client";
 
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import type { Chapter, Result } from "@/api/client";
 import { timeLabel } from "@/components/TimeChip";
@@ -118,9 +127,73 @@ function cell(start: number, secs: number, total: number, last: boolean): CSSPro
   };
 }
 
+/** 한눈에 보기의 줄 — 파트 띠(13.1) · 인사이트 점(13.2) · 챕터 막대(13.3). */
+type Row = "band" | "dots" | "bar";
+
+/** 13.6에 이름을 보일 칸. keys면 키보드 초점으로 온 것이라 끝에 키 안내를 붙인다. */
+interface Pointed {
+  row: Row;
+  index: number;
+  keys: boolean;
+}
+
+/**
+ * 줄 하나의 키보드(VA-UI-001 4.6) — 줄 전체가 Tab 한 번이다(칸 하나만 tabIndex 0). ← → · Home · End는 초점만
+ * 옮기고 끝에서 멈춘다. Enter · Space는 버튼 그대로 누르기다. order는 화살표 차례(칸 번호들)다 — 띠 · 막대는
+ * 놓인 차례 그대로, 점은 시각 차례(번호가 시각 차례가 아닐 수 있다). 줄에 들어오면 고른 칸(없으면 차례의 첫 칸)에서
+ * 시작한다. 초점이 칸에 오면 onPoint로 알리고, 초점이 줄을 떠나면 null을 알린다.
+ */
+function useRow(row: Row, order: number[], current: number, onPoint: (p: Pointed | null) => void) {
+  const cells = useRef<(HTMLButtonElement | null)[]>([]);
+  const [focused, setFocused] = useState<number | null>(null);
+  const tabbable = focused ?? (current >= 0 ? current : (order[0] ?? 0));
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const at = order.indexOf(tabbable);
+    const last = order.length - 1;
+    const to =
+      e.key === "ArrowRight"
+        ? Math.min(at + 1, last)
+        : e.key === "ArrowLeft"
+          ? Math.max(at - 1, 0)
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? last
+              : null;
+    if (to === null || at < 0) return;
+    e.preventDefault(); // 화살표 · Home · End로 창이 스크롤되지 않게
+    cells.current[order[to]]?.focus();
+  };
+  const onFocus = (e: FocusEvent<HTMLDivElement>) => {
+    const el: Element = e.target;
+    const index = cells.current.indexOf(el as HTMLButtonElement);
+    if (index < 0) return;
+    setFocused(index);
+    onPoint({ row, index, keys: el.matches(":focus-visible") });
+  };
+  const onBlur = (e: FocusEvent<HTMLDivElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setFocused(null);
+    onPoint(null);
+  };
+  return {
+    toolbar: { role: "toolbar", onKeyDown, onFocus, onBlur },
+    cell: (index: number) => ({
+      ref: (el: HTMLButtonElement | null) => {
+        cells.current[index] = el;
+      },
+      tabIndex: index === tabbable ? 0 : -1,
+    }),
+  };
+}
+
 /**
  * 13 타임라인 카드 — (파트 띠) · 인사이트 점 · 챕터 막대 · 시각 눈금 · 범례. 칸은 점 · 눈금과 같은 비례로
  * 놓는다 — flex 몫으로 늘리면 틈이 쌓여 긴 영상에서 칸 경계가 점 · 눈금과 14px까지 어긋났다(UI-4 규칙).
+ * 띠 · 점 · 막대는 줄마다 Tab 한 번(useRow)이다. 키보드 초점이 줄에 있거나 마우스가 칸을 가리키면 범례(13.5)
+ * 자리에 그 칸의 이름(13.6)을 보인다 — 좁은 칸은 칸 안에 이름이 들어가지 않는다. 둘이 겹치면 마지막으로 가리킨
+ * 쪽이다. 마우스로 가리킨 이름은 카드 안에 있는 동안 남고(WCAG 1.4.13) 카드를 나가면, 키보드로 가리킨 이름은
+ * 초점이 줄을 떠나면 거둔다. Esc로 닫는다. 화면 읽기 프로그램은 칸의 aria-label을 읽는다.
  */
 function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "onToggle">) {
   const [track, width] = useWidth<HTMLDivElement>();
@@ -136,20 +209,105 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
   const rowCount = Math.max(0, ...rows) + 1;
   const marks = ticks(duration, long);
 
+  // 13.6에 보일 칸 — 키보드 초점 칸과 마우스가 가리킨 칸을 따로 두고, 둘이면 마지막으로 가리킨 쪽을, 그 쪽이
+  // 거두어지면(초점이 줄을 떠나거나 마우스가 카드를 나가면) 남은 쪽을 보인다(UI-4 규칙)
+  const [keyPoint, setKeyPoint] = useState<Pointed | null>(null);
+  const [mousePoint, setMousePoint] = useState<Pointed | null>(null);
+  const [recent, setRecent] = useState<"keys" | "mouse">("keys");
+  const [hushed, setHushed] = useState(false);
+  // 마우스로 누른 초점은 가리킴(hover)이 이미 알렸다
+  const pointFocus = (p: Pointed | null) => {
+    if (p === null) setKeyPoint(null);
+    else if (p.keys) {
+      setKeyPoint(p);
+      setRecent("keys");
+      setHushed(false);
+    }
+  };
+  const pointHover = (row: Row, index: number) => {
+    setMousePoint({ row, index, keys: false });
+    setRecent("mouse");
+    setHushed(false);
+  };
+  const leaveCard = () => setMousePoint(null);
+  const shown = hushed
+    ? null
+    : recent === "mouse"
+      ? (mousePoint ?? keyPoint)
+      : (keyPoint ?? mousePoint);
+  // 이름 줄이 떠 있는 동안 Esc로 닫는다 — 마우스로 띄웠으면 초점이 카드 밖에 있을 수 있다
+  const showing = shown !== null;
+  useEffect(() => {
+    if (!showing) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setHushed(true);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showing]);
+
+  // 화살표 차례 — 띠 · 막대는 놓인 차례, 점은 첫 근거 시각 차례(같으면 번호 차례)
+  const inOrder = (n: number) => Array.from({ length: n }, (_, i) => i);
+  const dotOrder = inOrder(insights.length).sort(
+    (a, b) =>
+      insights[a].source_secs[0] - insights[b].source_secs[0] || insights[a].seq - insights[b].seq,
+  );
+  const band = useRow(
+    "band",
+    inOrder(parts.length),
+    parts.findIndex((p) => p.seq === part?.seq),
+    pointFocus,
+  );
+  const dots = useRow(
+    "dots",
+    dotOrder,
+    insights.findIndex((ins) => selected !== null && ins.source_secs.includes(selected)),
+    pointFocus,
+  );
+  const bars = useRow(
+    "bar",
+    inOrder(chapters.length),
+    chapters.findIndex((c) => c.seq === chapter?.seq),
+    pointFocus,
+  );
+
+  const label = (p: Pointed) => {
+    if (p.row === "band") {
+      const it = parts[p.index];
+      return it && { name: `파트 ${it.seq}`, time: timeLabel(it.start_sec, long), title: it.title };
+    }
+    if (p.row === "dots") {
+      const it = insights[p.index];
+      return (
+        it && {
+          name: `인사이트 ${two(it.seq)}`,
+          time: timeLabel(it.source_secs[0], long),
+          title: it.text,
+        }
+      );
+    }
+    const it = chapters[p.index];
+    return it && { name: `챕터 ${it.seq}`, time: timeLabel(it.start_sec, long), title: it.title };
+  };
+  const found = shown ? label(shown) : undefined;
+  const named = shown && found ? { ...found, keys: shown.keys } : null;
+
   return (
-    <div className="timeline" data-el="13">
+    <div className="timeline" data-el="13" onMouseLeave={leaveCard}>
       {parts.length > 0 && (
-        <div className="timeline-band">
+        <div className="timeline-band" aria-label="파트 띠" {...band.toolbar}>
           {parts.map((p, i) => (
             <button
               key={p.seq}
               type="button"
-              className={`band-cell${i % 2 === 1 ? " is-alt" : ""}`}
+              className="band-cell"
               style={cell(p.start_sec, p.end_sec - p.start_sec, total, i === parts.length - 1)}
               aria-label={`파트 ${p.seq} · ${timeLabel(p.start_sec, long)} ${p.title}`}
               aria-pressed={part?.seq === p.seq}
               data-el={i === 0 ? "13.1" : undefined}
+              {...band.cell(i)}
               onClick={() => onSelect(p.start_sec)}
+              onMouseEnter={() => pointHover("band", i)}
             >
               <span className="cell-label">
                 {p.seq} {p.title}
@@ -162,6 +320,8 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
         ref={track}
         className="timeline-dots"
         style={{ height: DOT_PX + DOT_ROW_PX * (rowCount - 1) }}
+        aria-label="인사이트 점"
+        {...dots.toolbar}
       >
         {insights.map((ins, i) => {
           const first = ins.source_secs[0];
@@ -174,14 +334,16 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
               aria-label={`인사이트 ${two(ins.seq)} · ${timeLabel(first, long)}`}
               aria-pressed={selected !== null && ins.source_secs.includes(selected)}
               data-el={i === 0 ? "13.2" : undefined}
+              {...dots.cell(i)}
               onClick={() => onSelect(first)}
+              onMouseEnter={() => pointHover("dots", i)}
             >
               {two(ins.seq)}
             </button>
           );
         })}
       </div>
-      <div className="timeline-bars">
+      <div className="timeline-bars" aria-label="챕터 막대" {...bars.toolbar}>
         {chapters.map((c, i) => {
           const last = i === chapters.length - 1;
           const px = (width * secs[i]) / total - (last ? 0 : GAP_PX); // 그린 칸 폭
@@ -190,12 +352,14 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
             <button
               key={c.seq}
               type="button"
-              className={`bar-cell${i % 2 === 1 ? " is-alt" : ""}${wide ? " is-wide" : ""}`}
+              className={`bar-cell${wide ? " is-wide" : ""}`}
               style={cell(c.start_sec, secs[i], total, last)}
               aria-label={`챕터 ${c.seq} · ${timeLabel(c.start_sec, long)} ${c.title}`}
               aria-pressed={chapter?.seq === c.seq}
               data-el={i === 0 ? "13.3" : undefined}
+              {...bars.cell(i)}
               onClick={() => onSelect(c.start_sec)}
+              onMouseEnter={() => pointHover("bar", i)}
             >
               <span className="cell-label">
                 {wide ? `${c.seq} ${c.title}` : px > NUMBER_PX ? c.seq : null}
@@ -215,16 +379,25 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
           </span>
         ))}
       </div>
-      <div className="timeline-legend" data-el="13.5">
-        <span className="legend-item">
-          <span className="legend-bar" aria-hidden="true" />
-          막대 = 챕터 {chapters.length}개(길이만큼)
-        </span>
-        <span className="legend-item">
-          <span className="legend-dot" aria-hidden="true" />점 = 인사이트 {insights.length}개(첫
-          근거 시각)
-        </span>
-      </div>
+      {named ? (
+        <div className="timeline-pointed" data-el="13.6" aria-hidden="true">
+          <span className="timeline-pointed-name">{named.name}</span>
+          <span className="timeline-pointed-time mono">{named.time}</span>
+          <span className="timeline-pointed-title">{named.title}</span>
+          {named.keys && <span className="timeline-pointed-keys">← → 옮기기 · Enter 이동</span>}
+        </div>
+      ) : (
+        <div className="timeline-legend" data-el="13.5">
+          <span className="legend-item">
+            <span className="legend-bar" aria-hidden="true" />
+            막대 = 챕터 {chapters.length}개(길이만큼)
+          </span>
+          <span className="legend-item">
+            <span className="legend-dot" aria-hidden="true" />점 = 인사이트 {insights.length}개(첫
+            근거 시각)
+          </span>
+        </div>
+      )}
     </div>
   );
 }

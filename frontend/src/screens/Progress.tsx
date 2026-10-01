@@ -123,7 +123,10 @@ function StepMark({ state }: { state: StepState }) {
 
 const CELL_NAMES = { done: "완료", in_flight: "받아쓰는 중", failed: "실패", waiting: "대기" };
 
-/** 조각 격자(4.6) · 칸(4.7) · 범례(4.8) — 받아쓰기 행 아래. 범례는 칸이 있는 상태만. */
+/**
+ * 조각 격자(4.6) · 칸(4.7) · 범례(4.8) — 받아쓰기 행 아래. 범례는 칸이 있는 상태만. 받아쓰는 중 칸은 청록 테두리에
+ * 안만 깜빡이고, 실패 칸은 흰 ×를 넣는다 — 색으로만 가르지 않는다(VA-UI-001 3.5).
+ */
 function ChunkGrid({ chunks }: { chunks: Chunks }) {
   const counts = {
     done: chunks.done,
@@ -140,9 +143,23 @@ function ChunkGrid({ chunks }: { chunks: Chunks }) {
         {chunks.items.map((c, i) => (
           <span
             key={c.seq}
-            className={`chunk-cell is-${c.state}${c.state === "in_flight" ? " va-pulse" : ""}`}
+            className={`chunk-cell is-${c.state}`}
             data-el={i === 0 ? "4.7" : undefined}
-          />
+          >
+            {c.state === "in_flight" && <span className="chunk-cell-inner va-pulse" />}
+            {c.state === "failed" && (
+              <svg
+                className="icon icon-bold"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            )}
+          </span>
         ))}
       </span>
       <span className="chunk-legend" data-el="4.8">

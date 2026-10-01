@@ -26,6 +26,8 @@ const VIDEOS = {
     step: 10,
     width: 70,
   },
+  // 키보드로 보는 3시간 워크숍 — 한눈에 보기 세 줄(파트 · 점 · 막대)과 탭(a11y)
+  e2eA11yLng1: { title: "키보드로 보는 워크숍", duration: 10800, subtitles: { ko: [] } },
   // 며칠 뒤 다시 열어 묻고 내보내고 지운다 — S5
   e2eNoteVid1: { title: "벡터 DB 운영 노트", duration: 1800, subtitles: { ko: [] } },
   // 대기열에서 지운다 — 도는 영상 · 기다리는 영상 둘(s5)

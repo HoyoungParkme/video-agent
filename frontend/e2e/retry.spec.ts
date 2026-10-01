@@ -50,6 +50,8 @@ test("8번 조각이 세 번 실패 → 실패 알림 → 다시 시도하면 8�
   await expect(page.locator(".step-mark").nth(1)).toHaveAttribute("data-state", "failed");
   await expect(el(page, "4.6")).toHaveAttribute("aria-label", "조각 9개 중 8개 완료, 1개 실패");
   await expect(el(page, "4.8")).toHaveText("완료 8실패 1");
+  // 실패 칸은 완료 칸과 밝기가 같아 흰 ×를 넣는다(VA-UI-001 3.5)
+  await expect(el(page, "4.6").locator(".chunk-cell.is-failed svg")).toHaveCount(1);
   await expect(el(page, "5.1")).toHaveText("OpenAI가 요청을 처리하지 못했어요");
   await expect(el(page, "5.2")).toHaveText(
     "8번째 조각을 3번 보냈지만 실패했어요 — OpenAI 서버 오류. 완료한 8개 조각은 저장돼 있어 처음부터 다시 받아쓰지 않아요.",
