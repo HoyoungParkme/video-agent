@@ -2,6 +2,7 @@
  * S4 — 영상에 질문하기(VA-SCN-001 S4, VA-CODE-001 B3). 추천 질문으로 시작해 근거 칩을 따라가고, 이어 묻고,
  * 영상에 없는 것을 묻는다. 다시 열어도 기록이 남는다. 답변 실패는 다시 시도로, 3시간 스크립트는 질문과 맞는
  * 챕터만 보낸다. 가짜 OpenAI가 받은 스크립트 범위 · 앞선 턴 수를 기록한다(e2e/fake-openai.mjs).
+ * 탭을 오가도 대화 목록은 읽던 위치이고, 떠난 사이 답이 오면 끝이다(카드 E6, UI-4 규칙).
  */
 import { expect, test, type Page } from "@playwright/test";
 
@@ -231,4 +232,55 @@ test("연결 문구 배너 — 질문이 서버의 다시 확인을 통과하면
   );
   await expect(banner).toHaveCount(0); // 설정을 다시 받아 배너가 사라진다
   await expect(el(page, "10.2")).toHaveCount(0);
+});
+
+test("탭을 오가도 읽던 대화 위치 — 떠난 사이 답이 오면 맨 아래", async ({ page, request }) => {
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  await openResult(page, "https://youtu.be/e2eChatPos1");
+  await el(page, "7.2").click();
+  for (let i = 1; i <= 6; i += 1) {
+    await box(page).fill(`${i}번째 질문 — 청킹은 어떻게 바꿨나?`);
+    await box(page).press("Enter");
+    await expect(el(page, "7.3")).toHaveText(String(i));
+  }
+  const list = el(page, "9");
+  // 끝에서 남은 거리 — 0이면 맨 아래
+  const fromEnd = () =>
+    list.evaluate((e) => Math.round(e.scrollHeight - e.clientHeight - e.scrollTop));
+  await expect.poll(fromEnd).toBeLessThanOrEqual(1);
+
+  // 가운데쯤으로 올려 두고, 거기서 보이는 근거 칩으로 스크립트에 다녀온다 — 읽던 자리 그대로
+  const mid = await list.evaluate((e) => {
+    e.scrollTop = Math.round((e.scrollHeight - e.clientHeight) / 2);
+    return e.scrollTop;
+  });
+  expect(mid).toBeGreaterThan(0);
+  const shown = await list.evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return [...e.querySelectorAll(".turn .time-chip")].findIndex((c) => {
+      const b = c.getBoundingClientRect();
+      return b.top >= r.top && b.bottom <= r.bottom;
+    });
+  });
+  expect(shown).toBeGreaterThanOrEqual(0);
+  await list.locator(".turn .time-chip").nth(shown).click();
+  await expect(el(page, "7.1")).toHaveAttribute("aria-selected", "true");
+  await el(page, "7.2").click();
+  expect(await list.evaluate((e) => e.scrollTop)).toBe(mid);
+
+  // 답을 기다리는 동안 스크립트에 갔다가 답이 온 뒤 돌아오면 맨 아래 — 새 답이 보인다
+  await fakeOpenAI(request, { chat_delay_ms: 1500 });
+  await box(page).fill("7번째 질문 — 지연은 어떻게 되돌렸나?");
+  await box(page).press("Enter");
+  await expect(el(page, "9.7")).toBeVisible();
+  await el(page, "7.1").click();
+  await expect(el(page, "7.3")).toHaveText("7");
+  await el(page, "7.2").click();
+  await expect.poll(fromEnd).toBeLessThanOrEqual(1);
+
+  // 다시 열어 질문하기 탭을 처음 열 때도 맨 아래
+  await page.reload();
+  await el(page, "7.2").click();
+  await expect(page.locator(".turn")).toHaveCount(7);
+  await expect.poll(fromEnd).toBeLessThanOrEqual(1);
 });

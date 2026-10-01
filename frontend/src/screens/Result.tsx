@@ -9,11 +9,14 @@
  * 9.7 답 대기 · 9.8 답변 실패 · 9.9 다시 시도) · 10 질문 입력(10.1 추천 칩 · 10.2 키 없음 안내 · 10.3 입력칸 ·
  * 10.4 보내기 · 10.5 전송 안내). 11 짧은 알림 — UI-1에서 이미 분석한 영상을 넣어 열렸을 때.
  * 시각을 누르는 곳(4.3 · 6.3 · 6.6 · 8.3 · 9.5와 한눈에 보기의 13.1 · 13.2 · 13.3 · 14.2 · 14.5)은 모두 같은
- * 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤 · 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
+ * 동작이다 — 스크립트 탭 · 그 시각이 든 구간 강조와 스크롤(이미 다 보이면 그대로, 아니면 가운데 — 같은 시각을
+ * 다시 눌러도) · 시작 시각이 같은 챕터 선택 · 8.2(공통 1.3). 고른 시각은 주소 `?t={초}`에 바꿔 써서 남기고,
+ * 열 때 주소의 시각을 고른다 — 새로 고치거나 다녀와도 그 자리. 결과가 아직 없으면 UI-3으로, 영상이 없으면 UI-1로,
  * 서버에 잠깐 닿지 못하면 2초 뒤 다시 받는다.
  * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다. 마인드맵의 파트
  * 노드(14.4)와 챕터 목록의 파트 머리(6.5)는 같은 펼침 상태를 쓴다.
  * 질문 기록은 질문하기 탭을 처음 열 때 받는다. 추천 질문(5.1 · 10.1)을 누르면 그 탭으로 바뀌고 바로 보낸다.
+ * 탭을 오가도 대화 목록은 읽던 위치다 — 떠난 사이 새 턴 · 답 · 실패가 생겼으면 끝(UI-4 규칙).
  * 기록과 답은 id로 합친다 — 기록을 받는 사이에 온 답도 한 번씩 보인다.
  * 답을 기다리는 동안이나 키가 막혔을 때는 보내지 않는다(알약은 탭만 바꾼다). 실패한 질문은 저장되지 않아
  * 마지막 턴에만 실패 줄과 다시 시도가 있고, 새 질문을 보내면 빠진다.
@@ -122,6 +125,26 @@ function withFrames(r: ResultData, set: FrameSet): ResultData {
     chapters: r.chapters.map((c) => ({ ...c, frame: bySeq.get(c.seq) ?? c.frame })),
   };
 }
+
+/**
+ * 주소에 남긴 시각(`?t={초}`) — 0 이상 영상 길이 이하의 수, 소수 셋째 자리까지(구간 시각). 아니면 null —
+ * 고르지 않은 채로 연다(공통 1.3).
+ */
+function addressTime(duration: number): number | null {
+  const raw = new URLSearchParams(window.location.search).get("t");
+  if (raw === null || !/^\d+(\.\d{1,3})?$/.test(raw)) return null;
+  const sec = Number(raw);
+  return sec <= duration ? sec : null;
+}
+
+/** 짧은 알림(11) — 알림마다 번호(stamp)를 올린다: 같은 글이어도 4초를 처음부터 센다(공통 1.5). */
+interface Notice {
+  text: string;
+  n: number;
+}
+const noticeOf =
+  (text: string) =>
+  (prev: Notice | null): Notice => ({ text, n: (prev?.n ?? 0) + 1 });
 
 /** 그 시각이 든 구간 — 시작이 그 시각 이하인 마지막 구간. */
 function segmentAt(r: ResultData, sec: number): number | null {
@@ -252,7 +275,9 @@ export default function Result({ id }: { id: number }) {
   const router = useRouter();
   const [result, setResult] = useState<ResultData | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // 시각을 누른 횟수 — 같은 시각을 다시 눌러도 스크롤 규칙이 다시 돈다(공통 1.3)
+  const [picks, setPicks] = useState(0);
+  const [notice, setNotice] = useState<Notice | null>(null);
   // 펼친 파트 — 처음에는 첫 파트만(UI-4 규칙)
   const [open, setOpen] = useState<Set<number>>(() => new Set([1]));
   const [tab, setTab] = useState<Tab>("script");
@@ -272,6 +297,8 @@ export default function Result({ id }: { id: number }) {
   const [draft, setDraft] = useState("");
   const script = useRef<HTMLDivElement>(null);
   const chatList = useRef<HTMLDivElement>(null);
+  // 대화 목록이 숨어 있는(스크립트 탭) 사이 새 턴 · 대기 · 실패가 생겼는가 — 돌아오면 끝을 보인다(UI-4 규칙)
+  const chatMissed = useRef(false);
   const settings = useSettings();
 
   useEffect(() => {
@@ -282,7 +309,9 @@ export default function Result({ id }: { id: number }) {
         const got = await api.result(id);
         if (!alive) return;
         setResult(got);
-        setNotice(takeFlash()); // UI-1에서 이미 분석한 영상을 넣어 열렸으면
+        setSelected(addressTime(got.video.duration_sec)); // 새로 고침 · 다녀오기 — 주소의 시각(공통 1.3)
+        const flashed = takeFlash(); // UI-1에서 이미 분석한 영상을 넣어 열렸으면
+        if (flashed) setNotice(noticeOf(flashed));
       } catch (e) {
         if (!alive) return;
         if (e instanceof ApiError) {
@@ -363,14 +392,17 @@ export default function Result({ id }: { id: number }) {
 
   const segSeq = result && selected !== null ? segmentAt(result, selected) : null;
 
-  // 고른 구간을 패널 안에서 보이게 — 창 전체는 움직이지 않는다
+  // 고른 구간을 패널 안에서 보이게 — 이미 다 보이면 그대로, 아니면 가운데(공통 1.3). 창 전체는 움직이지 않는다
   useEffect(() => {
     if (segSeq === null || !script.current) return;
     const row = script.current.querySelector<HTMLElement>(`[data-seq="${segSeq}"]`);
     if (!row) return;
     const box = script.current; // position: relative — 행의 offsetTop이 이 상자 기준이다
-    box.scrollTop = row.offsetTop - box.clientHeight / 2 + row.clientHeight / 2;
-  }, [segSeq]);
+    const shown =
+      row.offsetTop >= box.scrollTop &&
+      row.offsetTop + row.offsetHeight <= box.scrollTop + box.clientHeight;
+    if (!shown) box.scrollTop = row.offsetTop - box.clientHeight / 2 + row.clientHeight / 2;
+  }, [segSeq, picks]);
 
   // 질문하기 탭을 처음 열 때 기록을 받는다 — 잠깐 닿지 못하면 다시
   useEffect(() => {
@@ -392,11 +424,22 @@ export default function Result({ id }: { id: number }) {
     };
   }, [tab, turns, id]);
 
-  // 새 턴 · 대기 · 실패가 생기면 대화 목록의 끝을 보인다 — 창 전체는 움직이지 않는다
+  // 질문하기 탭으로 돌아오면 — 떠난 사이 새 턴 · 대기 · 실패가 생겼으면 끝, 아니면 읽던 위치 그대로다. 숨긴
+  // 패널의 스크롤 위치는 브라우저가 지킨다 — 스크립트(8)와 같다(UI-4 규칙, Chromium 진짜 스택 확인)
   useEffect(() => {
     const box = chatList.current;
-    if (box) box.scrollTop = box.scrollHeight;
-  }, [turns, pending, tab]);
+    if (tab !== "chat" || !box || !chatMissed.current) return;
+    box.scrollTop = box.scrollHeight;
+    chatMissed.current = false;
+  }, [tab]);
+
+  // 새 턴 · 대기 · 실패가 생기면 대화 목록의 끝을 보인다. 숨어 있으면(높이 0) 돌아올 때 — 창 전체는 움직이지 않는다
+  useEffect(() => {
+    const box = chatList.current;
+    if (!box) return;
+    if (box.clientHeight === 0) chatMissed.current = true;
+    else box.scrollTop = box.scrollHeight;
+  }, [turns, pending]);
 
   if (!result) return <main className="result" aria-busy="true" />;
 
@@ -420,7 +463,13 @@ export default function Result({ id }: { id: number }) {
   // 시각 누르기 — 패널은 스크립트 탭으로(공통 1.3)
   const select = (sec: number) => {
     setSelected(sec);
+    setPicks((n) => n + 1);
     setTab("script");
+    // 주소에 남긴다 — 바꿔 써서 방문 기록은 늘지 않는다. 누른 시각 그대로(구간 시각은 소수, 공통 1.3).
+    // t만 바꾸고 다른 값 · #은 그대로 둔다
+    const url = new URL(window.location.href);
+    url.searchParams.set("t", String(Math.round(sec * 1000) / 1000));
+    window.history.replaceState(null, "", url);
   };
   const keyBlocked = settings ? keyBlocks(settings.key) : false;
   const keyNote = settings ? keyNotice(settings.key) : null;
@@ -905,7 +954,9 @@ export default function Result({ id }: { id: number }) {
         </div>
       </aside>
 
-      {notice && <Toast el="11" message={notice} onDone={() => setNotice(null)} />}
+      {notice && (
+        <Toast el="11" message={notice.text} stamp={notice.n} onDone={() => setNotice(null)} />
+      )}
       {dialog === "export" && (
         <Export
           video={video}
@@ -913,7 +964,7 @@ export default function Result({ id }: { id: number }) {
           onClose={() => setDialog(null)}
           onDone={(message) => {
             setDialog(null);
-            setNotice(message);
+            setNotice(noticeOf(message));
           }}
         />
       )}
