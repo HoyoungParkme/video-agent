@@ -191,7 +191,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - [x] 배치를 싱크독 새 뷰에 맞춘다(2026-09-23) — 싱크독이 배치 html을 iframe에 격리해 그대로 그리게 되면서(카드 Z · AC · AE) 뷰가 주던 클래스 사전이 없어졌다. 클래스로 그린 뼈대가 스타일 없이 보여, 배치를 승인된 캔버스 html로 옮기고 「3. 공통 틀」을 더했다. 요소 번호와 요소 표·규칙·시나리오는 그대로다
 - [ ] 이미 보낸 추천 질문: 두 모양에서 뺄지, 그대로 두고 다시 누르면 같은 질문을 또 보내게 할지(1.8)
 - [ ] 한눈에 보기 막대(UI-4 13.3)의 아주 좁은 칸 — 2시간 30분 · 27챕터면 5px 안팎인 칸이 있어 누르기 어렵다. 같은 챕터를 마인드맵(14.5) · 챕터 카드로도 고를 수 있어 그대로 두었다. 키보드로는 칸마다 Tab이 멈춰 27번을 지난다 — 막대를 한 멈춤(화살표로 칸 이동)으로 묶을지
-- [ ] UI-1 올리는 중에 새로 고침 · 뒤로 가기 — 지금 규칙은 묻지 않고 멈춘다. 큰 파일을 실수로 날리면 다시 올려야 한다. 브라우저의 떠나기 확인을 띄울지
+- [x] UI-1 올리는 중에 새로 고침 · 뒤로 가기 — 지금 규칙은 묻지 않고 멈춘다. 큰 파일을 실수로 날리면 다시 올려야 한다. 브라우저의 떠나기 확인을 띄울지 — 결정: 새로 고침 · 창 닫기는 브라우저 확인 창, 앱 안 링크는 확인 창으로 먼저 묻는다. 앱 안의 브라우저 뒤로 가기는 막을 길이 없어 그대로 멈춘다(사용자 결정 2026-10-01, UI-1 규칙)
 - [ ] UI-4 인포그래픽 그리는 중 · 장면 가져오는 중에 다시 받는 간격 — 몇 초마다 받을지는 API · MINISPEC에서 정한다(진행 화면은 1초, 목록은 3초)
 - [x] UI-5 「키 없음」 상태 보드의 2.1 배지 색 — 보드는 칩 면(회색)으로 그렸는데 UI-5 규칙과 [[VA-UI-001]] 3.1 색 언어(빨강은 키 없음에)는 위험 톤이다. 결정: 규칙대로 위험 톤으로 보드를 고쳤다(카드 A 구현에서 찾음, 2026-09-23)
 
@@ -828,7 +828,7 @@ button, input, select, textarea { font-family: inherit; }
 - 로컬 파일을 넣는 길은 둘이다 — 끌어 놓기 칸(4.7) · 파일 고르기(4.10)로 올리기, inbox 파일 목록(4.2)에서 고르기([[VA-PRD-001#R1]], [[VA-INFRA-001#C4]]). 경로 입력은 없다. 카드 안 순서는 4.1 · 4.7(또는 4.11) · (4.17) · 4.19 · 4.2 · 4.5와 4.6이다. 받는 형식은 4.9에, inbox 경로는 4.19에 둔다. 새로 붙인 번호(4.7~4.19 · 8)는 읽는 순서가 아니라 붙인 순서다 — 이미 코드에 있는 번호를 바꾸지 않으려고 뒤에 이었다.
 - **끌어 놓기.** 파일을 끌고 창에 들어오면 덮개(8)를 띄우고 4.7을 청록 점선 · 연한 청록으로 바꾼다. 놓거나 창 밖으로 나가면 둘 다 되돌린다. 글자 · 링크처럼 파일이 아닌 것을 끌 때는 띄우지 않는다. 덮개가 떠 있는 동안 페이지는 움직이지 않고, 놓은 자리가 칸 안이든 밖이든 같다. 브라우저가 파일을 열어 버리지 않게 페이지 전체에서 놓기를 받는다 (VA-UI-001에 없음)
 - **보내기 전에 거른다.** 놓거나 고른 파일이 둘 이상이면 4.17 '한 번에 한 파일씩 올려 주세요 — 파일 {n}개를 놓았어요', 받지 않는 확장자면 4.17 '{받는 형식} 파일만 받아요 — {파일 이름}는 올리지 않았어요'. {받는 형식}은 'mp4 · mkv · mov · webm · mp3 · m4a · wav'. 둘 다 아무것도 보내지 않는다([[VA-UC-001#UC-H2]] 1a · 1b).
-- **올리는 동안.** 4.7이 4.11로 바뀌고 4.12 · 4.13 · 4.14 · 4.15가 보낸 만큼 갱신된다. 크기는 1 GB 이상이면 GB 소수 한 자리, 아래면 MB 정수다. 그동안 3.3 · 4.6 · 4.10 · 놓기는 새 요청을 보내지 않는다(대기 표시 규칙과 같다). 4.16을 누르면 요청을 끊고 4.7로 돌아가 4.17 알림 '올리기를 멈췄어요 — 올라간 부분은 지웠어요'. 다른 화면으로 가거나 창을 닫아도 멈춘다 — 떠나기 전에 묻지 않는다([[VA-UC-001#UC-H2]] 1c).
+- **올리는 동안.** 4.7이 4.11로 바뀌고 4.12 · 4.13 · 4.14 · 4.15가 보낸 만큼 갱신된다. 크기는 1 GB 이상이면 GB 소수 한 자리, 아래면 MB 정수다. 그동안 3.3 · 4.6 · 4.10 · 놓기는 새 요청을 보내지 않는다(대기 표시 규칙과 같다). 4.16을 누르면 요청을 끊고 4.7로 돌아가 4.17 알림 '올리기를 멈췄어요 — 올라간 부분은 지웠어요'. 새로 고침 · 창 닫기 · 앱 안의 다른 화면(헤더 로고 · 메뉴 · 설정 아이콘, 목록 행 6.1, 키 배너 1.2)으로 가려 하면 먼저 묻는다 — 새로 고침 · 창 닫기는 브라우저의 확인 창(문구는 브라우저가 정한다), 앱 안의 링크는 확인 창 '올리기를 멈추고 이동할까요? 올라간 부분은 지워져요.'이다. 둘 다 브라우저 기본 창이라 보드가 없다. 머무르면 이어 올리고, 떠나기를 고르면 4.16과 같이 멈춘 뒤 간다. 앱 안에서 브라우저 뒤로 가기는 묻지 못해 그대로 멈춘다 — 캡션이 미리 알린다([[VA-UC-001#UC-H2]] 1c · 1e, 사용자 결정 2026-10-01).
 - **다 올리면** 4.13이 '다 올렸어요. 길이와 음성 트랙을 확인하는 중이에요'로, 4.15가 깜빡이는 막대로 바뀌고 4.14 · 4.16이 빠진다(파일 확인 중). 서버의 응답은 4.6의 등록 응답과 같이 다룬다 — 새 영상이면 UI-2 올린 파일 판, 이미 분석한 영상이면 UI-4와 짧은 알림 '이미 분석한 영상입니다', 진행 중 · 실패면 UI-3. 같은 내용의 영상이 이미 있으면 사본은 서버가 지운다([[VA-UC-001#UC-H2]] 2c). 어느 쪽이든 4.11은 4.7로 돌아간다.
 - **올린 뒤에야 아는 것**(3시간 초과 · 음성 트랙 없음 · 열 수 없는 파일)은 UI-2 시작 불가 판(7)으로 알린다. 문구는 UI-2 7.1 규칙이고, 사본은 서버가 이미 지웠다([[VA-UC-001#UC-H2]] 2a · 2c).
 - **올리다 끊기면**(연결 · 서버 오류) 4.17 '올리지 못했어요 — {이유}. 올라간 부분은 지웠어요'와 4.18. {이유}는 서버가 준 한 줄이고, 서버에 닿지 못했으면 '서버에 연결할 수 없음'. 4.18은 같은 파일을 처음부터 올린다. 앱 폴더의 디스크가 모자라면 서버가 본문을 받기 전에 거절하고 4.17 '올릴 자리가 모자라요 — {필요한 크기}가 필요한데 앱 폴더에 {남은 크기} 남았어요'([[VA-UC-001#UC-H2]] 1c · 1d).
@@ -1215,7 +1215,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div data-el="5" style="box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #E1EFEC; color: #134E49; display: flex; gap: 10px; font-size: 14px; line-height: 1.55;">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
-<span>요약을 만들려고 스크립트 텍스트가 OpenAI(gpt-5-mini)로 전송됩니다. 영상은 전송되지 않아요.</span>
+<span>요약을 만들려고 스크립트 텍스트가 OpenAI(gpt-5.6-luna)로 전송됩니다. 영상은 전송되지 않아요.</span>
 </div>
 <div data-el="6" style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
 <a data-el="6.2" href="#" style="height: 44px; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">취소</a>
@@ -1259,15 +1259,15 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div style="box-sizing: border-box; padding: 18px; border-radius: 12px; border: 1px solid #E2DDD3; display: flex; flex-direction: column; gap: 6px;">
 <span style="font-size: 13px; font-weight: 600; color: #5E5A52;">예상 비용</span>
-<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em;">약 $0.92</span>
+<span style="font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em;">약 $0.72</span>
 <div style="display: flex; flex-direction: column; gap: 2px;">
 <span style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.55; color: #5E5A52;">
-<span>받아쓰기 150분 × $0.006</span>
-<span style="font-family: 'IBM Plex Mono', monospace;">$0.90</span>
+<span>받아쓰기 150분 × $0.0045</span>
+<span style="font-family: 'IBM Plex Mono', monospace;">$0.68</span>
 </span>
 <span style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.55; color: #5E5A52;">
 <span>요약 · 챕터 · 추천 질문</span>
-<span style="font-family: 'IBM Plex Mono', monospace;">$0.02</span>
+<span style="font-family: 'IBM Plex Mono', monospace;">$0.04</span>
 </span>
 </div>
 </div>
@@ -1332,7 +1332,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div style="box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #E1EFEC; color: #134E49; display: flex; gap: 10px; font-size: 14px; line-height: 1.55;">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
-<span>요약을 만들려고 스크립트 텍스트가 OpenAI(gpt-5-mini)로 전송됩니다. 영상은 전송되지 않아요.</span>
+<span>요약을 만들려고 스크립트 텍스트가 OpenAI(gpt-5.6-luna)로 전송됩니다. 영상은 전송되지 않아요.</span>
 </div>
 <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
 <span data-el="6.1" style="margin-right: auto; max-width: 300px; font-size: 13px; line-height: 1.55; color: #5E5A52;">지금 다른 영상을 분석 중이에요. 시작하면 차례를 기다렸다가 저절로 시작돼요.</span>
@@ -1471,7 +1471,7 @@ button, input, select, textarea { font-family: inherit; }
 1. UI-1 「내 파일」에서 inbox 파일 하나를 고르고 [선택한 파일 분석]을 누른다. 받아쓰기 필요 판이 열린다.
 2. 썸네일 자리(2.1)는 필름 아이콘, 제목(2.2)은 파일 이름, 출처 줄(2.3)은 '로컬 파일 · inbox', 자막 칩(2.5)은 회색 '자막 없음 · 받아쓰기 필요'다.
 3. 예상 시간(3.1)은 '약 8분', 설명(3.2)은 '음성을 뽑아 30개 조각으로 나누고, 3개씩 동시에 받아씁니다.'다.
-4. 받아쓰기 줄(4.2) '받아쓰기 150분 × $0.006' $0.90과 요약 줄(4.3) $0.02를 더한 합계(4.1)가 '약 $0.92'다. 비용 대부분이 받아쓰기라는 것을 본다.
+4. 받아쓰기 줄(4.2) '받아쓰기 150분 × $0.0045' $0.68과 요약 줄(4.3) $0.04를 더한 합계(4.1)가 '약 $0.72'다. 비용 대부분이 받아쓰기라는 것을 본다.
 5. 전송 안내(5)에서 음성 조각과 스크립트 텍스트는 OpenAI로 가고 영상 파일은 PC 밖으로 나가지 않는다는 것을 확인한다.
 6. 분석 시작(6.3)을 누른다. UI-3이 음성 추출 → 받아쓰기 → 핵심 요약 → 챕터 → 추천 질문 단계로 열린다.
 
@@ -1690,7 +1690,7 @@ button, input, select, textarea { font-family: inherit; }
 <div data-el="6" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; color: #5E5A52;">
 <span data-el="6.1" style="display: flex; align-items: center; gap: 8px;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
-음성 조각 → OpenAI whisper-1 · 동시 3개
+음성 조각 → OpenAI gpt-transcribe · 동시 3개
 </span>
 <span data-el="6.2">이 화면을 닫아도 분석은 계속돼요.</span>
 </div>
@@ -1782,7 +1782,7 @@ button, input, select, textarea { font-family: inherit; }
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; color: #5E5A52;">
 <span style="display: flex; align-items: center; gap: 8px;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
-스크립트 텍스트 → OpenAI gpt-5-mini
+스크립트 텍스트 → OpenAI gpt-5.6-luna
 </span>
 <span>끝나면 결과 화면이 바로 열려요. 닫아도 분석은 계속됩니다.</span>
 </div>
@@ -1945,7 +1945,7 @@ button, input, select, textarea { font-family: inherit; }
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; color: #5E5A52;">
 <span style="display: flex; align-items: center; gap: 8px;">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
-음성 조각 → OpenAI whisper-1
+음성 조각 → OpenAI gpt-transcribe
 </span>
 <span>다시 시도하면 16번째 조각부터 이어서 받아씁니다.</span>
 </div>
@@ -2314,7 +2314,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <h1 data-el="2.2" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 36px; line-height: 1.3; font-weight: 600; letter-spacing: -0.02em;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</h1>
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 15px; color: #5E5A52;">
-<span data-el="2.3">[채널명] · 오늘 14:08 분석 · 요약 gpt-5-mini</span>
+<span data-el="2.3">[채널명] · 오늘 14:08 분석 · 요약 gpt-5.6-luna</span>
 <a data-el="2.4" href="https://www.youtube.com/" style="display: flex; align-items: center; gap: 4px; color: #0F6E68; font-weight: 600; text-decoration: none;">
 원본 영상 열기
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
@@ -3377,7 +3377,7 @@ button, input, select, textarea { font-family: inherit; }
 
 **S-3 긴 영상의 파트를 펴서 읽는다** — [[VA-UC-001#UC-H3]] 확장 3a
 1. 2시간 30분 로컬 파일 결과를 연다. 칩 셋(2.1)이 '로컬 파일' '2:30:00' '받아쓰기 · 한국어'이고 원본 영상 열기(2.4)는 없다.
-2. 메타 줄(2.3)은 '로컬 파일 · 오늘 15:21 분석 · 받아쓰기 whisper-1', 스크립트 출처(8.1)는 '받아쓰기 whisper-1 · 한국어'다. 모든 시각이 h:mm:ss다.
+2. 메타 줄(2.3)은 '로컬 파일 · 오늘 15:21 분석 · 받아쓰기 gpt-transcribe', 스크립트 출처(8.1)는 '받아쓰기 gpt-transcribe · 한국어'다. 모든 시각이 h:mm:ss다.
 3. 인사이트 행(4.2)이 열 개, 챕터 개수(6.1)는 '25개 · 파트 4개'다. 파트 카드(6.4) 넷 중 첫 파트만 펴져 있다.
 4. 셋째 파트의 파트 머리(6.5)를 누른다. 화살표가 돌고 그 파트의 챕터 카드(6.6) 일곱 개가 나온다. 첫 파트도 펴진 채다.
 5. 챕터 카드(6.6) '1:22:40 비어 있는 설명과 소유자'를 누른다. 스크립트 구간(8.3)이 그 위치로 가고 선택한 시각(8.2)이 '1:22:40'이 된다.
@@ -3510,18 +3510,21 @@ button, input, select, textarea { font-family: inherit; }
 <div style="display: flex; flex-direction: column; gap: 8px;">
 <label for="stt-model" style="font-size: 14px; font-weight: 600; color: #4A463F;">받아쓰기</label>
 <span data-el="3.1" style="display: flex;"><select id="stt-model" style="flex-grow: 1; height: 48px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;">
-<option>whisper-1</option>
+<option>gpt-transcribe</option>
 </select></span>
-<span data-el="3.2" style="font-size: 13px; line-height: 1.55; color: #6B665C;">분당 $0.006 · 구간 시각을 주는 모델만 고를 수 있어요</span>
+<span data-el="3.2" style="font-size: 13px; line-height: 1.55; color: #6B665C;">분당 $0.0045 · 15초 이하로 나눠 보내고 그 경계를 구간 시각으로 써요</span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 8px;">
 <label for="llm-model" style="font-size: 14px; font-weight: 600; color: #4A463F;">요약 · 챕터 · 질문</label>
 <span data-el="3.3" style="display: flex;"><select id="llm-model" style="flex-grow: 1; height: 48px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FBFAF7; color: #1B1A17; font-size: 15px;">
+<option>gpt-5.6-luna</option>
 <option>gpt-5-mini</option>
 <option>gpt-5.4-mini</option>
+<option>gpt-5.6-terra</option>
 <option>gpt-5.4</option>
+<option>gpt-5.6-sol</option>
 </select></span>
-<span data-el="3.4" style="font-size: 13px; line-height: 1.55; color: #6B665C;">100만 토큰당 입력 $0.25 · 출력 $2.00</span>
+<span data-el="3.4" style="font-size: 13px; line-height: 1.55; color: #6B665C;">100만 토큰당 입력 $0.20 · 출력 $1.20</span>
 </div>
 </div>
 </section>
@@ -3679,9 +3682,9 @@ button, input, select, textarea { font-family: inherit; }
 | 2.5 | 키 확인 오류 | 텍스트 | 확인에 실패했을 때만 입력칸 바로 아래 한 줄. '키를 확인하지 못했어요 — {이유}'. 이유는 형식 오류·인증 실패·잔액 없음 | — |
 | 2.6 | 키 도움말 | 텍스트 | '붙여 넣으면 가벼운 요청으로 먼저 확인한 뒤 저장합니다. 키는 저장소에 커밋되지 않아요.' | — |
 | 3 | 모델 카드 | 영역 | 카드 제목 '모델'. 두 칸 나란히: 왼쪽 받아쓰기, 오른쪽 요약 · 챕터 · 질문 | — |
-| 3.1 | 받아쓰기 모델 | 선택 | 라벨 '받아쓰기'. select, 선택지 whisper-1 하나 | 선택지 목록을 연다 |
-| 3.2 | 받아쓰기 모델 도움말 | 텍스트 | '분당 {단가} · 구간 시각을 주는 모델만 고를 수 있어요'. 단가는 3.1에서 고른 모델 값 | — |
-| 3.3 | 요약 모델 | 선택 | 라벨 '요약 · 챕터 · 질문'. select, 선택지 gpt-5-mini · gpt-5.4-mini · gpt-5.4 | 선택지 목록을 연다. 고르면 3.4가 그 모델 값으로 바뀐다 |
+| 3.1 | 받아쓰기 모델 | 선택 | 라벨 '받아쓰기'. select, 선택지 gpt-transcribe 하나 | 선택지 목록을 연다 |
+| 3.2 | 받아쓰기 모델 도움말 | 텍스트 | '분당 {단가} · 15초 이하로 나눠 보내고 그 경계를 구간 시각으로 써요'. 단가는 3.1에서 고른 모델 값 | — |
+| 3.3 | 요약 모델 | 선택 | 라벨 '요약 · 챕터 · 질문'. select, 선택지 값 오름차순 gpt-5.6-luna · gpt-5-mini · gpt-5.4-mini · gpt-5.6-terra · gpt-5.4 · gpt-5.6-sol | 선택지 목록을 연다. 고르면 3.4가 그 모델 값으로 바뀐다 |
 | 3.4 | 요약 모델 도움말 | 텍스트 | '100만 토큰당 입력 {단가} · 출력 {단가}'. 3.3에서 고른 모델 값 | — |
 | 4 | 로컬 파일 카드 | 영역 | 카드 제목 '로컬 파일'(첫 캔버스의 '로컬 파일 폴더')과 안내 'inbox 폴더의 파일은 읽기만 하고 고치거나 지우지 않아요. 화면에 끌어 놓은 파일은 원본을 그대로 두고 앱 폴더의 사본으로 분석해요. inbox 위치는 docker-compose.yml에서 바꿀 수 있습니다.' | — |
 | 4.1 | 폴더 경로 | 상자 | 읽기 전용 값 상자. 폴더 아이콘 + `{inbox 경로}` + 오른쪽 캡션 '읽기 전용'. 바꾸는 입력칸 없음 | — |
@@ -3724,10 +3727,10 @@ button, input, select, textarea { font-family: inherit; }
 - 2.5는 입력칸 바로 아래 한 줄이고 화면을 바꾸지 않는다(VA-UI-001 4.5절 입력 오류). 문구 '키를 확인하지 못했어요 — {이유}'는 UI-1 배너 문구를 그대로 썼다 (VA-UI-001에 없음)
 - 앱 시작이나 분석 버튼에서 저장된 키의 확인이 실패했으면, 이 화면을 열 때 2.1은 '확인 실패'이고 2.5에 그 이유가 보인다 (VA-UI-001에 없음)
 - 키 없음·확인 중·확인 실패일 때 키 카드(2) 모양은 보드에 없다. 그때의 2.1 배지·2.2 숨김·2.3 라벨·확인 중 잠금과 대기 표시·2.5 모양은 디자인 보강 전 임시 규칙이다(VA-UI-001 8장).
-- 받아쓰기 모델(3.1)은 whisper-1 하나다. 구간 시각을 주는 모델만 목록에 나온다([[VA-INFRA-001#C3]]).
-- 요약 모델(3.3)은 gpt-5-mini(첫 값) · gpt-5.4-mini · gpt-5.4 중에서 고른다.
+- 받아쓰기 모델(3.1)은 gpt-transcribe 하나다. 구간 시각은 앱이 잘게 나눈 경계로 만든다([[VA-INFRA-001#C3]]) — 처음에는 시각을 주는 whisper-1 하나였다(2026-10-01에 바꿈).
+- 요약 모델(3.3)은 값 오름차순 여섯 — gpt-5.6-luna(첫 값) · gpt-5-mini · gpt-5.4-mini · gpt-5.6-terra · gpt-5.4 · gpt-5.6-sol 중에서 고른다(사용자 결정 2026-10-01). 처음 첫 값은 gpt-5-mini였다.
 - 처음 열면 3.1과 3.3에 저장된 모델이 골라져 있다 (VA-UI-001에 없음)
-- 3.2와 3.4의 단가는 고른 모델의 값이다(보드는 gpt-5-mini 값 하나만 있다). UI-2 예상 비용도 같은 단가를 쓴다.
+- 3.2와 3.4의 단가는 고른 모델의 값이다(보드는 첫 값 gpt-5.6-luna 값 하나만 있다). UI-2 예상 비용도 같은 단가를 쓴다.
 - 3.1·3.3을 바꿔도 저장(6.2)을 누르기 전에는 저장되지 않는다. 화면에서 모델을 바꾸는 유스케이스는 아직 없다(VA-UI-001 8장).
 - 폴더 경로(4.1)는 경로와 '읽기 전용'만 보이고 바꾸는 입력칸이 없다. 위치는 docker-compose.yml에서 바꾼다고 카드(4)에 안내한다([[VA-INFRA-001#C4]]).
 - 올린 사본 자리(4.2)는 `data/uploads`와 캡션 '끌어 놓은 파일의 사본 · 분석이 끝나면 지워요'만 보인다. 경로는 앱 폴더 안이라 바꾸지 않는다. 지금 남은 사본의 수 · 크기는 보이지 않는다 (VA-UI-001 UI-5).
@@ -3766,7 +3769,7 @@ button, input, select, textarea { font-family: inherit; }
 3. 넣을 키가 없으므로 취소(6.1)를 눌러 UI-1로 돌아간다.
 
 **S-5 요약 모델을 바꾼다** — [[VA-UC-001#UC-H8]] 트리거(설정 화면을 열었다). 모델 바꾸기는 유스케이스 갱신 요청 중(VA-UI-001 8장)
-1. 헤더 설정 아이콘을 눌러 들어온다. 요약 모델(3.3)에 저장된 gpt-5-mini가 골라져 있다.
+1. 헤더 설정 아이콘을 눌러 들어온다. 요약 모델(3.3)에 저장된 gpt-5.6-luna가 골라져 있다.
 2. 3.3에서 gpt-5.4를 고른다. 3.4의 단가가 gpt-5.4 값으로 바뀐다.
 3. 저장(6.2)을 누른다. 모델 선택이 저장되고 UI-1로 간다.
 4. 다음 분석의 사전 안내(UI-2) 예상 비용이 이 단가로 계산된다.
@@ -4192,7 +4195,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <h1 style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 36px; line-height: 1.3; font-weight: 600; letter-spacing: -0.02em;">RAG 서비스 1년 운영기: 검색 품질은 어디서 무너지나</h1>
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 15px; color: #5E5A52;">
-<span>[채널명] · 오늘 14:08 분석 · 요약 gpt-5-mini</span>
+<span>[채널명] · 오늘 14:08 분석 · 요약 gpt-5.6-luna</span>
 <a href="https://www.youtube.com/" style="display: flex; align-items: center; gap: 4px; color: #0F6E68; font-weight: 600; text-decoration: none;">
 원본 영상 열기
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
