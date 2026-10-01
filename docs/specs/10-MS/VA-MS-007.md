@@ -29,12 +29,13 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | `config.PROC_TIMEOUT_SEC` | 1800 | 자식 프로세스 상한 |
 | `config.INFO_TIMEOUT_SEC` | 40 | 등록 때 영상 정보 읽기 상한 — [[VA-MS-006#youtube_info.info]]가 [[#ytdlp.info]]에 준다. 누를 때의 키 확인(10초)과 더해도 web 프록시 60초([[VA-DOM-002]] 6장) 안에 든다. 넘으면 `kind=network`. 파이프라인의 정보 읽기([[VA-MS-006#audio_source.captions]])는 주지 않아 `PROC_TIMEOUT_SEC`다 |
 | `config.YTDLP_BIN` · `config.FFMPEG_BIN` · `config.FFPROBE_BIN` | `yt-dlp` · `ffmpeg` · `ffprobe` | 이미지에 든 실행 파일([[VA-INFRA-001#C8]]) |
-| `config.OPENAI_TIMEOUT_SEC` | 120 | 조각 하나 받아쓰기 · 긴 요약 호출의 상한 |
+| `config.OPENAI_TIMEOUT_SEC` | 120 | 토막 하나 받아쓰기 · 긴 요약 호출의 상한 |
+| `config.STT_LANGUAGES` | `["ko", "en"]` | 받아쓰기에 알려 주는 말의 후보([[VA-PRD-001#R3]] 한국어 · 영어). 주면 응답에 감지한 언어 코드가 온다(2026-10-01 확인) |
 | `config.IMAGE_TIMEOUT_SEC` | 180 | 인포그래픽 한 장의 상한 — 세로 한 장이 수십 초 걸릴 수 있다([[VA-INFRA-001#C11]]). 뒤에서 돌아 web 넘기기 60초와 상관없다(맡기고 바로 돌려준다, [[VA-API-001]] 5장 13) |
 | `config.FRAME_TIMEOUT_SEC` | 30 | 장면 한 장(로컬 프레임 · 스토리보드 장 받아 칸 자르기)의 상한. 한 장 1~2초라 넉넉하다(카드 D 조사) |
 | `config.OPENAI_BASE_URL` | None | OpenAI 주소. 비우면 공식 주소. E2E가 가짜 OpenAI 서버를 가리킬 때만 채운다 — 사용자가 채울 값이 아니다 |
 | `config.OPENAI_MAX_RETRIES` | 0 | SDK 자체 재시도를 끈다 — 재시도는 파이프라인이 세면서 한다([[VA-MS-002#pipeline.transcribe_stage]]) |
-| `config.TEXT_REASONING_EFFORT` | `low` | 텍스트 모델의 추론 강도 — 요약 · 챕터 · 추천 질문 · 답 넷 모두([[#openai.chat]]). 실측(카드 C, gpt-5-mini, 같은 입력): 기본(medium)은 답 5.7~11.8초 · 47분 영상 요약 21초 · 챕터 26초, `low`는 답 2.4~3.1초 · 요약 8초 · 챕터 16초이고 답 · 근거 · 인사이트 수가 비슷했다. 기본이면 자막 영상 1분 · 답 10초([[VA-PRD-001#N1]])를 넘는다. `minimal`은 챕터가 잘게 쪼개졌다(47분에 16개). 사용자 결정 2026-09-29 |
+| `config.TEXT_REASONING_EFFORT` | `low` | 텍스트 모델의 추론 강도 — 요약 · 챕터 · 추천 질문 · 답 넷 모두([[#openai.chat]]). 실측(카드 C, gpt-5-mini, 같은 입력): 기본(medium)은 답 5.7~11.8초 · 47분 영상 요약 21초 · 챕터 26초, `low`는 답 2.4~3.1초 · 요약 8초 · 챕터 16초이고 답 · 근거 · 인사이트 수가 비슷했다. 기본이면 자막 영상 1분 · 답 10초([[VA-PRD-001#N1]])를 넘는다. `minimal`은 챕터가 잘게 쪼개졌다(47분에 16개). 사용자 결정 2026-09-29. `gpt-5.6-luna`(2026-10-01 기본) · `terra` · `sol`도 `low`와 JSON 모드를 받는다 — luna는 2:30:30 강의 요약 9초 · 챕터 28초 · 답 1.6~6.1초(2026-10-01 실측) |
 
 ---
 
@@ -53,7 +54,7 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 | [[#ffmpeg.crop]] | 그림(스토리보드 장 주소도)에서 칸 하나 (JPEG) |
 | [[#openai.client]] | 키로 클라이언트 |
 | [[#openai.verify_key]] | 모델 목록 조회로 키 확인 |
-| [[#openai.transcribe]] | 음성 → verbose_json |
+| [[#openai.transcribe]] | 음성 → 글(json, 감지한 언어) |
 | [[#openai.chat]] | 채팅 완성 (JSON 모드) |
 | [[#openai.chat_json]] | JSON 응답을 파싱까지 — 형식이 틀리면 다시 부른다 |
 | [[#openai.image]] | 이미지 생성 한 번 → PNG 바이트 |
@@ -132,16 +133,18 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 #### ffmpeg.silences 무음 시각
 
-**시그니처** `async def silences(path: str) -> list[float]`
+**시그니처** `async def silences(path: str, noise_db: float = config.SILENCE_DB, min_sec: float = config.SILENCE_MIN_SEC) -> list[float]`
 
-근거: [[VA-UC-001#UC-S3]] 1번(조각 경계는 무음 근처) · [[VA-MS-006#audio_split.split]] 2번
+근거: [[VA-UC-001#UC-S3]] 1번 · 3번(조각 · 토막 경계는 무음 근처) · [[VA-MS-006#audio_split.split]] 2번 · [[VA-MS-006#stt_openai.transcribe]] 1번
+
+기준은 부르는 쪽이 준다 — 10분 조각은 기본값(`config.SILENCE_DB` · `SILENCE_MIN_SEC`), 15초 토막은 더 민감한 값(`config.PIECE_SILENCE_DB` · `PIECE_SILENCE_MIN_SEC`, 2026-10-01).
 
 **처리**
-1. `PROC: ffmpeg -v info -i {path} -af silencedetect=noise={config.SILENCE_DB}dB:d={config.SILENCE_MIN_SEC} -f null -` — 표준 오류에 `silence_start: t` · `silence_end: t` 줄이 나온다
+1. `PROC: ffmpeg -v info -i {path} -af silencedetect=noise={noise_db}dB:d={min_sec} -f null -` — 표준 오류에 `silence_start: t` · `silence_end: t` 줄이 나온다
 2. 줄을 짝지어 `(start + end) / 2`를 모은다 · 끝이 없는 마지막 `silence_start`는 버린다
 3. `→ 오름차순 float 목록`. 무음이 없으면 `[]`
 
-**테스트 관점** 고정 표준 오류 텍스트를 파싱 → 가운데 시각 목록 · 짝 없는 마지막 start 무시 · 무음 없음 → `[]`
+**테스트 관점** 고정 표준 오류 텍스트를 파싱 → 가운데 시각 목록 · 짝 없는 마지막 start 무시 · 무음 없음 → `[]` · 기준을 주면 명령의 `silencedetect`에 그 값이, 안 주면 설정값이 들어간다
 
 ---
 
@@ -217,15 +220,15 @@ upstream: [VA-DOM-002, VA-INFRA-001, VA-SEQ-001]
 
 ---
 
-#### openai.transcribe 음성 → verbose_json
+#### openai.transcribe 음성 → 글
 
 **시그니처** `async def transcribe(client: AsyncOpenAI, path: str, model: str) -> dict`
 
 근거: [[VA-INFRA-001#C3]] · [[VA-UC-001#UC-S3]] 3번 · [[VA-MS-006#stt_openai.transcribe]]
 
-**처리** `FS: open(path, "rb")` · `EXT: client.audio.transcriptions.create(model=model, file=f, response_format="verbose_json", timestamp_granularities=["segment"])` · `→ 응답을 dict로(language, duration, segments[{start, end, text}])`. SDK 예외는 그대로 올린다. 언어 인자는 주지 않는다(자동 감지)
+**처리** `FS: open(path, "rb")` · `EXT: client.audio.transcriptions.create(model=model, file=f, response_format="json", languages=config.STT_LANGUAGES)` · `→ 응답을 dict로(text, languages[{code}], usage)`. SDK 예외는 그대로 올린다. 시각은 받지 않는다 — 부르는 쪽이 15초 이하 토막을 보내 그 경계를 쓴다([[VA-INFRA-001#C3]]). 처음은 `whisper-1`에 `verbose_json` · `timestamp_granularities=["segment"]`로 구간 시각을 받았다 — `gpt-transcribe`는 `json` · `text`만 준다(2026-10-01 확인)
 
-**테스트 관점** 가짜 SDK가 받은 인자에 `verbose_json` · `["segment"]` · 파일 핸들이 닫힌다 · 25MB 넘는 파일은 SDK가 413을 낸다 — 어댑터 · 파이프라인이 `openai`로 접는지는 그쪽 테스트
+**테스트 관점** 가짜 SDK가 받은 인자에 `response_format="json"` · `languages=["ko", "en"]` · 파일 핸들이 닫힌다 · `verbose_json` · `timestamp_granularities`를 보내지 않는다 · 응답의 `languages`가 dict에 그대로 실린다
 
 ---
 
