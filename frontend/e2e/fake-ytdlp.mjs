@@ -18,6 +18,8 @@ const VIDEOS = {
   e2eCaption5: { title: "평가 세트 만드는 법", duration: 1200, subtitles: { ko: [] } },
   // 영상에 질문하기 — S4
   e2eAskVid01: { title: "RAG 검색 품질 회고", duration: 3000, subtitles: { ko: [] } },
+  // 탭을 오가도 읽던 대화 위치(카드 E6)
+  e2eChatPos1: { title: "읽던 자리를 지키는 대화", duration: 1800, subtitles: { ko: [] } },
   // 3시간 — 10초마다 70자 줄이라 대화 토큰 상한(3만)을 넘는다. 질문과 맞는 챕터만 보낸다
   e2eLong3h01: {
     title: "데이터 카탈로그 워크숍 종일",

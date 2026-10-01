@@ -16,6 +16,7 @@
  * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다. 마인드맵의 파트
  * 노드(14.4)와 챕터 목록의 파트 머리(6.5)는 같은 펼침 상태를 쓴다.
  * 질문 기록은 질문하기 탭을 처음 열 때 받는다. 추천 질문(5.1 · 10.1)을 누르면 그 탭으로 바뀌고 바로 보낸다.
+ * 탭을 오가도 대화 목록은 읽던 위치다 — 떠난 사이 새 턴 · 답 · 실패가 생겼으면 끝(UI-4 규칙).
  * 기록과 답은 id로 합친다 — 기록을 받는 사이에 온 답도 한 번씩 보인다.
  * 답을 기다리는 동안이나 키가 막혔을 때는 보내지 않는다(알약은 탭만 바꾼다). 실패한 질문은 저장되지 않아
  * 마지막 턴에만 실패 줄과 다시 시도가 있고, 새 질문을 보내면 빠진다.
@@ -287,6 +288,9 @@ export default function Result({ id }: { id: number }) {
   const [draft, setDraft] = useState("");
   const script = useRef<HTMLDivElement>(null);
   const chatList = useRef<HTMLDivElement>(null);
+  // 대화 목록의 읽던 위치 — 탭을 오가도 되돌린다. 숨어 있는 사이 새 턴 · 대기 · 실패가 생겼으면 끝(UI-4 규칙)
+  const chatTop = useRef(0);
+  const chatMissed = useRef(false);
   const settings = useSettings();
 
   useEffect(() => {
@@ -411,11 +415,22 @@ export default function Result({ id }: { id: number }) {
     };
   }, [tab, turns, id]);
 
-  // 새 턴 · 대기 · 실패가 생기면 대화 목록의 끝을 보인다 — 창 전체는 움직이지 않는다
+  // 질문하기 탭으로 돌아오면 읽던 위치, 떠난 사이 새 턴 · 대기 · 실패가 생겼으면 끝(UI-4 규칙). 아래 효과보다
+  // 먼저 돈다 — 추천 질문처럼 탭과 대기가 함께 바뀌면 끝이 이긴다
   useEffect(() => {
     const box = chatList.current;
-    if (box) box.scrollTop = box.scrollHeight;
-  }, [turns, pending, tab]);
+    if (tab !== "chat" || !box) return;
+    box.scrollTop = chatMissed.current ? box.scrollHeight : chatTop.current;
+    chatMissed.current = false;
+  }, [tab]);
+
+  // 새 턴 · 대기 · 실패가 생기면 대화 목록의 끝을 보인다. 숨어 있으면(높이 0) 돌아올 때 — 창 전체는 움직이지 않는다
+  useEffect(() => {
+    const box = chatList.current;
+    if (!box) return;
+    if (box.clientHeight === 0) chatMissed.current = true;
+    else box.scrollTop = box.scrollHeight;
+  }, [turns, pending]);
 
   if (!result) return <main className="result" aria-busy="true" />;
 
@@ -806,7 +821,14 @@ export default function Result({ id }: { id: number }) {
             className="chat"
             hidden={tab !== "chat"}
           >
-            <div ref={chatList} className="chat-list" data-el="9">
+            <div
+              ref={chatList}
+              className="chat-list"
+              data-el="9"
+              onScroll={(e) => {
+                chatTop.current = e.currentTarget.scrollTop;
+              }}
+            >
               {turns !== null && turns.length === 0 && pending === null && (
                 <EmptyBox
                   compact
