@@ -151,10 +151,14 @@ test("S5 — 며칠 뒤 목록에서 열어 묻고, 파일로 저장 · 복사�
   await expect(el(page, "11")).toHaveText("클립보드에 복사했어요");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(chat.markdown);
 
-  // 지운다 — UI-4 휴지통 → UI-1, 그 행이 없고 초점은 「분석한 영상」 제목
+  // 지운다 — UI-4 휴지통 → UI-1, 그 행이 없고 초점은 「분석한 영상」 제목. 인포그래픽 상태를 받지
+  // 못해도 장면은 보인다(따로 받는다)
+  await page.route("**/api/videos/*/infographic", (route) => route.abort(), { times: 1 });
   await el(page, "1.3").click();
   await expect(inAlert(page, "1.3")).toHaveText("벡터 DB 운영 노트");
   await expect(inAlert(page, "2.1")).toContainText("질문 기록 1개");
+  // 장면이 있다 — 열 때 받아 챕터 뒤에(인포그래픽은 만들지 않았다, 이슈 #18)
+  await expect(inAlert(page, "2.1")).toContainText("챕터, 대표 장면, 추천 질문");
   await expect(inAlert(page, "2.1")).not.toContainText("임시 음성 파일"); // 끝난 영상
   await expect(inAlert(page, "2.2")).toContainText(
     "YouTube 원본 영상. 다시 넣으면 처음부터 분석합니다.",

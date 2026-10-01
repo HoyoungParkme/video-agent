@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { DATA, el, fakeOpenAI, inDialog, openResult, saveKey } from "./helpers";
+import { DATA, el, fakeOpenAI, inAlert, inDialog, openResult, saveKey } from "./helpers";
 
 test.beforeEach(async ({ request }) => {
   await fakeOpenAI(request, { reset: true }); // 키 확인을 막은 앞 테스트가 있어도 키를 넣을 수 있게 먼저
@@ -89,6 +89,11 @@ test("인포그래픽을 만든다 — 확인 창 → 그리는 중 → 다 됨 
   expect(note).toContain(`## 한눈에 보기\n![[${name} 인포그래픽.png]]\n`);
   const png = readFileSync(path.join(DATA, "export", `${name} 인포그래픽.png`));
   expect(png.subarray(1, 4).toString()).toBe("PNG");
+
+  // 지울 때 — 장면과 인포그래픽도 지워지는 것에 있다(이슈 #18). 지우지 않고 닫는다
+  await el(page, "1.3").click();
+  await expect(inAlert(page, "2.1")).toContainText("챕터, 대표 장면, 인포그래픽, 추천 질문");
+  await inAlert(page, "3.2").click();
 });
 
 test("그리는 동안 다른 화면에 갔다 와도 이어진다", async ({ page, request }) => {
