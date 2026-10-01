@@ -103,7 +103,7 @@ app/
 │   │   ├── crud.py
 │   │   ├── models.py       AnalysisJob · AudioChunk
 │   │   ├── ports.py        AudioSourcePort · AudioSplitPort · SttPort
-│   │   └── adapters/       audio_source.py (infra/ytdlp + infra/ffmpeg) · audio_split.py (infra/ffmpeg) · stt_openai.py (infra/openai)
+│   │   └── adapters/       audio_source.py (infra/ytdlp + infra/ffmpeg) · audio_split.py (infra/ffmpeg) · stt_openai.py (infra/openai + infra/ffmpeg)
 │   ├── analysis/           결과 — 스크립트 · 요약 · 챕터 · 추천 질문 · 대표 장면 · 인포그래픽 · 내보내기
 │   │   ├── router.py       /api/videos/{id}/result · …/frames (GET · POST) · …/frames/{seq} · …/infographic (GET · POST) ·
 │   │   │                   …/infographic/image · …/export (GET · POST)
@@ -201,6 +201,8 @@ frontend/
     ├── labels.ts              코드값 → 화면 글자. 두 화면 이상이 쓰는 표기만 — 단계 이름([[VA-UI-002#UI-3]] 규칙) · 언어 이름 · 분석한 때('오늘 14:08')
     ├── assets/                글꼴 파일 — Hahmlet · IBM Plex Sans KR · IBM Plex Mono (next/font 로컬, 앱 밖으로 요청 없음)
     ├── host.ts                Host 판정 한곳 — localhost · 127.0.0.1 · [::1]만. proxy.ts와 pages/api/uploads.ts가 같이 쓴다
+    ├── leave.ts               올리는 중 떠나기 확인 한곳 — Home이 올리는 동안 켜고 멈추기를 맡긴다(새로 고침 · 창 닫기는 beforeunload).
+    │                          앱 안 링크(Header · KeyBanner · Home 목록 행)는 Link onNavigate에서 이것으로 묻는다([[VA-UI-002#UI-1]] 규칙)
     ├── proxy.ts               요청이 라우트에 닿기 전에 — `/api/*`의 Host가 허용 목록이 아니면 400(INFRA 5절, DNS 리바인딩). Next 16에서 middleware의 새 이름.
     │                          matcher에서 `/api/uploads`만 뺀다 — proxy가 도는 요청은 Next가 본문을 메모리에 복제하고 10MB에서 자른다(INFRA C4)
     └── styles.css             [[VA-UI-001]] 3장 토큰의 전사. 값을 컴포넌트에 직접 쓰지 않는다
@@ -1100,7 +1102,7 @@ classDiagram
 
 **규칙이 사는 곳**
 - `ask`: 순서는 [[VA-API-001#POST/api/videos/{id}/chat]] 1~5번 — `video.status`가 `analyzed`가 아니면 `result-not-ready` → `require_key` → 빈 질문 `validation` → `context_for` → `AnswererPort.answer` → 저장. 실패하면 **저장하지 않는다**
-- `context_for`: `AnalysisService.segments_of` 전부 + 최근 턴 10개. 구간 텍스트가 토큰 상한(설정값)을 넘으면 `chapters_of`로 질문과 관련된 챕터를 고르고 그 시각 범위의 구간만 넣는다([[VA-UC-001#UC-H4]] 3b). 챕터를 고르는 방법은 MINISPEC
+- `context_for`: `AnalysisService.segments_of` 전부 + 최근 턴 10개. 구간 텍스트가 토큰 상한(설정값)을 넘으면 `chapters_of`로 질문과 관련된 챕터를 고르고 그 시각 범위의 구간만 넣는다([[VA-UC-001#UC-H4]] 3b). 챕터는 질문과 챕터 글(제목 · 요점 · 그 챕터의 스크립트)의 두 글자 조각 BM25로 고르고 앞 턴의 근거 챕터를 더한다([[VA-INFRA-001]] 3절 AI 전략, 2026-10-01). 점수식은 MINISPEC
 - 근거 없는 답이면 `cited_secs = []`([[VA-UC-001#UC-H4]] 3a). `model`은 `SettingsService.current_models().text.id`
 - 결과를 읽기만 한다. 스크립트 · 챕터를 바꾸지 않는다([[VA-DOM-001]] 4장)
 
@@ -1164,7 +1166,8 @@ job/ports.py
   AudioSplitPort.split(path: str, dest_dir: str) -> list[ChunkPlan]
                                                                audio_split.py → infra/ffmpeg. 무음 근처에서 자른다. 조각 길이는 설정값
   SttPort.transcribe(path: str, model: str) -> list[SttSegment]
-                                                               stt_openai.py → infra/openai. verbose_json · segment 시각 (INFRA C3)
+                                                               stt_openai.py → infra/openai + infra/ffmpeg. 조각을 무음에서 15초 이하로 나눠 json으로 받고,
+                                                               나눈 경계를 구간 시각으로 쓴다 (INFRA C3). 처음은 whisper-1의 verbose_json segment 시각
 
 analysis/ports.py
   SummarizerPort.chapters(segments: list[Segment], duration_sec: int, model: str) -> ChapterDraft
@@ -1195,7 +1198,7 @@ ytdlp.captions(video_id, lang, kind) -> str          자막 원문(vtt)
 ytdlp.download_audio(video_id, dest) -> str
 ffmpeg.probe(path) -> dict              길이·스트림
 ffmpeg.extract_audio(src, dest) -> str
-ffmpeg.silences(path) -> list[float]    무음 구간 시각
+ffmpeg.silences(path, noise_db, min_sec) -> list[float]    무음 구간의 가운데 시각. 기준은 부르는 쪽이 준다(10분 조각 · 15초 조각, 기본은 10분 조각 값)
 ffmpeg.cut(path, start, end, dest) -> str
 ffmpeg.frame(src, sec, width, dest) -> str       그 시각으로 건너뛰어(-ss) 프레임 한 장, 폭에 맞춘 JPEG
 ffmpeg.crop(src, x, y, w, h, dest) -> str        그림(스토리보드 장의 주소도 된다)에서 칸 하나를 잘라 JPEG
@@ -1307,7 +1310,7 @@ class VideoRow(Base):
 - [x] 동시 분석 대기열 — 결정: 대기열(`queued` · `queued_at` · `pipeline.worker` · `claim_next`). `another-job-running`은 없앴다(사용자 결정 2026-09-21, 5장 8)
 - [x] (반영: ERD v4) **되먹임** `analysis_jobs.queued_at timestamptz`와 대기열용 인덱스 — [[VA-DOM-003#analysis_jobs]]
 - [x] 프롬프트 파일의 자리 표시 이름과 출력 형식 — 반영: MINISPEC 어댑터 0장 「프롬프트 파일」
-- [ ] 관련 챕터 고르기(`ChatService.context_for`) — 첫 버전은 제목 · 요점 낱말 일치(MINISPEC 대화 서비스 `ChatService.context_for`). 품질이 모자라면 간단 임베딩으로 — 사용자가 결과를 보고 정한다([[VA-INFRA-001]] 9절)
+- [x] 관련 챕터 고르기(`ChatService.context_for`) — 첫 버전은 제목 · 요점 낱말 일치(MINISPEC 대화 서비스 `ChatService.context_for`). 품질이 모자라면 간단 임베딩으로 — 사용자가 결과를 보고 정한다([[VA-INFRA-001]] 9절) — 결정: 두 글자 조각 BM25(제목 · 요점 + 그 챕터 스크립트) + 앞 턴 근거 챕터. 임베딩은 두지 않아 표 · 포트가 늘지 않는다(사용자 결정 2026-10-01, 4장 ChatService 규칙)
 - [x] `shared/` — 결정: 시각 표기가 두 묶음에서 쓰여 `shared/timecode.py`를 만들었다(1장, MINISPEC 어댑터 되먹임). 프런트는 `components/TimeChip`이 따로 가진다. 카드 B1에서 자막 고르기(`shared/captions.py`)를 더했다 — 실제 yt-dlp 목록에 기계 번역 자막이 섞여 규칙이 길어졌고, video와 job이 같은 규칙을 써야 한다. 카드 C에서 토큰 어림(`shared/tokens.py`)을 더했다 — analysis와 chat이 따로 가졌던 「글자 ÷ 2」가 실제의 절반 이하였다. 카드 D4 명세에서 원본 경로(`shared/sources.py`)를 더했다 — 영상 · 작업 · 결과 셋이 같은 규칙으로 inbox 파일과 올린 사본을 가른다(5장 12)
 - [x] (반영: ERD v7) 2장 `ChapterFrame` · `Infographic`의 테이블 참조 — 항목 링크로 바꿨다
 - [x] (반영: API v12 · 유스케이스 v6) **되먹임** 올리기의 중복 판정 — 작업이 없는(등록만 된) 영상과 내용이 같으면 사본을 지우지 않고 그 영상을 올린 정보로 덮어쓴다(4.1). [[VA-API-001#POST/api/uploads]] 6번과 [[VA-UC-001#UC-H2]] 2c1의 「사본을 지운다」는 작업이 있는 영상일 때만 맞다 — 사전 안내에서 취소한 올린 영상을 다시 올리면 읽을 원본이 없어진다
