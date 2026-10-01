@@ -70,6 +70,10 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
   );
   await expect(el(page, "3.2")).toHaveText(/^조각 ([1-9]|1[0-4]) \/ 15/);
   await expect(el(page, "4.8")).toContainText("받아쓰는 중 3");
+  // 받아쓰는 중 칸은 청록 테두리에 안만 깜빡인다 — 색으로만 가르지 않는다(VA-UI-001 3.5)
+  await expect(el(page, "4.6").locator(".chunk-cell.is-in_flight .chunk-cell-inner")).toHaveCount(
+    3,
+  );
   await expect(el(page, "6.1")).toHaveText("음성 조각 → OpenAI gpt-transcribe · 동시 3개");
 
   // 끝나면 UI-4 — 1시간 넘는 영상이라 챕터가 파트 둘로 묶이고 첫 파트만 펼쳐진다

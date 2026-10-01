@@ -30,7 +30,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import {
   api,
@@ -256,6 +256,8 @@ export default function Result({ id }: { id: number }) {
   // 펼친 파트 — 처음에는 첫 파트만(UI-4 규칙)
   const [open, setOpen] = useState<Set<number>>(() => new Set([1]));
   const [tab, setTab] = useState<Tab>("script");
+  // 탭 둘은 Tab 한 번 — 고른 탭만 tabIndex 0이고 ← →로 옮긴다(VA-UI-001 4.6)
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ script: null, chat: null });
   // 머리에서 연 다이얼로그 — 내보내기(UI-7) · 삭제 확인(UI-6)
   const [dialog, setDialog] = useState<"export" | "delete" | "infographic" | "view" | null>(null);
   // 인포그래픽 맡기기가 서버에서 거절된 이유(키 확인 실패 등) — 행이 없어 카드가 들고 있다
@@ -402,6 +404,19 @@ export default function Result({ id }: { id: number }) {
   const long = isLong(video.duration_sec);
   // 장면을 채우는 중(맡기기 전 absent 포함) — 장면이 아직 없는 챕터에 6.8
   const framesWaiting = result.frames_state === "absent" || result.frames_state === "making";
+  // 탭 ← → · Home · End — 옮기면 그 탭이 바로 열린다(UI-4 규칙)
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const to: Tab | null =
+      e.key === "ArrowLeft" || e.key === "Home"
+        ? "script"
+        : e.key === "ArrowRight" || e.key === "End"
+          ? "chat"
+          : null;
+    if (to === null) return;
+    e.preventDefault();
+    setTab(to);
+    tabRefs.current[to]?.focus();
+  };
   // 시각 누르기 — 패널은 스크립트 탭으로(공통 1.3)
   const select = (sec: number) => {
     setSelected(sec);
@@ -683,13 +698,17 @@ export default function Result({ id }: { id: number }) {
 
       <aside aria-label="스크립트와 질문" className="panel" data-el="7">
         <div className="panel-inner">
-          <div role="tablist" aria-label="스크립트와 질문" className="tabs">
+          <div role="tablist" aria-label="스크립트와 질문" className="tabs" onKeyDown={onTabKey}>
             <button
               type="button"
               role="tab"
               id="tab-script"
               aria-selected={tab === "script"}
               aria-controls="panel-script"
+              tabIndex={tab === "script" ? 0 : -1}
+              ref={(el) => {
+                tabRefs.current.script = el;
+              }}
               className="tab"
               data-el="7.1"
               onClick={() => setTab("script")}
@@ -710,6 +729,10 @@ export default function Result({ id }: { id: number }) {
               id="tab-chat"
               aria-selected={tab === "chat"}
               aria-controls="panel-chat"
+              tabIndex={tab === "chat" ? 0 : -1}
+              ref={(el) => {
+                tabRefs.current.chat = el;
+              }}
               className="tab"
               data-el="7.2"
               onClick={() => setTab("chat")}
