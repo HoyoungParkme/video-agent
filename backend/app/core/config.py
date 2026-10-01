@@ -127,13 +127,17 @@ class Config(BaseSettings):
     CHAT_CHAPTERS: int = 3
     CHAT_TIMEOUT_SEC: float = 20
 
-    # 설정 — MS-005. 단가는 2026-09-23 OpenAI 가격표(표준 요금)
+    # 설정 — MS-005. 단가는 OpenAI 가격표(표준 요금) — 2026-09-23 값, gpt-5.6 셋은 2026-10-01 값.
+    # 텍스트는 값 오름차순이다(UI-5 3.3)
     MODEL_OPTIONS: ModelOptions = ModelOptions(
         stt=[ModelOption(id="whisper-1", label="whisper-1", price=ModelPrice(per_min_usd=0.006))],
         text=[
+            _text("gpt-5.6-luna", 0.20, 1.20),
             _text("gpt-5-mini", 0.25, 2.00),
             _text("gpt-5.4-mini", 0.75, 4.50),
+            _text("gpt-5.6-terra", 2.00, 12.00),
             _text("gpt-5.4", 2.50, 15.00),
+            _text("gpt-5.6-sol", 4.00, 20.00),
         ],
     )
     DEFAULT_MODELS: dict[str, str] = {"stt": "whisper-1", "text": "gpt-5-mini"}

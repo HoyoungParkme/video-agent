@@ -45,13 +45,16 @@ async def test_get_settings(client, env_file) -> None:
         {"id": "whisper-1", "label": "whisper-1", "price": {"per_min_usd": 0.006}}
     ]
     assert [o["id"] for o in body["model_options"]["text"]] == [
+        "gpt-5.6-luna",
         "gpt-5-mini",
         "gpt-5.4-mini",
+        "gpt-5.6-terra",
         "gpt-5.4",
+        "gpt-5.6-sol",
     ]
     assert body["model_options"]["text"][0]["price"] == {
-        "input_per_mtok_usd": 0.25,
-        "output_per_mtok_usd": 2.0,
+        "input_per_mtok_usd": 0.2,
+        "output_per_mtok_usd": 1.2,
     }
     assert body["image"] == {
         "model": "gpt-image-2",
