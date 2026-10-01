@@ -40,7 +40,7 @@ async def test_get_settings(client, env_file) -> None:
         "reason_kind": None,
         "reason": None,
     }
-    assert body["models"] == {"stt": "whisper-1", "text": "gpt-5-mini"}
+    assert body["models"] == {"stt": "whisper-1", "text": "gpt-5.6-luna"}
     assert body["model_options"]["stt"] == [
         {"id": "whisper-1", "label": "whisper-1", "price": {"per_min_usd": 0.006}}
     ]

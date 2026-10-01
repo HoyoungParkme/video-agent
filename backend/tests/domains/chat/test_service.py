@@ -166,10 +166,10 @@ async def test_ask_saves_turn(db, make, youtube, probe, key, answerer) -> None:
         "어떤 DB를 썼어?",
         ["하나", "둘", "셋"],
         [],
-        "gpt-5-mini",
+        "gpt-5.6-luna",
     )
     assert await svc.count_by_videos([video.id]) == {video.id: 1}
-    assert (await db.get(ChatTurnRow, turn.id)).model == "gpt-5-mini"
+    assert (await db.get(ChatTurnRow, turn.id)).model == "gpt-5.6-luna"
 
 
 async def test_ask_port_failure_keeps_nothing(db, make, youtube, probe, key, answerer) -> None:

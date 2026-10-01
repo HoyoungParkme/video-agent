@@ -159,9 +159,9 @@ def test_write_env_read_only(svc, env_file) -> None:
 def test_current_models_defaults_and_prices(svc, env_file) -> None:
     _write(env_file)
     m = svc.current_models()
-    assert (m.stt.id, m.text.id) == ("whisper-1", "gpt-5-mini")
+    assert (m.stt.id, m.text.id) == ("whisper-1", "gpt-5.6-luna")
     assert m.stt.price.per_min_usd == 0.006
-    assert m.text.price.input_per_mtok_usd == 0.25
+    assert m.text.price.input_per_mtok_usd == 0.20
     env_file.write_text("STT_MODEL=whisper-9\nTEXT_MODEL=gpt-5.4\n")
     m = svc.current_models()
     assert (m.stt.id, m.text.id) == ("whisper-1", "gpt-5.4")  # 목록에 없으면 기본값
@@ -203,7 +203,7 @@ def test_get_masks_and_sends_nothing(svc, env_file, verify, monkeypatch) -> None
     s = svc.get()
     assert s.key.masked == "sk-…1234"  # 환경 변수가 아니라 파일 것
     assert s.key.stored_in == ".env에 저장됨"
-    assert s.models.model_dump() == {"stt": "whisper-1", "text": "gpt-5-mini"}
+    assert s.models.model_dump() == {"stt": "whisper-1", "text": "gpt-5.6-luna"}
     assert s.model_options == config.MODEL_OPTIONS
     assert s.inbox_path == config.INBOX_DISPLAY_PATH
     assert verify.calls == []

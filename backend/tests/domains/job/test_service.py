@@ -332,10 +332,10 @@ async def test_estimate_captions(db, make, env_file) -> None:
         None,
     )
     assert (est.stt_cost_usd, est.seconds) == (0, 60)  # 텍스트 45 + 장면 15 — '약 1분'
-    # 50.2분 × 450토큰 × 3번 × $0.25 + 출력 3천 × $2.00 — 실제 영상으로 맞춘 값(MS-002 v18)
-    assert est.text_cost_usd == 0.0229
+    # 50.2분 × 450토큰 × 3번 × $0.20 + 출력 3천 × $1.20(기본 luna) — 실제 영상으로 맞춘 식(MS-002 v18)
+    assert est.text_cost_usd == 0.0172
     assert est.total_cost_usd == round(est.text_cost_usd, 2)
-    assert (est.stt_model, est.text_model) == ("whisper-1", "gpt-5-mini")
+    assert (est.stt_model, est.text_model) == ("whisper-1", "gpt-5.6-luna")
 
 
 async def test_estimate_local_150_minutes(db, make, env_file) -> None:
@@ -397,7 +397,7 @@ async def test_start_queues_and_wakes(db, make, key) -> None:
     saved = await _job_row(db, job.id)
     assert saved.stages == ["download", "summarize", "chapter", "suggest", "frames"]
     assert saved.stt_model is None  # 자막 있는 YouTube
-    assert (saved.text_model, saved.concurrency, saved.est_seconds) == ("gpt-5-mini", 3, 60)
+    assert (saved.text_model, saved.concurrency, saved.est_seconds) == ("gpt-5.6-luna", 3, 60)
     assert saved.queued_at == saved.started_at == saved.stage_started_at
 
 

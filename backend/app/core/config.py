@@ -140,7 +140,8 @@ class Config(BaseSettings):
             _text("gpt-5.6-sol", 4.00, 20.00),
         ],
     )
-    DEFAULT_MODELS: dict[str, str] = {"stt": "whisper-1", "text": "gpt-5-mini"}
+    # 기본 텍스트는 luna — gpt-5-mini보다 싸고 긴 영상에서 빠르다(사용자 결정 2026-10-01)
+    DEFAULT_MODELS: dict[str, str] = {"stt": "whisper-1", "text": "gpt-5.6-luna"}
     # 인포그래픽(INFRA C11) — 낮음은 실측(카드 D3, 세로 한 장 $0.0096), 중간은 외부 가격 정리 값
     IMAGE_OPTIONS: ImageOptions = ImageOptions(
         models=["gpt-image-2"],

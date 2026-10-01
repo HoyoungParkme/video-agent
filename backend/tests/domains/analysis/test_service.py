@@ -161,7 +161,7 @@ async def test_generate_summary_50_minutes(db, make, summarizer, env_file) -> No
     rows = list(await db.scalars(select(InsightRow).order_by(InsightRow.seq)))
     assert len(rows) == 8  # 1시간 이하는 8개까지
     s = await db.scalar(select(SummaryRow))
-    assert (s.one_liner, s.model) == ("한 줄", "gpt-5-mini")
+    assert (s.one_liner, s.model) == ("한 줄", "gpt-5.6-luna")
 
 
 async def test_generate_summary_clamps_and_drops(db, make, summarizer, env_file) -> None:
@@ -417,7 +417,7 @@ async def test_result_of(db, make, summarizer, youtube, env_file, queries) -> No
     assert (result.transcript.source, result.models.stt, result.models.text) == (
         "caption_manual",
         None,
-        "gpt-5-mini",
+        "gpt-5.6-luna",
     )
     assert len(result.summary.insights) == 6
     assert (len(result.chapters), result.parts) == (8, [])
