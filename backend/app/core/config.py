@@ -127,6 +127,11 @@ class Config(BaseSettings):
     CHAT_HISTORY_TURNS: int = 10
     CHAT_TOKEN_LIMIT: int = 30000
     CHAT_CHAPTERS: int = 3
+    # 맥락 챕터 고르기(두 글자 조각 BM25) — 제목 · 요점 조각을 세는 배수와 BM25의 흔한 값(MS-004).
+    # 실측(2026-10-01, 2:30:30 강의 29문항): 상위 3챕터에 정답 13 → 27
+    CHAT_SUMMARY_WEIGHT: int = 3
+    CHAT_BM25_K1: float = 1.2
+    CHAT_BM25_B: float = 0.75
     CHAT_TIMEOUT_SEC: float = 20
 
     # 설정 — MS-005. 단가는 OpenAI 가격표(표준 요금) — 2026-09-23 값, gpt-5.6 셋은 2026-10-01 값.
