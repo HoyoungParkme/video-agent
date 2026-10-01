@@ -108,7 +108,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 - `key.masked`는 앞 3자와 끝 4자만 남긴 값이다. 전체 키는 어떤 응답에도 없다([[VA-UC-001#UC-H8]]).
 - 키가 사는 곳은 `.env` 파일 하나다. 처음 설치 때 사용자가 직접 적은 키도, 화면에서 넣은 키도 같은 줄이다([[VA-INFRA-001#C6]], [[VA-UC-001#UC-H8]] 1a). `key.stored_in`은 키가 있으면 늘 '.env에 저장됨'이고 없으면 null이다.
 - `key.reason_kind = network`면 화면은 배너 문구를 '연결을 확인하지 못했어요 — …'로 가르고 [키 넣으러 가기]를 빼며 버튼을 막지 않는다([[VA-UI-002]] 1.4).
-- `model_options`의 단가는 UI-5 도움말과 UI-2 예상 비용이 같이 쓴다. 받아쓰기 목록에는 구간 시각을 주는 모델만 있다([[VA-INFRA-001#C3]]).
+- `model_options`의 단가는 UI-5 도움말과 UI-2 예상 비용이 같이 쓴다. 받아쓰기 목록은 `gpt-transcribe` 하나다 — 구간 시각은 앱이 잘게 나눈 경계로 만든다([[VA-INFRA-001#C3]], 2026-10-01). 요약 목록은 값 오름차순이다.
 - `image`는 인포그래픽 설정이다 — 고른 이미지 모델 · 품질과, 고를 수 있는 모델 · 품질마다 한 장 값(`price_usd`). UI-5 인포그래픽 카드, UI-4 인포그래픽 카드의 '한 장 약 ${값}', UI-8 예상 비용이 이 값을 쓴다([[VA-PRD-001#R13]]).
 
 화면 [[VA-UI-002#UI-5]] · [[VA-UI-002#UI-1]] · [[VA-UI-002#UI-3]] · [[VA-UI-002#UI-4]](키 없음 배너) · 유스케이스 [[VA-UC-001#UC-H8]] 1번 · 서비스 `SettingsService.get`
@@ -1695,7 +1695,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModelOption'
-          description: 구간 시각을 주는 모델만
+          description: 받아쓰기 모델 — json 응답을 주는 모델. 구간 시각은 앱이 15초 이하로 나눈 경계
         text:
           type: array
           items:
