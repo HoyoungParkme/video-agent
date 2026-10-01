@@ -80,7 +80,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **시그니처** `async def save_transcript(video_id: int, source: TranscriptSource, language: str, model: str | None, lines: list[CaptionLine]) -> None`
 
-근거: [[VA-SEQ-001#SEQ-3]] 5~7번 · [[VA-SEQ-001#SEQ-4]] 32~35번 · [[VA-UC-001#UC-S2]] 2번 · [[VA-UC-001#UC-S3]] 4~5번 · [[VA-DOM-003#transcripts]] · [[VA-DOM-003#segments]]
+근거: [[VA-SEQ-001#SEQ-3]] 5~7번 · [[VA-SEQ-001#SEQ-4]] 36~39번 · [[VA-UC-001#UC-S2]] 2번 · [[VA-UC-001#UC-S3]] 4~5번 · [[VA-DOM-003#transcripts]] · [[VA-DOM-003#segments]]
 
 **입력** `lines` — 시각순이 아닐 수 있다(조각 병렬). `model`은 `stt`일 때만
 
@@ -537,7 +537,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-PRD-001
 
 **호출하는 것** [[#export.timecode]] · [[#export.link]]
 
-**테스트 관점** 스냅샷 테스트: 자막 있는 50분 YouTube 결과 · 로컬 150분 결과 → 예상 문자열과 일치 · 로컬은 원본 줄에 링크 없음, 시각이 `h:mm:ss` · 출처 줄이 화면 8.1과 같다(`자막(수동) · 한국어` · `받아쓰기 whisper-1 · 한국어`)
+**테스트 관점** 스냅샷 테스트: 자막 있는 50분 YouTube 결과 · 로컬 150분 결과 → 예상 문자열과 일치 · 로컬은 원본 줄에 링크 없음, 시각이 `h:mm:ss` · 출처 줄이 화면 8.1과 같다(`자막(수동) · 한국어` · `받아쓰기 gpt-transcribe · 한국어` — 모델 이름은 스크립트의 것 그대로라 옛 결과는 `whisper-1`)
 
 ---
 
