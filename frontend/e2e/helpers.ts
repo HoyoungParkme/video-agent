@@ -51,12 +51,14 @@ export async function saveKey(request: APIRequestContext): Promise<void> {
 export interface FakeState {
   chatDelayMs: number;
   chats: number;
+  /** 받아쓰기 요청 수 — 조각 단위(첫 토막만 센다. 앱은 조각을 15초 이하 토막으로 나눠 보낸다) */
   transcriptions: number;
+  /** 조각마다 늦추는 시간 · 실패시킬 조각 — 첫 토막에만 걸린다 */
   sttDelayMs: number;
   sttFail: { seq: number; times: number; drop?: boolean } | null;
   chatFail: number;
   models: "drop" | 401 | null;
-  /** 받아쓴 조각 번호(성공한 것), 받은 차례대로 */
+  /** 받아쓴 조각 번호(첫 토막이 성공한 것), 받은 차례대로 */
   transcribed: number[];
   /** 답한 질문마다 — 앞선 턴 수와 받은 스크립트의 첫 · 끝 시각 */
   asks: { question: string; history: number; first: string | null; last: string | null }[];

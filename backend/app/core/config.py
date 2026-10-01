@@ -37,7 +37,7 @@ class ModelOption(BaseModel):
 
 
 class ModelOptions(BaseModel):
-    """받아쓰기 목록(구간 시각을 주는 모델만, INFRA C3)과 텍스트 목록."""
+    """받아쓰기 목록(json을 주는 모델 — 구간 시각은 앱이 나눈 토막 경계, INFRA C3)과 텍스트 목록."""
 
     stt: list[ModelOption]
     text: list[ModelOption]
@@ -130,7 +130,13 @@ class Config(BaseSettings):
     # 설정 — MS-005. 단가는 OpenAI 가격표(표준 요금) — 2026-09-23 값, gpt-5.6 셋은 2026-10-01 값.
     # 텍스트는 값 오름차순이다(UI-5 3.3)
     MODEL_OPTIONS: ModelOptions = ModelOptions(
-        stt=[ModelOption(id="whisper-1", label="whisper-1", price=ModelPrice(per_min_usd=0.006))],
+        # 받아쓰기는 gpt-transcribe 하나 — whisper-1은 2027-02-26에 없어져 뺐다
+        # (사용자 결정 2026-10-01)
+        stt=[
+            ModelOption(
+                id="gpt-transcribe", label="gpt-transcribe", price=ModelPrice(per_min_usd=0.0045)
+            )
+        ],
         text=[
             _text("gpt-5.6-luna", 0.20, 1.20),
             _text("gpt-5-mini", 0.25, 2.00),
@@ -141,7 +147,7 @@ class Config(BaseSettings):
         ],
     )
     # 기본 텍스트는 luna — gpt-5-mini보다 싸고 긴 영상에서 빠르다(사용자 결정 2026-10-01)
-    DEFAULT_MODELS: dict[str, str] = {"stt": "whisper-1", "text": "gpt-5.6-luna"}
+    DEFAULT_MODELS: dict[str, str] = {"stt": "gpt-transcribe", "text": "gpt-5.6-luna"}
     # 인포그래픽(INFRA C11) — 낮음은 실측(카드 D3, 세로 한 장 $0.0096), 중간은 외부 가격 정리 값
     IMAGE_OPTIONS: ImageOptions = ImageOptions(
         models=["gpt-image-2"],

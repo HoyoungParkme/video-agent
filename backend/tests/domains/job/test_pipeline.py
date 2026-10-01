@@ -237,7 +237,7 @@ async def _stt_job(make, stages: list[str], **video_kw):
     """자막 없는 영상과 워커가 막 꺼낸 받아쓰기 작업."""
     kw = {"has_captions": False, "caption_language": None, "caption_kind": None} | video_kw
     row = await make.video(**kw)
-    job = await make.job(row.id, JobStatus.running, stages=stages, stt_model="whisper-1")
+    job = await make.job(row.id, JobStatus.running, stages=stages, stt_model="gpt-transcribe")
     return VideoService.to_dto(row, None, 0), job
 
 
@@ -269,7 +269,7 @@ async def test_run_youtube_without_captions(db, make, ports, audio_split, stt, t
     assert audio_split.calls == [(str(tmp / "audio.mp3"), str(tmp))]
     assert sorted(stt.calls) == [1, 2, 3]
     t = await db.scalar(select(TranscriptRow))
-    assert (t.source, t.language, t.model) == ("stt", "ko", "whisper-1")
+    assert (t.source, t.language, t.model) == ("stt", "ko", "gpt-transcribe")
     segs = await _segments(db)
     assert len(segs) == 6
     assert segs[2] == (600.0, "2번 조각 첫 문장")  # 2번 조각의 0초 → 600초

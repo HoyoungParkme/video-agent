@@ -335,7 +335,7 @@ async def test_estimate_captions(db, make, env_file) -> None:
     # 50.2분 × 450토큰 × 3번 × $0.20 + 출력 3천 × $1.20(기본 luna) — 실제 영상으로 맞춘 식(MS-002 v18)
     assert est.text_cost_usd == 0.0172
     assert est.total_cost_usd == round(est.text_cost_usd, 2)
-    assert (est.stt_model, est.text_model) == ("whisper-1", "gpt-5.6-luna")
+    assert (est.stt_model, est.text_model) == ("gpt-transcribe", "gpt-5.6-luna")
 
 
 async def test_estimate_local_150_minutes(db, make, env_file) -> None:
@@ -349,8 +349,8 @@ async def test_estimate_local_150_minutes(db, make, env_file) -> None:
         caption_kind=None,
     )
     est = await JobService(db).estimate(_video(row))
-    assert (est.chunks, est.concurrency, est.stt_minutes, est.stt_cost_usd) == (15, 3, 150, 0.9)
-    assert est.stt_price_per_min == 0.006
+    assert (est.chunks, est.concurrency, est.stt_minutes, est.stt_cost_usd) == (15, 3, 150, 0.675)
+    assert est.stt_price_per_min == 0.0045
     assert est.seconds == 5 * 45 + 45 + 150 + 15  # 조각 · 텍스트 · 추출 · 장면 몫
 
 

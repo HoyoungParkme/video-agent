@@ -43,7 +43,7 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
   await expect(inDialog(page, "3.2")).toHaveText(
     "음성을 뽑아 15개 조각으로 나누고, 3개씩 동시에 받아씁니다.",
   );
-  await expect(inDialog(page, "4.2")).toHaveText("받아쓰기 150분 × $0.006$0.90");
+  await expect(inDialog(page, "4.2")).toHaveText("받아쓰기 150분 × $0.0045$0.68");
   await expect(inDialog(page, "5")).toHaveText(
     "받아쓰기에는 음성 조각이, 요약에는 스크립트 텍스트가 OpenAI로 전송됩니다. 영상 파일 자체는 이 PC 밖으로 나가지 않아요.",
   );
@@ -70,16 +70,16 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
   );
   await expect(el(page, "3.2")).toHaveText(/^조각 ([1-9]|1[0-4]) \/ 15/);
   await expect(el(page, "4.8")).toContainText("받아쓰는 중 3");
-  await expect(el(page, "6.1")).toHaveText("음성 조각 → OpenAI whisper-1 · 동시 3개");
+  await expect(el(page, "6.1")).toHaveText("음성 조각 → OpenAI gpt-transcribe · 동시 3개");
 
   // 끝나면 UI-4 — 1시간 넘는 영상이라 챕터가 파트 둘로 묶이고 첫 파트만 펼쳐진다
   await expect(page).toHaveURL(/\/videos\/\d+$/, { timeout: 30_000 });
   await expect(el(page, "2.1")).toHaveText("로컬 파일2:30:00받아쓰기 · 한국어");
   await expect(el(page, "2.3")).toHaveText(
-    /^로컬 파일 · 오늘 \d\d:\d\d 분석 · 받아쓰기 whisper-1$/,
+    /^로컬 파일 · 오늘 \d\d:\d\d 분석 · 받아쓰기 gpt-transcribe$/,
   );
   await expect(el(page, "2.4")).toHaveCount(0); // 원본 링크는 YouTube만
-  await expect(el(page, "8.1")).toHaveText("받아쓰기 whisper-1 · 한국어");
+  await expect(el(page, "8.1")).toHaveText("받아쓰기 gpt-transcribe · 한국어");
   await expect(el(page, "6.1")).toHaveText("6개 · 파트 2개");
   const parts = page.locator(".part-head");
   await expect(el(page, "6.5")).toHaveAttribute("aria-expanded", "true");
@@ -174,7 +174,7 @@ test("inbox 음성 파일 — 받아쓰기 필요 판의 음성 문구, 취소�
   await expect(inDialog(page, "2.4")).toHaveText("길이 25:00");
   await expect(inDialog(page, "2.5")).toHaveText("자막 없음 · 받아쓰기 필요");
   await expect(inDialog(page, "3.2")).toHaveText("3개 조각으로 나누고, 3개씩 동시에 받아씁니다.");
-  await expect(inDialog(page, "4.2")).toHaveText("받아쓰기 25분 × $0.006$0.15");
+  await expect(inDialog(page, "4.2")).toHaveText("받아쓰기 25분 × $0.0045$0.11");
   await expect(inDialog(page, "5")).toHaveText(
     "받아쓰기에는 음성 조각이, 요약에는 스크립트 텍스트가 OpenAI로 전송됩니다. 음성 파일 자체는 이 PC 밖으로 나가지 않아요.",
   );

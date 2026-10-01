@@ -55,7 +55,7 @@ test("8번 조각이 세 번 실패 → 실패 알림 → 다시 시도하면 8�
     "8번째 조각을 3번 보냈지만 실패했어요 — OpenAI 서버 오류. 완료한 8개 조각은 저장돼 있어 처음부터 다시 받아쓰지 않아요.",
   );
   await expect(el(page, "5.4")).toHaveText("8번째 조각부터 다시 시도");
-  await expect(el(page, "6.1")).toHaveText("음성 조각 → OpenAI whisper-1");
+  await expect(el(page, "6.1")).toHaveText("음성 조각 → OpenAI gpt-transcribe");
   await expect(el(page, "6.2")).toHaveText("다시 시도하면 8번째 조각부터 이어서 받아씁니다.");
 
   // UI-1 실패 행 — 행을 누르면 이 화면으로 돌아온다

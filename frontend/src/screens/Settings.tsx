@@ -225,7 +225,8 @@ export default function Settings() {
               </select>
             </span>
             <span className="field-help" data-el="3.2">
-              분당 {usd(sttOption?.price.per_min_usd)} · 구간 시각을 주는 모델만 고를 수 있어요
+              분당 {usd(sttOption?.price.per_min_usd)} · 15초 이하로 나눠 보내고 그 경계를 구간
+              시각으로 써요
             </span>
           </div>
           <div className="field">
