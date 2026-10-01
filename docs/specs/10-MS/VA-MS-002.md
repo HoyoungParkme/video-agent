@@ -28,8 +28,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 | `config.STT_CONCURRENCY` | 3 | 시간당 3분 목표([[VA-PRD-001#N1]])와 OpenAI 요청 제한 사이. 측정 뒤 조정 |
 | `config.CHUNK_MAX_ATTEMPTS` | 3 | 화면 문구 '3번 다시 보냈지만'([[VA-UI-002#UI-3]]) |
 | `config.CHUNK_RETRY_WAIT_SEC` | 2 | 조각을 다시 보내기 전에 기다리는 첫 시간. 다음은 두 배(2초 · 4초). SDK 재시도를 꺼서([[VA-MS-007]] `OPENAI_MAX_RETRIES`) 요청 한도 · 일시 오류에 바로 다시 보내면 세 번이 1초 안에 끝난다 |
-| `config.CHUNK_EST_SEC` | 45 | 조각 하나(10분)의 받아쓰기 예상 시간. 예상치 계산용. 측정 뒤 조정 |
-| `config.TEXT_EST_SEC` | 45 | 요약 · 챕터 · 추천 질문 세 단계 합. 실측: 추론 강도 low(지금 기본)로 분석한 42분 · 19분 영상 21초 · 22초, 카드 C의 medium 셋 43 · 59 · 72초. 첫 값 60이면 장면 몫을 더한 자막 있음이 '약 2분'이 된다 — 장면 몫 15와 합쳐 자막 있음 '약 1분'(카드 D2) |
+| `config.CHUNK_EST_SEC` | 20 | 조각 하나(10분)의 받아쓰기 예상 시간. 예상치 계산용. 실측(2026-10-01, gpt-transcribe 15초 토막): 토막 동시 4 · 8에 15 · 8초 — 토막 동시 3([[VA-MS-006]] 설정값)이면 약 20초. 처음 45는 whisper-1(15~57초) 값 |
+| `config.TEXT_EST_SEC` | 45 | 요약 · 챕터 · 추천 질문 세 단계 합. 실측: 추론 강도 low(지금 기본)로 분석한 42분 · 19분 영상 21초 · 22초, 카드 C의 medium 셋 43 · 59 · 72초, `gpt-5.6-luna`(2026-10-01 기본) 19분 · 2:30:30 영상 19 · 40초. 첫 값 60이면 장면 몫을 더한 자막 있음이 '약 2분'이 된다 — 장면 몫 15와 합쳐 자막 있음 '약 1분'(카드 D2) |
 | `config.FRAMES_EST_SEC` | 15 | 장면 단계 전체의 예상 시간(사전 안내 · 남은 시간). 실측(카드 D2, 옛 결과 채우기 — 장면 단계와 같은 `make_frames`): YouTube 스토리보드 챕터 3 · 5 · 8 · 10개 5.1 · 6.2 · 13.2 · 10.2초(영상 정보 받기 3~4초 + 칸마다 약 1초), 로컬 2:30:30 챕터 27개 12.4초 — 모두 얻었다 |
 | `config.FRAME_EST_SEC` | 1 | 장면 단계 안에서 남은 장면 한 장의 예상 시간(남은 시간 계산). 실측 YouTube 약 1초 · 로컬 0.46초(카드 D2) |
 | `config.TOKENS_PER_MIN` | 450 | 스크립트를 한 번 보낼 때 영상 1분당 입력 토큰. 텍스트 비용 계산용. 실측(카드 C, gpt-5-mini): 자막 404 · 받아쓰기 323 · 497(줄 앞 시각 표기까지) — 첫 값 200은 비용을 절반쯤으로 예상했다 |
@@ -481,24 +481,24 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 `audio`는 나눌 음성(tmp 안 mp3)이다. 조각 행이 이미 있으면(다시 시도) 쓰지 않아 `None`일 수 있다([[#pipeline.resume]])
 
-근거: [[VA-SEQ-001#SEQ-4]] 12~30번 · [[VA-UC-001#UC-S3]] 전부 · [[VA-UI-002#UI-3]] 숫자 규칙 · 시퀀스 되먹임 #1 · #4
+근거: [[VA-SEQ-001#SEQ-4]] 12~39번 · [[VA-UC-001#UC-S3]] 전부 · [[VA-UI-002#UI-3]] 숫자 규칙 · 시퀀스 되먹임 #1 · #4
 
 **처리**
 1. `chunks = DB: audio_chunks where job_id` · if 비어 있음 → `plans = AudioSplitPort.split(audio, tmp)` · `JobService.plan_chunks(job_id, plans)` · 다시 읽는다
-2. `todo = [c for c in chunks if c.state != done]` · `sem = Semaphore(row.concurrency)` · `models = row.stt_model` · 조각마다 `base = c.attempts`(이번 실행을 시작할 때의 누적 횟수)
+2. `todo = [c for c in chunks if c.state != done]` · `sem = Semaphore(row.concurrency)` · `model = row.stt_model` · if `model ∉ {o.id for o in config.MODEL_OPTIONS.stt}` → `model = SettingsService.current_models().stt.id` · `DB: analysis_jobs update stt_model = model` — 목록에서 뺀 모델(`whisper-1`, 2026-10-01)로 만든 작업이 대기열에 있었거나 다시 시도된 경우다. 그 모델로 보내면 인자가 맞지 않아 400이다. 끝난 조각의 결과는 그대로 쓴다 · 조각마다 `base = c.attempts`(이번 실행을 시작할 때의 누적 횟수)
 3. 조각마다 태스크 — `async def one(c):` `async with sem:` if `stop` → `return`(보내지 않는다 — 조각은 `waiting` 그대로) · `loop:` `JobService.mark_chunk(job_id, c.seq, in_flight)` · `try: segs = SttPort.transcribe(c.path, model)` · `JobService.mark_chunk(job_id, c.seq, done, segs)` · `FS: remove(c.path)` · `return` · `except Exception as e:` `sent = attempts(방금 올린 값) − base`(**이번 실행에서 보낸 횟수** — 다시 시도하면 상한을 새로 센다) · if `sent < config.CHUNK_MAX_ATTEMPTS` → `mark_chunk(waiting)` · `sleep(config.CHUNK_RETRY_WAIT_SEC × 2^(sent−1))` · 계속(같은 조각을 다시) · else → `mark_chunk(failed)` · `stop = True` · `raise ChunkFailed(seq=c.seq, sent, cause=e)`
 4. `results = gather(one(c) for c in todo, return_exceptions=True)` — 한 조각이 상한을 넘으면 **새 조각은 시작하지 않고, 돌던 조각은 끝까지 기다린다**([[VA-UC-001#UC-S3]] 3a2). 그래야 완료 수(j)와 다음 조각(r)이 맞고, 키가 막혔거나 잔액이 없을 때 남은 조각을 모두 보내 보며 헛돌지 않는다
 5. if `ChunkFailed`가 하나라도 있음 → 가장 작은 `seq`의 것으로 `raise JobFailure(JobError(kind=error_kind(cause), reason=reason_of(cause), chunk_seq=seq, attempts=sent))` — `run`이 받아 그 `JobError` 그대로 `fail`. `attempts`는 이번 실행에서 보낸 횟수라 화면 문구 '{n}번 보냈지만'이 상한과 같다
-6. `all = DB: audio_chunks where job_id order by seq`(이번엔 `result` 포함) · `lines = []` · 조각마다 `result`의 `SttSegment`에 `offset_sec`을 더해 `CaptionLine(start_sec, end_sec, text)`으로 · `language`는 첫 조각의 `language`
-7. `AnalysisService.save_transcript(video.id, stt, language, row.stt_model, lines)`
+6. `all = DB: audio_chunks where job_id order by seq`(이번엔 `result` 포함) · `lines = []` · 조각마다 `result`의 `SttSegment`에 `offset_sec`을 더해 `CaptionLine(start_sec, end_sec, text)`으로 · `language`는 언어가 있는 첫 구간의 것, 없으면 `und`
+7. `AnalysisService.save_transcript(video.id, stt, language, model, lines)`
 
 **출력** 없음
 
 **예외** `JobFailure`(조각 상한 초과) · 그 밖의 예외는 `run`이 `unknown`으로 접는다
 
-**호출하는 것** [[#JobService.plan_chunks]] · [[#JobService.mark_chunk]] · [[#pipeline.error_kind]] · [[#pipeline.reason_of]] · `AudioSplitPort.split` · `SttPort.transcribe` · `AnalysisService.save_transcript`
+**호출하는 것** [[#JobService.plan_chunks]] · [[#JobService.mark_chunk]] · [[#pipeline.error_kind]] · [[#pipeline.reason_of]] · `AudioSplitPort.split` · `SttPort.transcribe` · `AnalysisService.save_transcript` · `SettingsService.current_models`
 
-**테스트 관점** 가짜 STT가 한 조각을 세 번 실패시키면 → `failed` 조각 하나, `attempts=3`, 돌던 조각은 끝까지 돌아 `done`, 아직 시작하지 않은 조각은 보내지 않고 `waiting` · `JobError.chunk_seq`가 그 조각 · 다시 보내기 전에 설정값만큼(2초 · 4초) 기다린다 · 재개 시 `done` 조각은 호출 안 됨 · 동시에 도는 태스크가 `concurrency`를 넘지 않는다(가짜 STT가 동시 수를 센다) · 이어 붙인 구간의 시각이 오프셋만큼 밀린다(2번째 조각 0초 → 600초) · `done` 조각의 파일은 지워지고 `waiting` 조각의 파일은 남는다 · 다시 시도 뒤 `attempts=3`인 실패 조각도 다시 3번까지 보내고, 또 실패하면 `JobError.attempts=3`(누적 6)
+**테스트 관점** 가짜 STT가 한 조각을 세 번 실패시키면 → `failed` 조각 하나, `attempts=3`, 돌던 조각은 끝까지 돌아 `done`, 아직 시작하지 않은 조각은 보내지 않고 `waiting` · `JobError.chunk_seq`가 그 조각 · 다시 보내기 전에 설정값만큼(2초 · 4초) 기다린다 · 재개 시 `done` 조각은 호출 안 됨 · 동시에 도는 태스크가 `concurrency`를 넘지 않는다(가짜 STT가 동시 수를 센다) · 이어 붙인 구간의 시각이 오프셋만큼 밀린다(2번째 조각 0초 → 600초) · `done` 조각의 파일은 지워지고 `waiting` 조각의 파일은 남는다 · 다시 시도 뒤 `attempts=3`인 실패 조각도 다시 3번까지 보내고, 또 실패하면 `JobError.attempts=3`(누적 6) · 목록에 없는 받아쓰기 모델(`whisper-1`)로 만든 작업 → 지금 모델로 바꿔 적고 그 모델로 보내며, 스크립트의 모델도 그것 · 언어가 없는 구간만 있으면 `und`
 
 ---
 
