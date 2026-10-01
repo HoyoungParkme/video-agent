@@ -97,8 +97,9 @@ async def _alembic(action: str, target: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_retry_wait(monkeypatch) -> None:
-    """조각을 다시 보내기 전의 기다림(2초 · 4초)을 없앤다 — 기다림을 보는 테스트만 값을 준다."""
+    """조각 · 토막을 다시 보내기 전의 기다림을 없앤다 — 기다림을 보는 테스트만 값을 준다."""
     monkeypatch.setattr(config, "CHUNK_RETRY_WAIT_SEC", 0)
+    monkeypatch.setattr(config, "PIECE_RETRY_WAIT_SEC", 0)
 
 
 @pytest.fixture(scope="session")

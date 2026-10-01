@@ -23,7 +23,7 @@ test("8번 조각이 세 번 실패 → 실패 알림 → 다시 시도하면 8�
     reset: true,
     chat_delay_ms: 0,
     stt_delay_ms: 300,
-    stt_fail: { seq: 8, times: 3 },
+    stt_fail: { seq: 8, times: 9 }, // 토막을 세 번씩(어댑터) × 조각을 세 번(파이프라인)
   });
 
   await page.goto("/");
@@ -98,7 +98,7 @@ test("인터넷 끊김 · 다른 영상이 도는 동안 다시 시도 — 대�
     reset: true,
     chat_delay_ms: 0,
     stt_delay_ms: 0,
-    stt_fail: { seq: 2, times: 3, drop: true },
+    stt_fail: { seq: 2, times: 9, drop: true }, // 토막 세 번 × 조각 세 번
   });
 
   // 로컬 음성 — 단계에 추출이 없다. 2번 조각을 보낼 때마다 연결이 끊긴다(인터넷 끊김)

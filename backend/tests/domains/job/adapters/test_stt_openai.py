@@ -41,12 +41,29 @@ class FakeFfmpeg:
         return dest
 
 
-class FakeTranscriptions:
-    """client.audio.transcriptions 자리 — 토막 범위로 글을 정하고, 동시 수를 센다."""
+def _rate_limit() -> Exception:
+    resp = httpx.Response(429, request=httpx.Request("POST", "https://x/v1"))
+    return sdk.RateLimitError("rate limit", response=resp, body=None)
 
-    def __init__(self, texts: dict[str, str] | None = None, fail_at: str | None = None) -> None:
+
+def _bad_request() -> Exception:
+    resp = httpx.Response(400, request=httpx.Request("POST", "https://x/v1"))
+    return sdk.BadRequestError("bad request", response=resp, body=None)
+
+
+class FakeTranscriptions:
+    """client.audio.transcriptions 자리 — 토막 범위로 글을 정하고, 동시 수를 센다. fail_at 토막은
+    fail_times번 error로 실패한다(기본: 늘 429)."""
+
+    def __init__(
+        self,
+        texts: dict[str, str] | None = None,
+        fail_at: str | None = None,
+        fail_times: int = 10**6,
+        error=_rate_limit,
+    ) -> None:
         self.texts = texts or {}
-        self.fail_at = fail_at
+        self.fail_at, self.fail_times, self.error = fail_at, fail_times, error
         self.calls: list[dict] = []
         self.now = self.peak = 0
         self.cancelled = 0
@@ -57,9 +74,11 @@ class FakeTranscriptions:
         self.now += 1
         self.peak = max(self.peak, self.now)
         try:
-            if span == self.fail_at:  # 곧바로 실패 — 함께 돌던 토막은 아직 기다리는 중이다
-                resp = httpx.Response(429, request=httpx.Request("POST", "https://x/v1"))
-                raise sdk.RateLimitError("rate limit", response=resp, body=None)
+            if (
+                span == self.fail_at and self.fail_times > 0
+            ):  # 곧바로 실패 — 함께 돌던 토막은 기다린다
+                self.fail_times -= 1
+                raise self.error()
             await asyncio.sleep(0.01)
             body = {"text": self.texts.get(span, f" {span} 말 "), "languages": [{"code": "ko"}]}
             return SimpleNamespace(model_dump=lambda: body)
@@ -77,12 +96,21 @@ def chunk(tmp_path: Path) -> str:
     return str(path)
 
 
+CLIENTS = {"n": 0}
+
+
 def _run(monkeypatch, fake_ff: FakeFfmpeg, fake_tr: FakeTranscriptions) -> SttOpenAI:
     monkeypatch.setattr(ffmpeg, "probe", fake_ff.probe)
     monkeypatch.setattr(ffmpeg, "silences", fake_ff.silences)
     monkeypatch.setattr(ffmpeg, "cut", fake_ff.cut)
     client = SimpleNamespace(audio=SimpleNamespace(transcriptions=fake_tr))
-    return SttOpenAI(lambda: client)
+    CLIENTS["n"] = 0
+
+    def client_for():
+        CLIENTS["n"] += 1
+        return client
+
+    return SttOpenAI(client_for)
 
 
 def _left(chunk: str) -> list[str]:
@@ -156,11 +184,51 @@ async def test_concurrency_limit(monkeypatch, chunk: str) -> None:
     assert fake_tr.peak == config.PIECE_CONCURRENCY
 
 
-async def test_first_error_goes_up_and_rest_stop(monkeypatch, chunk: str) -> None:
-    fake_ff = FakeFfmpeg(600.0, [])
+async def test_transient_error_resends_only_that_piece(monkeypatch, chunk: str) -> None:
+    # 429 한 번 — 그 토막만 다시 보내 구간이 모두 나온다. 클라이언트는 조각 하나에 한 번
+    fake_ff = FakeFfmpeg(40.0, [])
+    fake_tr = FakeTranscriptions(fail_at="15.0-30.0", fail_times=1)
+    got = await _run(monkeypatch, fake_ff, fake_tr).transcribe(chunk, "gpt-transcribe")
+    assert [(s.start_sec, s.end_sec) for s in got] == [(0.0, 15.0), (15.0, 30.0), (30.0, 40.0)]
+    assert [c["span"] for c in fake_tr.calls].count("15.0-30.0") == 2
+    assert len(fake_tr.calls) == 4
+    assert CLIENTS["n"] == 1
+
+
+async def test_transient_error_three_times_goes_up(monkeypatch, chunk: str) -> None:
+    fake_ff = FakeFfmpeg(40.0, [])
     fake_tr = FakeTranscriptions(fail_at="15.0-30.0")
     with pytest.raises(sdk.RateLimitError):
         await _run(monkeypatch, fake_ff, fake_tr).transcribe(chunk, "gpt-transcribe")
+    assert [c["span"] for c in fake_tr.calls].count("15.0-30.0") == config.PIECE_MAX_ATTEMPTS
+    assert _left(chunk) == []
+
+
+async def test_retry_waits_before_resending(monkeypatch, chunk: str) -> None:
+    # 다시 보내기 전에 1 · 2초(첫 기다림의 1 · 2배)
+    monkeypatch.setattr(config, "PIECE_RETRY_WAIT_SEC", 1)
+    waits: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def sleep(sec: float) -> None:
+        if sec >= 1:
+            waits.append(sec)
+        await real_sleep(0)
+
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    fake_tr = FakeTranscriptions(fail_at="0.0-5.0", fail_times=2)
+    got = await _run(monkeypatch, FakeFfmpeg(5.0, []), fake_tr).transcribe(chunk, "gpt-transcribe")
+    assert len(got) == 1
+    assert waits == [1, 2]
+
+
+async def test_other_error_goes_up_at_once_and_rest_stop(monkeypatch, chunk: str) -> None:
+    # 400은 다시 보내도 같다 — 곧바로 올리고 함께 돌던 토막은 멈춘다
+    fake_ff = FakeFfmpeg(600.0, [])
+    fake_tr = FakeTranscriptions(fail_at="15.0-30.0", error=_bad_request)
+    with pytest.raises(sdk.BadRequestError):
+        await _run(monkeypatch, fake_ff, fake_tr).transcribe(chunk, "gpt-transcribe")
+    assert [c["span"] for c in fake_tr.calls].count("15.0-30.0") == 1
     assert len(fake_tr.calls) < 40  # 남은 토막은 보내지 않았다
     assert fake_tr.cancelled >= 1  # 함께 돌던 토막은 멈췄다
     assert _left(chunk) == []

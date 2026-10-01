@@ -177,6 +177,9 @@ class Config(BaseSettings):
     PIECE_SILENCE_DB: float = -30
     PIECE_SILENCE_MIN_SEC: float = 0.2
     PIECE_CONCURRENCY: int = 3
+    # 토막 하나를 일시 오류로 보내는 상한 · 다시 보내기 전 첫 기다림(다음은 두 배) — MS-006
+    PIECE_MAX_ATTEMPTS: int = 3
+    PIECE_RETRY_WAIT_SEC: float = 1
     LLM_RETRY: int = 1
     NOT_COVERED_TEXT: str = "이 영상에서는 다루지 않습니다."
     QUESTION_COUNT: int = 3

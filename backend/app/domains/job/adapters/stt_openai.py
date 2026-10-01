@@ -14,7 +14,7 @@ import contextlib
 import os
 from collections.abc import Callable
 
-from openai import AsyncOpenAI
+from openai import APIConnectionError, AsyncOpenAI, InternalServerError, RateLimitError
 
 from app.core.config import config
 from app.domains.job.schemas import SttSegment
@@ -22,6 +22,8 @@ from app.infra import ffmpeg, openai
 
 # 이보다 짧은 끝 자투리는 따로 보내지 않고 앞 토막에 붙인다 — 그 토막만 15초를 조금 넘는다
 TAIL_SEC = 1.0
+# 일시 오류 — 그 토막만 다시 보낸다(연결 · 시간 초과 · 429 · 5xx). 키 · 400 같은 것은 곧바로 올린다
+TRANSIENT = (APIConnectionError, RateLimitError, InternalServerError)
 
 
 def _pieces(total: float, mids: list[float]) -> list[tuple[float, float]]:
@@ -57,8 +59,8 @@ class SttOpenAI:
         """VA-MS-006#stt_openai.transcribe
 
         조각을 무음에서 15초 이하 토막으로 나눠 동시에 받아쓰고, 토막의 경계를 구간 시각으로
-        쓴다. 한 토막이라도 실패하면 남은 토막을 멈추고 그 예외를 그대로 올린다. 토막 파일은
-        남기지 않는다.
+        쓴다. 일시 오류는 그 토막만 몇 번 다시 보낸다. 그래도 실패하거나 다른 오류면 남은 토막을
+        멈추고 그 예외를 그대로 올린다. 토막 파일은 남기지 않는다.
 
         Args:
             path: 조각 파일(tmp 안 mp3). 토막 파일은 그 곁에 `{조각}_{번호}.mp3`로 잠깐 생긴다
@@ -74,13 +76,26 @@ class SttOpenAI:
         stem = os.path.splitext(path)[0]
         files = [f"{stem}_{i:03d}.mp3" for i in range(len(plan))]
         sem = asyncio.Semaphore(config.PIECE_CONCURRENCY)
+        client = self.client_for()  # 조각 하나에 한 번 — 키를 바꾸면 다음 조각부터
+
+        async def send(piece: str) -> dict:
+            # 일시 오류는 이 토막만 다시 — 조각 하나가 약 40토막이라 하나 때문에 조각을 버리지 않게
+            sent = 1
+            while True:
+                try:
+                    return await openai.transcribe(client, piece, model)
+                except TRANSIENT:
+                    if sent >= config.PIECE_MAX_ATTEMPTS:
+                        raise
+                    await asyncio.sleep(config.PIECE_RETRY_WAIT_SEC * 2 ** (sent - 1))
+                    sent += 1
 
         async def one(i: int) -> dict:
             async with sem:
                 start, end = plan[i]
                 await ffmpeg.cut(path, start, end, files[i])
                 try:
-                    return await openai.transcribe(self.client_for(), files[i], model)
+                    return await send(files[i])
                 finally:
                     _remove(files[i])
 
