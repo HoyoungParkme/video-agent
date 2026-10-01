@@ -217,14 +217,14 @@ def test_remaining_sec_transcribe_from_this_run_rate() -> None:
 
 def test_remaining_sec_transcribe_before_first_chunk() -> None:
     row = _transcribe_row(started_ago=20)
-    # 30 ÷ 동시 3 × 45초 + 요약 세 단계 몫
-    assert JobService.remaining_sec(row, _chunks(row, 0, 0, 30)) == 10 * 45 + 45
+    # 30 ÷ 동시 3 × 조각 하나 예상 20초 + 요약 세 단계 몫 45초
+    assert JobService.remaining_sec(row, _chunks(row, 0, 0, 30)) == 10 * 20 + 45
 
 
 def test_remaining_sec_transcribe_after_retry_ignores_old_chunks() -> None:
     # 다시 시도 — 이전 실행의 15개는 속도에 안 든다. 이번 실행에서 끝난 것이 없으면 예상치
     row = _transcribe_row(started_ago=2)
-    assert JobService.remaining_sec(row, _chunks(row, 0, 15, 30)) == 5 * 45 + 45
+    assert JobService.remaining_sec(row, _chunks(row, 0, 15, 30)) == 5 * 20 + 45
 
 
 def test_remaining_sec_transcribe_while_splitting() -> None:
@@ -351,7 +351,7 @@ async def test_estimate_local_150_minutes(db, make, env_file) -> None:
     est = await JobService(db).estimate(_video(row))
     assert (est.chunks, est.concurrency, est.stt_minutes, est.stt_cost_usd) == (15, 3, 150, 0.675)
     assert est.stt_price_per_min == 0.0045
-    assert est.seconds == 5 * 45 + 45 + 150 + 15  # 조각 · 텍스트 · 추출 · 장면 몫
+    assert est.seconds == 5 * 20 + 45 + 150 + 15  # 조각 · 텍스트 · 추출 · 장면 몫
 
 
 async def test_estimate_local_audio_counts_conversion(db, make, env_file) -> None:
@@ -366,7 +366,7 @@ async def test_estimate_local_audio_counts_conversion(db, make, env_file) -> Non
     )
     est = await JobService(db).estimate(_video(row))
     assert (est.chunks, est.stt_minutes) == (3, 30)
-    assert est.seconds == 1 * 45 + 45 + 30  # 조각 · 텍스트 · mp3 변환 몫 — 음성은 장면이 없다
+    assert est.seconds == 1 * 20 + 45 + 30  # 조각 · 텍스트 · mp3 변환 몫 — 음성은 장면이 없다
 
 
 async def test_estimate_none_when_job_exists(db, make, env_file) -> None:

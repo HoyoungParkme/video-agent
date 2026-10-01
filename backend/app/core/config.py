@@ -103,7 +103,9 @@ class Config(BaseSettings):
     STT_CONCURRENCY: int = 3
     CHUNK_MAX_ATTEMPTS: int = 3
     CHUNK_RETRY_WAIT_SEC: float = 2  # 다시 보내기 전 첫 기다림, 다음은 두 배
-    CHUNK_EST_SEC: int = 45
+    # 조각 하나(10분)의 받아쓰기 예상 — gpt-transcribe 15초 토막 동시 3이면 약 20초
+    # (실측 동시 4 · 8에 15 · 8초, 2026-10-01). 처음 45는 whisper-1(15~57초) 값
+    CHUNK_EST_SEC: int = 20
     # 요약 세 단계 합 — 추론 강도 low 실측 21~22초. 장면 몫과 합쳐 자막 있음이 '약 1분'(카드 D2)
     TEXT_EST_SEC: int = 45
     # 장면 단계 전체의 예상 · 그 단계 안에서 남은 한 장의 예상 — 실측 YouTube 5~13초(칸마다 약 1초),

@@ -39,7 +39,7 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
   await expect(inDialog(page, "2.3")).toHaveText("로컬 파일 · inbox");
   await expect(inDialog(page, "2.4")).toHaveText("길이 2:30:00");
   await expect(inDialog(page, "2.5")).toHaveText("자막 없음 · 받아쓰기 필요");
-  await expect(inDialog(page, "3.1")).toHaveText("약 8분");
+  await expect(inDialog(page, "3.1")).toHaveText("약 6분"); // 조각 하나 예상 20초(토막 받아쓰기)
   await expect(inDialog(page, "3.2")).toHaveText(
     "음성을 뽑아 15개 조각으로 나누고, 3개씩 동시에 받아씁니다.",
   );
