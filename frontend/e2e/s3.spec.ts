@@ -76,6 +76,40 @@ test("한눈에 보기 — 줄마다 Tab 한 번, 화살표로 옮기고 Enter�
   await expect(focused).toHaveAttribute("aria-label", /^챕터 3 · /);
   await expect(el(page, "13.6")).toContainText("카탈로그 후보");
   await expect(el(page, "13.6")).toContainText("← → 옮기기 · Enter 이동");
+  // 마우스로 가리켰다가 카드를 나가면 남은 쪽 — 초점이 아직 줄에 있어 초점 칸 이름이 돌아온다
+  await bars.getByRole("button", { name: /^챕터 5 · / }).hover();
+  await expect(el(page, "13.6")).toContainText("메타데이터 채우기");
+  await el(page, "3").hover();
+  await expect(el(page, "13.6")).toContainText("카탈로그 후보");
+  await expect(el(page, "13.6")).toContainText("← → 옮기기 · Enter 이동");
+});
+
+test("인사이트 점은 시각 차례로 옮긴다 — 번호가 시각 차례가 아니어도", async ({ page }) => {
+  // 인사이트 번호는 모델이 정한 차례라 시각과 다를 수 있다 — 01의 근거를 0:25:00으로 옮겨 본다
+  await page.route("**/api/videos/*/result", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    body.summary.insights[0].source_secs = [1500];
+    await route.fulfill({ response: res, json: body });
+  });
+  await openResult(page, VIDEO);
+  const focused = page.locator(":focus");
+  const dots = page.getByRole("toolbar", { name: "인사이트 점" });
+
+  // 들어오면 시각 차례의 첫 점 — 02(0:05:00)
+  const first = dots.locator('button[tabindex="0"]');
+  await expect(first).toHaveAttribute("aria-label", /^인사이트 02 · /);
+  await first.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(focused).toHaveAttribute("aria-label", /^인사이트 03 · /);
+  await page.keyboard.press("ArrowRight");
+  await expect(focused).toHaveAttribute("aria-label", /^인사이트 04 · /);
+  await page.keyboard.press("ArrowRight");
+  await expect(focused).toHaveAttribute("aria-label", "인사이트 01 · 0:25:00");
+  await page.keyboard.press("End");
+  await expect(focused).toHaveAttribute("aria-label", /^인사이트 06 · /);
+  await page.keyboard.press("Home");
+  await expect(focused).toHaveAttribute("aria-label", /^인사이트 02 · /);
 });
 
 test("마우스로 가리킨 칸 — 범례 자리에 이름, 카드를 나가면 범례", async ({ page }) => {

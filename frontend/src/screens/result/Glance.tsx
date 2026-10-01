@@ -139,28 +139,30 @@ interface Pointed {
 
 /**
  * 줄 하나의 키보드(VA-UI-001 4.6) — 줄 전체가 Tab 한 번이다(칸 하나만 tabIndex 0). ← → · Home · End는 초점만
- * 옮기고 끝에서 멈춘다. Enter · Space는 버튼 그대로 누르기다. 줄에 들어오면 고른 칸(없으면 첫 칸)에서 시작한다.
- * 초점이 칸에 오면 onPoint로 알리고, 초점이 줄을 떠나면 null을 알린다.
+ * 옮기고 끝에서 멈춘다. Enter · Space는 버튼 그대로 누르기다. order는 화살표 차례(칸 번호들)다 — 띠 · 막대는
+ * 놓인 차례 그대로, 점은 시각 차례(번호가 시각 차례가 아닐 수 있다). 줄에 들어오면 고른 칸(없으면 차례의 첫 칸)에서
+ * 시작한다. 초점이 칸에 오면 onPoint로 알리고, 초점이 줄을 떠나면 null을 알린다.
  */
-function useRow(row: Row, count: number, current: number, onPoint: (p: Pointed | null) => void) {
+function useRow(row: Row, order: number[], current: number, onPoint: (p: Pointed | null) => void) {
   const cells = useRef<(HTMLButtonElement | null)[]>([]);
   const [focused, setFocused] = useState<number | null>(null);
-  const tabbable = focused ?? Math.max(current, 0);
+  const tabbable = focused ?? (current >= 0 ? current : (order[0] ?? 0));
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const from = focused ?? tabbable;
+    const at = order.indexOf(tabbable);
+    const last = order.length - 1;
     const to =
       e.key === "ArrowRight"
-        ? Math.min(from + 1, count - 1)
+        ? Math.min(at + 1, last)
         : e.key === "ArrowLeft"
-          ? Math.max(from - 1, 0)
+          ? Math.max(at - 1, 0)
           : e.key === "Home"
             ? 0
             : e.key === "End"
-              ? count - 1
+              ? last
               : null;
-    if (to === null) return;
+    if (to === null || at < 0) return;
     e.preventDefault(); // 화살표 · Home · End로 창이 스크롤되지 않게
-    cells.current[to]?.focus();
+    cells.current[order[to]]?.focus();
   };
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
     const el: Element = e.target;
@@ -207,22 +209,32 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
   const rowCount = Math.max(0, ...rows) + 1;
   const marks = ticks(duration, long);
 
-  // 13.6에 보일 칸 — 키보드든 마우스든 마지막으로 가리킨 것
-  const [pointed, setPointed] = useState<Pointed | null>(null);
+  // 13.6에 보일 칸 — 키보드 초점 칸과 마우스가 가리킨 칸을 따로 두고, 둘이면 마지막으로 가리킨 쪽을, 그 쪽이
+  // 거두어지면(초점이 줄을 떠나거나 마우스가 카드를 나가면) 남은 쪽을 보인다(UI-4 규칙)
+  const [keyPoint, setKeyPoint] = useState<Pointed | null>(null);
+  const [mousePoint, setMousePoint] = useState<Pointed | null>(null);
+  const [recent, setRecent] = useState<"keys" | "mouse">("keys");
   const [hushed, setHushed] = useState(false);
-  const point = (p: Pointed) => {
-    setPointed(p);
+  // 마우스로 누른 초점은 가리킴(hover)이 이미 알렸다
+  const pointFocus = (p: Pointed | null) => {
+    if (p === null) setKeyPoint(null);
+    else if (p.keys) {
+      setKeyPoint(p);
+      setRecent("keys");
+      setHushed(false);
+    }
+  };
+  const pointHover = (row: Row, index: number) => {
+    setMousePoint({ row, index, keys: false });
+    setRecent("mouse");
     setHushed(false);
   };
-  // 마우스로 누른 초점은 가리킴(hover)이 이미 알렸다. 초점이 줄을 떠나면 키보드로 가리킨 이름만 거둔다
-  const pointFocus = (p: Pointed | null) => {
-    if (p === null) setPointed((cur) => (cur?.keys ? null : cur));
-    else if (p.keys) point(p);
-  };
-  const pointHover = (row: Row, index: number) => point({ row, index, keys: false });
-  // 카드를 나가면 마우스로 가리킨 이름만 거둔다 — 키보드 초점은 아직 줄에 있다
-  const leaveCard = () => setPointed((cur) => (cur?.keys ? cur : null));
-  const shown = hushed ? null : pointed;
+  const leaveCard = () => setMousePoint(null);
+  const shown = hushed
+    ? null
+    : recent === "mouse"
+      ? (mousePoint ?? keyPoint)
+      : (keyPoint ?? mousePoint);
   // 이름 줄이 떠 있는 동안 Esc로 닫는다 — 마우스로 띄웠으면 초점이 카드 밖에 있을 수 있다
   const showing = shown !== null;
   useEffect(() => {
@@ -234,21 +246,27 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
     return () => document.removeEventListener("keydown", onKey);
   }, [showing]);
 
+  // 화살표 차례 — 띠 · 막대는 놓인 차례, 점은 첫 근거 시각 차례(같으면 번호 차례)
+  const inOrder = (n: number) => Array.from({ length: n }, (_, i) => i);
+  const dotOrder = inOrder(insights.length).sort(
+    (a, b) =>
+      insights[a].source_secs[0] - insights[b].source_secs[0] || insights[a].seq - insights[b].seq,
+  );
   const band = useRow(
     "band",
-    parts.length,
+    inOrder(parts.length),
     parts.findIndex((p) => p.seq === part?.seq),
     pointFocus,
   );
   const dots = useRow(
     "dots",
-    insights.length,
+    dotOrder,
     insights.findIndex((ins) => selected !== null && ins.source_secs.includes(selected)),
     pointFocus,
   );
   const bars = useRow(
     "bar",
-    chapters.length,
+    inOrder(chapters.length),
     chapters.findIndex((c) => c.seq === chapter?.seq),
     pointFocus,
   );
@@ -256,20 +274,23 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
   const label = (p: Pointed) => {
     if (p.row === "band") {
       const it = parts[p.index];
-      return { name: `파트 ${it.seq}`, time: timeLabel(it.start_sec, long), title: it.title };
+      return it && { name: `파트 ${it.seq}`, time: timeLabel(it.start_sec, long), title: it.title };
     }
     if (p.row === "dots") {
       const it = insights[p.index];
-      return {
-        name: `인사이트 ${two(it.seq)}`,
-        time: timeLabel(it.source_secs[0], long),
-        title: it.text,
-      };
+      return (
+        it && {
+          name: `인사이트 ${two(it.seq)}`,
+          time: timeLabel(it.source_secs[0], long),
+          title: it.text,
+        }
+      );
     }
     const it = chapters[p.index];
-    return { name: `챕터 ${it.seq}`, time: timeLabel(it.start_sec, long), title: it.title };
+    return it && { name: `챕터 ${it.seq}`, time: timeLabel(it.start_sec, long), title: it.title };
   };
-  const named = shown ? label(shown) : null;
+  const found = shown ? label(shown) : undefined;
+  const named = shown && found ? { ...found, keys: shown.keys } : null;
 
   return (
     <div className="timeline" data-el="13" onMouseLeave={leaveCard}>
@@ -358,12 +379,12 @@ function Timeline({ result, long, selected, onSelect }: Omit<Props, "open" | "on
           </span>
         ))}
       </div>
-      {named && shown ? (
+      {named ? (
         <div className="timeline-pointed" data-el="13.6" aria-hidden="true">
           <span className="timeline-pointed-name">{named.name}</span>
           <span className="timeline-pointed-time mono">{named.time}</span>
           <span className="timeline-pointed-title">{named.title}</span>
-          {shown.keys && <span className="timeline-pointed-keys">← → 옮기기 · Enter 이동</span>}
+          {named.keys && <span className="timeline-pointed-keys">← → 옮기기 · Enter 이동</span>}
         </div>
       ) : (
         <div className="timeline-legend" data-el="13.5">

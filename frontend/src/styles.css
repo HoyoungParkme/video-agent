@@ -185,7 +185,7 @@ html { scroll-padding-top: calc(var(--header-h) + var(--banner-h, 0px) + var(--s
 .btn-secondary:hover { color: var(--c-ink); }
 .btn-secondary:hover:not(.is-blocked):not([aria-disabled="true"]) { background: var(--c-hover); }
 .btn-danger { padding: 0 var(--space-22); background: var(--c-danger); color: var(--c-card); }
-.btn-danger:hover { background: var(--c-danger-deep); }
+.btn-danger:hover:not([aria-disabled="true"]) { background: var(--c-danger-deep); }
 /* 막힌 주 버튼 — 초점을 받고 누르면 설정으로. disabled를 쓰지 않는다 */
 .btn-primary.is-blocked { background: var(--c-line); color: var(--c-ink-3); }
 .btn[aria-busy="true"] { cursor: progress; }
@@ -733,6 +733,8 @@ html { scroll-padding-top: calc(var(--header-h) + var(--banner-h, 0px) + var(--s
 .band-cell:first-child, .bar-cell:first-child { border-radius: var(--radius-6) 0 0 var(--radius-6); }
 .band-cell:last-child, .bar-cell:last-child { border-radius: 0 var(--radius-6) var(--radius-6) 0; }
 .band-cell:only-child, .bar-cell:only-child { border-radius: var(--radius-6); }
+/* 칸이 붙어 놓여 다음 칸이 바깥 고리를 덮는다 — 초점 칸을 위로(VA-UI-001 4.6) */
+.band-cell:focus-visible, .bar-cell:focus-visible, .dot:focus-visible { z-index: 1; }
 .cell-label { flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .band-cell { background: var(--c-chip); color: var(--c-ink-2); text-align: left; }
 .band-cell .cell-label, .bar-cell.is-wide .cell-label { padding: 0 var(--space-8); }
