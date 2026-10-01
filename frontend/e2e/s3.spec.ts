@@ -92,6 +92,24 @@ test("마우스로 가리킨 칸 — 범례 자리에 이름, 카드를 나가�
   await expect(el(page, "13.6")).toHaveCount(0);
 });
 
+test("결과 탭 — Tab 한 번에 묶고 ← →로 옮기면 바로 열린다", async ({ page }) => {
+  await openResult(page, VIDEO);
+  await expect(el(page, "7.1")).toHaveAttribute("tabindex", "0");
+  await expect(el(page, "7.2")).toHaveAttribute("tabindex", "-1");
+
+  await el(page, "7.1").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(el(page, "7.2")).toBeFocused();
+  await expect(el(page, "7.2")).toHaveAttribute("aria-selected", "true");
+  await expect(el(page, "9")).toBeVisible();
+  await expect(el(page, "7.1")).toHaveAttribute("tabindex", "-1");
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(el(page, "7.1")).toBeFocused();
+  await expect(el(page, "7.1")).toHaveAttribute("aria-selected", "true");
+  await expect(el(page, "8")).toBeVisible();
+});
+
 test("초점 고리 — 키보드 초점에 청록 2px, 헤더 밑에 숨지 않게 띄운다", async ({ page }) => {
   await page.goto("/");
   await page.keyboard.press("Tab");
