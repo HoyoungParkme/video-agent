@@ -161,6 +161,14 @@ class Config(BaseSettings):
     SILENCE_DB: float = -35
     SILENCE_MIN_SEC: float = 0.5
     CHUNK_MAX_BYTES: int = 24_000_000
+    # 받아쓰기 토막(MS-006 stt_openai) — 구간 시각이 토막 경계라 15초 이하(INFRA C3).
+    # 무음은 10분 조각보다 민감하게 찾는다(실측: 그대로면 절반을 15초에서 그냥 잘랐다).
+    # 동시 수는 조각 하나 안에서 — 조각 동시 3과 곱해 9
+    PIECE_SEC: float = 15
+    PIECE_MIN_SEC: float = 2
+    PIECE_SILENCE_DB: float = -30
+    PIECE_SILENCE_MIN_SEC: float = 0.2
+    PIECE_CONCURRENCY: int = 3
     LLM_RETRY: int = 1
     NOT_COVERED_TEXT: str = "이 영상에서는 다루지 않습니다."
     QUESTION_COUNT: int = 3
