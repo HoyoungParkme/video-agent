@@ -15,7 +15,9 @@
  * 서버에 잠깐 닿지 못하면 2초 뒤 다시 받는다.
  * 파트는 처음에 첫 파트만 펼친다. 선택된 챕터가 접힌 파트 안에 있어도 저절로 펴지 않는다. 마인드맵의 파트
  * 노드(14.4)와 챕터 목록의 파트 머리(6.5)는 같은 펼침 상태를 쓴다.
- * 질문 기록은 질문하기 탭을 처음 열 때 받는다. 추천 질문(5.1 · 10.1)을 누르면 그 탭으로 바뀌고 바로 보낸다.
+ * 질문 기록은 질문이 있으면 결과를 열 때, 없으면 질문하기 탭을 처음 열 때 받는다. 추천 질문(5.1 · 10.1)을 누르면
+ * 그 탭으로 바뀌고 바로 보낸다 — 이미 물어본 것(글이 같은 턴이 있다)은 체크와 5.2 '답 보기 →'(칩은 체크만)이고, 누르면
+ * 그 턴(같은 글이 여럿이면 가장 최근)을 대화 목록 맨 위로 올리고 보내지 않는다. 기록을 받는 동안에는 탭만 바꾼다(공통 1.8).
  * 탭을 오가도 대화 목록은 읽던 위치다 — 떠난 사이 새 턴 · 답 · 실패가 생겼으면 끝(UI-4 규칙).
  * 기록과 답은 id로 합친다 — 기록을 받는 사이에 온 답도 한 번씩 보인다.
  * 답을 기다리는 동안이나 키가 막혔을 때는 보내지 않는다(알약은 탭만 바꾼다). 실패한 질문은 저장되지 않아
@@ -221,6 +223,15 @@ function ChapterCard({
   );
 }
 
+/** 이미 물어본 추천 질문의 체크(5.1 · 10.1) — 색은 알약 · 칩의 아이콘 색(청록) */
+function CheckIcon({ size }: { size: number }) {
+  return (
+    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 /**
  * 질문 턴(9.2) — 오른쪽 검은 말풍선(9.3)과 답(9.4). 근거가 있으면 '근거'와 시각 칩(9.5),
  * 없으면 흐린 답과 '영상에 없는 내용'(9.6). 요소 번호는 첫 턴에만 붙인다.
@@ -238,7 +249,7 @@ function TurnView({
 }) {
   const cited = turn.cited_secs.length > 0;
   return (
-    <div className="turn" data-el={first ? "9.2" : undefined}>
+    <div className="turn" data-turn={turn.id} data-el={first ? "9.2" : undefined}>
       <div className="turn-question" data-el={first ? "9.3" : undefined}>
         {turn.question}
       </div>
@@ -288,8 +299,10 @@ export default function Result({ id }: { id: number }) {
   const [dialog, setDialog] = useState<"export" | "delete" | "infographic" | "view" | null>(null);
   // 인포그래픽 맡기기가 서버에서 거절된 이유(키 확인 실패 등) — 행이 없어 카드가 들고 있다
   const [rejected, setRejected] = useState<string | null>(null);
-  // 질문 기록 — 질문하기 탭을 처음 열 때 받는다(받기 전에는 null)
+  // 질문 기록 — 질문이 있으면 결과를 열 때, 없으면 질문하기 탭을 처음 열 때 받는다(받기 전에는 null)
   const [turns, setTurns] = useState<ChatTurn[] | null>(null);
+  // 이미 물어본 추천 질문을 눌렀다 — 그 턴을 대화 목록 맨 위로 옮길 때까지 들고 있다(옮기면 비운다)
+  const [goTo, setGoTo] = useState<{ turn: number } | null>(null);
   // 이 화면에서 받은 답 — 기록이 답보다 늦게 오거나 저장 전에 읽은 것이어도 받을 때 합친다
   const answered = useRef<ChatTurn[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -407,9 +420,11 @@ export default function Result({ id }: { id: number }) {
     if (!shown) box.scrollTop = row.offsetTop - box.clientHeight / 2 + row.clientHeight / 2;
   }, [segSeq, picks]);
 
-  // 질문하기 탭을 처음 열 때 기록을 받는다 — 잠깐 닿지 못하면 다시
+  // 기록을 받는다 — 질문이 있으면 결과를 열 때(이미 물어본 추천 질문을 가르려고, 공통 1.8), 없으면 질문하기 탭을
+  // 처음 열 때. 잠깐 닿지 못하면 다시
+  const needHistory = (result?.video.chat_turn_count ?? 0) > 0 || tab === "chat";
   useEffect(() => {
-    if (tab !== "chat" || turns !== null) return;
+    if (turns !== null || !needHistory) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
@@ -425,16 +440,30 @@ export default function Result({ id }: { id: number }) {
       alive = false;
       clearTimeout(timer);
     };
-  }, [tab, turns, id]);
+  }, [needHistory, turns, id]);
 
   // 질문하기 탭으로 돌아오면 — 떠난 사이 새 턴 · 대기 · 실패가 생겼으면 끝, 아니면 읽던 위치 그대로다. 숨긴
   // 패널의 스크롤 위치는 브라우저가 지킨다 — 스크립트(8)와 같다(UI-4 규칙, Chromium 진짜 스택 확인)
   useEffect(() => {
     const box = chatList.current;
     if (tab !== "chat" || !box || !chatMissed.current) return;
-    box.scrollTop = box.scrollHeight;
     chatMissed.current = false;
-  }, [tab]);
+    // 이미 물어본 추천 질문을 눌러 왔으면 끝이 아니라 그 턴으로 간다(아래 효과)
+    if (goTo) return;
+    box.scrollTop = box.scrollHeight;
+  }, [tab, goTo]);
+
+  // 이미 물어본 추천 질문 — 그 턴을 대화 목록 맨 위로(공통 1.8). 그 턴이 그려진 뒤에 돌고, 옮기면 비운다
+  useEffect(() => {
+    const box = chatList.current;
+    if (!goTo || tab !== "chat" || !box) return;
+    const row = box.querySelector<HTMLElement>(`[data-turn="${goTo.turn}"]`);
+    if (!row) return;
+    chatMissed.current = false;
+    const pad = parseFloat(getComputedStyle(box).paddingTop) || 0;
+    box.scrollTop += row.getBoundingClientRect().top - box.getBoundingClientRect().top - pad;
+    setGoTo(null);
+  }, [goTo, tab, turns]);
 
   // 새 턴 · 대기 · 실패가 생기면 대화 목록의 끝을 보인다. 숨어 있으면(높이 0) 돌아올 때 — 창 전체는 움직이지 않는다
   useEffect(() => {
@@ -476,8 +505,14 @@ export default function Result({ id }: { id: number }) {
     window.history.replaceState(null, "", url);
   };
   const keyBlocked = settings ? keyBlocks(settings.key) : false;
+  // 질문 수 — 저장된 수 + 이 화면에서 늘어난 수(배지 7.3과 같다)
+  const turnCount = video.chat_turn_count + asked;
   const keyNote = settings ? keyNotice(settings.key) : null;
   const waiting = pending !== null && pending.error === null;
+  // 이미 물어본 추천 질문 — 글(앞뒤 공백 뺌)이 같은 질문의 가장 최근 턴(공통 1.8)
+  const askedTurn = new Map<string, number>();
+  for (const t of turns ?? []) askedTurn.set(t.question.trim(), t.id);
+  const firstAsked = result.suggested_questions.findIndex((q) => askedTurn.has(q.text.trim()));
 
   // 질문 보내기 — 입력칸 · 추천 질문 · 다시 시도가 같은 길. 기다리는 동안이나 키가 막혔으면 보내지 않는다
   async function ask(question: string) {
@@ -498,6 +533,16 @@ export default function Result({ id }: { id: number }) {
       }
       setPending({ question: q, error: failureText(e) });
     }
+  }
+
+  // 추천 질문(5.1 · 10.1) — 질문하기 탭으로 바꾸고 보낸다. 이미 물어본 것은 그 답으로 가고 보내지 않는다(기다리는
+  // 동안이나 키가 막혀도 같다). 기록을 받는 동안에는 이미 물어본 것인지 몰라 탭만 바꾼다
+  function pick(text: string) {
+    setTab("chat");
+    if (turns === null && turnCount > 0) return;
+    const turn = askedTurn.get(text.trim());
+    if (turn !== undefined) setGoTo({ turn });
+    else void ask(text);
   }
 
   function submit() {
@@ -651,24 +696,50 @@ export default function Result({ id }: { id: number }) {
             이런 걸 물어볼 수 있어요
           </h2>
           <div className="pills">
-            {result.suggested_questions.map((q, i) => (
-              // 질문하기 탭으로 바꾸고 바로 보낸다 — 보낼 수 없으면 탭만 바뀐다
-              <button
-                key={q.seq}
-                type="button"
-                className="pill"
-                data-el={i === 0 ? "5.1" : undefined}
-                onClick={() => {
-                  setTab("chat");
-                  void ask(q.text);
-                }}
-              >
-                <svg className="icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
-                </svg>
-                <span>{q.text}</span>
-              </button>
-            ))}
+            {result.suggested_questions.map((q, i) => {
+              const done = askedTurn.has(q.text.trim());
+              return (
+                // 질문하기 탭으로 바꾸고 바로 보낸다 — 이미 물어본 것은 그 답으로, 보낼 수 없으면 탭만 바뀐다
+                <button
+                  key={q.seq}
+                  type="button"
+                  className="pill"
+                  data-el={i === 0 ? "5.1" : undefined}
+                  aria-label={done ? `${q.text} — 이미 물어봤어요, 누르면 그 답으로` : undefined}
+                  onClick={() => pick(q.text)}
+                >
+                  {done ? (
+                    <CheckIcon size={16} />
+                  ) : (
+                    <svg
+                      className="icon"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+                    </svg>
+                  )}
+                  <span>{q.text}</span>
+                  {done && (
+                    <span className="pill-answer" data-el={i === firstAsked ? "5.2" : undefined}>
+                      답 보기
+                      <svg
+                        className="icon"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path d="M5 12h14" />
+                        <path d="m12 5 7 7-7 7" />
+                      </svg>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -802,7 +873,7 @@ export default function Result({ id }: { id: number }) {
               </svg>
               질문하기
               <span className="tab-count" data-el="7.3">
-                {video.chat_turn_count + asked}
+                {turnCount}
               </span>
             </button>
           </div>
@@ -892,17 +963,24 @@ export default function Result({ id }: { id: number }) {
             </div>
             <div className="chat-input" data-el="10">
               <div className="chat-chips">
-                {result.suggested_questions.map((q, i) => (
-                  <button
-                    key={q.seq}
-                    type="button"
-                    className="chat-chip"
-                    data-el={i === 0 ? "10.1" : undefined}
-                    onClick={() => void ask(q.text)}
-                  >
-                    {q.text}
-                  </button>
-                ))}
+                {result.suggested_questions.map((q, i) => {
+                  const done = askedTurn.has(q.text.trim());
+                  return (
+                    <button
+                      key={q.seq}
+                      type="button"
+                      className={`chat-chip${done ? " is-asked" : ""}`}
+                      data-el={i === 0 ? "10.1" : undefined}
+                      aria-label={
+                        done ? `${q.text} — 이미 물어봤어요, 누르면 그 답으로` : undefined
+                      }
+                      onClick={() => pick(q.text)}
+                    >
+                      {done && <CheckIcon size={14} />}
+                      {q.text}
+                    </button>
+                  );
+                })}
               </div>
               {keyNote && (
                 <p className="chat-key" data-el="10.2">
@@ -971,7 +1049,7 @@ export default function Result({ id }: { id: number }) {
       {dialog === "export" && (
         <Export
           video={video}
-          turns={video.chat_turn_count + asked}
+          turns={turnCount}
           onClose={() => setDialog(null)}
           onDone={(message) => {
             setDialog(null);
@@ -1008,7 +1086,7 @@ export default function Result({ id }: { id: number }) {
       {dialog === "delete" && (
         <Delete
           video={video}
-          turns={video.chat_turn_count + asked}
+          turns={turnCount}
           onClose={() => setDialog(null)}
           onDeleted={() => {
             markListFocus();
