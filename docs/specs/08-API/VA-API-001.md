@@ -14,7 +14,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 브라우저(Next.js)가 부르는 REST API다. 와이어프레임의 화면 9개([[VA-UI-002]])가 서버에서 받아야 하는 값과 서버에 시켜야 하는 일을 엔드포인트로 옮겼다. 입구는 웹 하나뿐이라 MCP 문서는 없다([[VA-INFRA-001#C10]]).
 
-엔드포인트는 23개, 묶음은 여섯이다 — 설정과 키 · inbox · 영상 · 작업 · 결과와 내보내기 · 대화. 결과를 그림으로 보이는 요구와 로컬 파일 끌어 놓기(2026-09-29, [[VA-PRD-001#R1]] · [[VA-PRD-001#R11]] ~ [[VA-PRD-001#R13]])로 일곱을 더했다 — 파일 올리기 하나(영상 묶음), 장면 셋 · 인포그래픽 셋(결과 묶음). 한눈에 보기는 이미 있는 결과로 화면이 그려 입구가 없다. 뒤 넷은 [[VA-DOM-001]] 4장의 묶음(video · job · analysis · chat)과 같고, 설정과 inbox는 도메인이 아니라 인프라 값을 읽고 쓰는 곳이다([[VA-INFRA-001#C4]], [[VA-INFRA-001#C6]]).
+엔드포인트는 24개, 묶음은 여섯이다 — 설정과 키 · inbox · 영상 · 작업 · 결과와 내보내기 · 대화. 결과를 그림으로 보이는 요구와 로컬 파일 끌어 놓기(2026-09-29, [[VA-PRD-001#R1]] · [[VA-PRD-001#R11]] ~ [[VA-PRD-001#R13]])로 일곱을 더했다. 영상 같이 보기(2026-10-02, [[VA-PRD-001#R14]])로 원본 재생 [[#GET/api/videos/{id}/media]] 하나를 더했다 — 파일 올리기 하나(영상 묶음), 장면 셋 · 인포그래픽 셋(결과 묶음). 한눈에 보기는 이미 있는 결과로 화면이 그려 입구가 없다. 뒤 넷은 [[VA-DOM-001]] 4장의 묶음(video · job · analysis · chat)과 같고, 설정과 inbox는 도메인이 아니라 인프라 값을 읽고 쓰는 곳이다([[VA-INFRA-001#C4]], [[VA-INFRA-001#C6]]).
 
 이 문서가 정하는 것: 경로·메서드·요청과 응답의 모양·에러·호출 순서. 정하지 않는 것: 서비스 메서드의 안(MINISPEC), 테이블(ERD), 화면 문구(와이어프레임).
 
@@ -59,7 +59,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 | type | status | 언제 | 확장 필드 | 근거 |
 |---|---|---|---|---|
-| `urn:va:not-found` | 404 | 영상·작업·inbox 파일·장면·인포그래픽 그림 없음 | `resource`(`video` · `job` · `inbox_file` · `frame` · `infographic`) · `id` | [[VA-UI-002#UI-3]] 규칙(영상이 없으면 UI-1로) |
+| `urn:va:not-found` | 404 | 영상·작업·inbox 파일·장면·인포그래픽 그림·재생할 원본 없음 | `resource`(`video` · `job` · `inbox_file` · `frame` · `infographic` · `media`) · `id` | [[VA-UI-002#UI-3]] 규칙(영상이 없으면 UI-1로) |
 | `urn:va:validation` | 422 | 요청 본문 형식 오류(빈 질문, 모르는 모델 값, 필수 필드 없음) | `errors: [{field, message}]` | — |
 | `urn:va:key-missing` | 503 | 저장된 키가 없다 | — | [[VA-UC-001#UC-H8]], [[VA-PRD-001#N3]] |
 | `urn:va:key-invalid` | 503 | 저장된 키가 마지막 확인에 실패했다(분석 시작·다시 시도·질문에서). 마지막 실패가 `network`였으면 그 자리에서 다시 확인한 결과다 | `reason_kind`(`format` · `auth` · `quota` · `network`) · `reason` · `checked_at` | [[VA-UC-001#UC-H8]] 3a |
@@ -78,6 +78,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 | `urn:va:no-space` | 507 | 올린 파일을 둘 디스크 여유가 모자라다. 본문을 받기 전에 판정한다 | `needed_bytes` · `free_bytes` | [[VA-UC-001#UC-H2]] 1d |
 | `urn:va:upload-incomplete` | 400 | 받은 본문이 `Content-Length`보다 짧다(올리다 끊김). 받은 부분은 지웠다 | `received_bytes` · `expected_bytes` | [[VA-UC-001#UC-H2]] 1c |
 | `urn:va:frames-unavailable` | 409 | 장면을 만들 수 없는 영상에 장면 채우기를 시킴(음성 파일 · 원본을 찾을 수 없는 로컬 파일) | `reason` | [[VA-UC-001#UC-S7]] 1a · 2a |
+| `urn:va:media-unavailable` | 409 | 앱이 원본을 내보내지 않는 영상의 재생을 청함 — YouTube(브라우저가 YouTube 플레이어로 본다) · 올린 파일(분석이 끝나면 사본을 지운다) | `reason_kind`(`youtube` · `uploaded`) | [[VA-UC-001#UC-H3]] 6a · 6b, [[VA-INFRA-001#C13]] |
 | `urn:va:infographic-busy` | 409 | 이 영상의 인포그래픽을 이미 그리는 중인데 또 시킴 | — | [[VA-UC-001#UC-H9]] |
 | `urn:va:internal` | 500 | 예상 못 한 오류. `detail`은 고정 문구, 원인은 로그만 | — | — |
 
@@ -85,7 +86,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 **problem+json이 아닌 오류 응답은 web 프록시가 대신 답한 것이다.** api는 늘 problem+json으로 답한다. 평문 오류(500 'Internal Server Error')는 web 프록시가 api 대신 답한 것이다 — api가 꺼졌거나, 프록시 시간 제한(60초, [[VA-DOM-002]] 6장)을 넘었다. 프록시는 둘을 같은 500으로 답해 가를 수 없다. 화면은 fetch 자체가 실패한 것과 같이 '서버에 연결할 수 없음'으로 다룬다([[VA-UI-002#UI-1]] 규칙, 카드 B5). 60초를 넘는 요청이 없게 하는 것이 먼저다 — 남은 하나는 큰 로컬 파일 등록의 해시다(VA-MS-001 미결, 카드 C).
 
-**에러 21종마다 라우터 테스트가 있다.** HTTP 응답으로 `type` · `status` · `content-type: application/problem+json` · 확장 필드를 본다. 화면이 `type`으로 입력 오류 · 배너 · 시작 불가 판을 고르기 때문이다(카드 B5).
+**에러 22종마다 라우터 테스트가 있다.** HTTP 응답으로 `type` · `status` · `content-type: application/problem+json` · 확장 필드를 본다. 화면이 `type`으로 입력 오류 · 배너 · 시작 불가 판을 고르기 때문이다(카드 B5).
 
 **삭제 실패에는 종류가 없다.** [[VA-UI-002#UI-6]]의 실패 한 줄('분석 결과를 지우지 못했어요 — {이유}')은 `internal`의 `detail`을 쓴다. 지우기가 실패하는 경우는 디스크·DB 오류뿐이라 따로 가를 것이 없다.
 
@@ -406,6 +407,60 @@ YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영�
       '404':
         $ref: '#/components/responses/Problem'
       '500':
+        $ref: '#/components/responses/Problem'
+```
+
+#### GET/api/videos/{id}/media 원본 재생
+
+inbox에서 고른 로컬 영상 · 음성 파일의 원본을 그대로 준다. UI-4 플레이어(16)의 `<video>` · `<audio>`가 부른다([[VA-UI-002#UI-4]] 규칙). 변환하지 않는다([[VA-INFRA-001#C13]]).
+
+- 구간 요청(`Range: bytes=…`)을 받는다 — 206과 `Content-Range`. 없으면 200으로 전부. `Accept-Ranges: bytes`. 브라우저가 필요한 부분만 가져가 3시간 파일도 처음부터 다 받지 않는다.
+- HEAD도 받는다 — 재생이 실패했을 때 화면이 원본이 있는지 물어 까닭(원본 없음 · 형식)을 가른다.
+- `Content-Type`은 확장자로 정한다 — mp4 `video/mp4` · mov `video/quicktime` · mkv `video/x-matroska` · webm `video/webm` · mp3 `audio/mpeg` · m4a `audio/mp4` · wav `audio/wav`.
+- 경로는 영상 행에서만 정한다 — 요청에서 경로를 받지 않아 inbox 밖을 열 수 없다.
+- YouTube 영상 · 올린 파일은 409 `urn:va:media-unavailable`(`reason_kind`). inbox에서 원본을 옮기거나 지웠으면 404 `urn:va:not-found`(`resource: media`). 영상이 없으면 404(`resource: video`).
+- 키 없음 배너가 떠 있어도 막지 않는다. OpenAI로 나가는 것이 없다. 캐시는 브라우저 기본(`ETag` · `Last-Modified`)을 따른다.
+
+화면 [[VA-UI-002#UI-4]] · 유스케이스 [[VA-UC-001#UC-H3]] 6 · 6b · 6c · 서비스 `VideoService.media`
+
+```yaml
+/api/videos/{id}/media:
+  get:
+    summary: 원본 재생 — inbox 원본을 구간으로 준다
+    parameters:
+    - $ref: '#/components/parameters/id'
+    - in: header
+      name: Range
+      required: false
+      schema:
+        type: string
+      description: 'bytes={시작}-{끝}'
+    responses:
+      '200':
+        description: 원본 전부
+        content:
+          video/*:
+            schema:
+              type: string
+              format: binary
+          audio/*:
+            schema:
+              type: string
+              format: binary
+      '206':
+        description: 요청한 구간
+        content:
+          video/*:
+            schema:
+              type: string
+              format: binary
+          audio/*:
+            schema:
+              type: string
+              format: binary
+      '404':
+        $ref: '#/components/responses/Problem'
+      '409':
         $ref: '#/components/responses/Problem'
 ```
 
@@ -1815,6 +1870,9 @@ components:
 
 **15. 그림은 api가 파일로 준다 — 결정: 장면 · 인포그래픽은 `…/frames/{seq}` · `…/infographic/image`의 JPEG · PNG.**
 이유: 브라우저는 web만 보고 web이 `/api/*`를 넘기므로(1장) 그림도 같은 길로 받는다. base64로 JSON에 넣으면 결과 응답이 수백 KB씩 커진다. 그림 주소는 응답의 `url` 그대로 쓴다.
+
+**16. 원본 재생은 원본 그대로 — 결정: [[#GET/api/videos/{id}/media]]가 구간 응답으로 준다. 변환하지 않는다.**
+이유: 브라우저의 `<video>` · `<audio>`는 구간 요청으로 필요한 부분만 가져가므로 3시간 파일도 바로 재생된다. 변환(HLS 등)은 CPU와 디스크를 쓰고, 브라우저가 못 읽는 형식은 드물어 알리기만 한다. YouTube는 api를 거치지 않는다 — 브라우저가 YouTube 플레이어로 본다([[VA-INFRA-001#C13]]).
 
 **10. `Video.status`를 응답에 둔다 — 결정: 최근 작업에서 계산한 값.**
 이유: 화면이 갈 곳을 정하는 분기가 다섯 곳(UI-1 분석 버튼, 목록 행, UI-3 · UI-4 주소 진입, UI-6)이고 모두 같은 판정이다. 작업 유무와 상태를 화면마다 조합하지 않게 한 값으로 준다.
