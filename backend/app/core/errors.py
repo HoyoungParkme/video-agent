@@ -200,7 +200,7 @@ async def _on_unexpected(_: Request, exc: Exception) -> JSONResponse:
 
 
 def install(app: FastAPI) -> None:
-    """앱에 핸들러 셋을 건다 — 21종 · 요청 형식 오류 · 포괄."""
+    """앱에 핸들러 셋을 건다 — 22종 · 요청 형식 오류 · 포괄."""
     app.add_exception_handler(Problem, _on_problem)
     app.add_exception_handler(RequestValidationError, _on_validation)
     app.add_exception_handler(Exception, _on_unexpected)
