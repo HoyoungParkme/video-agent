@@ -265,31 +265,39 @@ test("고른 시각은 주소에 — 소수 시각 · 새로 고침 · 설정에
 const PLAYER = "https://youtu.be/e2ePlayer01";
 const IFRAME_API = "https://www.youtube.com/iframe_api";
 const FIXTURE = path.join(__dirname, "fixtures", "player.webm");
-// 가짜 IFrame Player API — 만든 플레이어와 부른 것을 적는다. __ytError가 있으면 준비 뒤 그 오류를 낸다
+// 가짜 IFrame Player API — 만든 플레이어와 부른 것을 적는다. 진짜처럼 재생 함수는 준비(onReady) 때 생긴다.
+// __ytDelay(ms)만큼 준비를 늦추고, __ytError가 있으면 준비 뒤 그 오류를 낸다
 const FAKE_YT = `
-window.__yt = { made: [], calls: [] };
+window.__yt = { made: [], calls: [], ready: false };
 window.YT = { Player: function (el, opts) {
   window.__yt.made.push({ videoId: opts.videoId, host: opts.host, start: opts.playerVars.start });
   const box = document.createElement("div");
   box.className = "fake-yt";
   el.replaceWith(box);
   const self = this;
-  this.seekTo = (s) => window.__yt.calls.push("seekTo " + s);
-  this.playVideo = () => window.__yt.calls.push("play");
-  this.pauseVideo = () => window.__yt.calls.push("pause");
-  this.getPlayerState = () => 1;
   this.destroy = () => {};
   setTimeout(() => {
+    self.seekTo = (s) => window.__yt.calls.push("seekTo " + s);
+    self.playVideo = () => window.__yt.calls.push("play");
+    self.pauseVideo = () => window.__yt.calls.push("pause");
+    self.getPlayerState = () => 1;
+    window.__yt.ready = true;
     opts.events.onReady({ target: self });
     if (window.__ytError) opts.events.onError({ data: window.__ytError });
-  }, 0);
+  }, window.__ytDelay || 0);
 } };
 if (window.onYouTubeIframeAPIReady) window.onYouTubeIframeAPIReady();
 `;
 interface FakeYT {
-  __yt: { made: { videoId: string; host: string; start: number }[]; calls: string[] };
+  __yt: {
+    made: { videoId: string; host: string; start: number }[];
+    calls: string[];
+    ready: boolean;
+  };
   __ytError?: number;
+  __ytDelay?: number;
 }
+const yt = (page: Page) => page.evaluate(() => (window as unknown as FakeYT).__yt);
 const chip = (page: Page, t: string) =>
   page.getByRole("button", { name: `${t} 위치의 스크립트로 이동`, exact: true });
 
@@ -312,7 +320,7 @@ test("YouTube — 누르기 전에는 YouTube로 아무것도 가지 않고, 누
   await expect(el(page, "16.6")).toHaveText("YouTube · 20:00부터 재생 중");
   await expect(el(page, "16.4").locator(".fake-yt")).toHaveCount(1);
   expect(hits).toEqual([IFRAME_API]);
-  expect(await page.evaluate(() => (window as unknown as FakeYT).__yt.made)).toEqual([
+  expect((await yt(page)).made).toEqual([
     { videoId: "e2ePlayer01", host: "https://www.youtube-nocookie.com", start: 1200 },
   ]);
 
@@ -324,13 +332,7 @@ test("YouTube — 누르기 전에는 YouTube로 아무것도 가지 않고, 누
   await expect(el(page, "16.6")).toHaveText("영상 — 펼치면 이 자리에서 재생해요");
   await chip(page, "20:00").click();
   await el(page, "16.7").click();
-  expect(await page.evaluate(() => (window as unknown as FakeYT).__yt.calls)).toEqual([
-    "play",
-    "seekTo 1800",
-    "play",
-    "pause",
-    "play",
-  ]);
+  expect((await yt(page)).calls).toEqual(["play", "seekTo 1800", "play", "pause", "play"]);
 });
 
 test("YouTube를 재생할 수 없을 때 — 퍼가기 막힘은 원본 영상 열기, 연결 안 됨은 다시 시도", async ({
@@ -355,6 +357,25 @@ test("YouTube를 재생할 수 없을 때 — 퍼가기 막힘은 원본 영상 
   await page.route(IFRAME_API, (r) => r.fulfill({ contentType: "text/javascript", body: FAKE_YT }));
   await el(page, "16.9").click(); // 다시 시도 — 재생 판을 누른 것과 같다
   await expect(el(page, "16.6")).toHaveText("YouTube · 00:00부터 재생 중");
+});
+
+test("YouTube를 불러오는 사이에 접으면 준비돼도 재생하지 않고, 펼치면 그때 재생한다", async ({
+  page,
+}) => {
+  await page.route(IFRAME_API, (r) => r.fulfill({ contentType: "text/javascript", body: FAKE_YT }));
+  await openResult(page, PLAYER);
+  await page.evaluate(() => {
+    (window as unknown as FakeYT).__ytDelay = 1500;
+  });
+  await el(page, "16.1").click();
+  await expect(el(page, "16.6")).toHaveText("YouTube · 불러오는 중");
+  await el(page, "16.7").click(); // 아직 재생 함수가 없다 — 접기만 한다
+  await expect(el(page, "16.6")).toHaveText("영상 — 펼치면 이 자리에서 재생해요");
+  await expect.poll(async () => (await yt(page)).ready).toBe(true);
+  expect((await yt(page)).calls).toEqual([]);
+  await el(page, "16.7").click();
+  await expect(el(page, "16.6")).toHaveText("YouTube · 00:00부터 재생 중");
+  expect((await yt(page)).calls).toEqual(["play"]);
 });
 
 test("로컬 원본 — 그 시각부터 재생, 접으면 멈추고 펼치면 이어 보며, 원본을 옮기면 알린다", async ({

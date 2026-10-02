@@ -152,6 +152,8 @@ export default function Player({ video, frame, start, long, ref }: Props) {
   const media = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   // 접을 때 재생 중이었는가 — 펼치면 이어 본다
   const resume = useRef(false);
+  // 접혀 있는가 — YouTube가 준비됐을 때(onReady) 읽는다. 상태는 그 함수가 만들어질 때의 값이라 따로 둔다
+  const folded = useRef(false);
 
   // 화면을 떠나면 YouTube 플레이어를 치운다
   useEffect(() => () => yt.current?.destroy(), []);
@@ -175,10 +177,12 @@ export default function Player({ video, frame, start, long, ref }: Props) {
         videoId: video.source_id,
         width: "100%",
         height: "100%",
-        playerVars: { start: Math.floor(sec), autoplay: 1, playsinline: 1, rel: 0 },
+        // 저절로 재생(autoplay)은 두지 않는다 — 불러오는 사이에 접었으면 재생하지 않아야 한다
+        playerVars: { start: Math.floor(sec), playsinline: 1, rel: 0 },
         events: {
           onReady: (e) => {
-            e.target.playVideo();
+            if (folded.current) resume.current = true;
+            else e.target.playVideo();
             setPhase("playing");
           },
           // 101 · 150 — 올린 사람이 다른 사이트의 재생을 막았다. 그 밖(지워짐 · 비공개 · 재생 오류)
@@ -226,8 +230,10 @@ export default function Player({ video, frame, start, long, ref }: Props) {
   function toggle() {
     if (open) {
       if (kind === "youtube") {
-        resume.current = yt.current?.getPlayerState() === YT_PLAYING;
-        yt.current?.pauseVideo();
+        // 준비되기 전(불러오는 중)에는 재생 함수가 아직 없다 — 준비되면 onReady가 재생하지 않고 남긴다
+        const ready = phase === "playing";
+        resume.current = !ready || yt.current?.getPlayerState() === YT_PLAYING;
+        if (ready) yt.current?.pauseVideo();
       } else {
         resume.current = media.current ? !media.current.paused : false;
         media.current?.pause();
@@ -236,6 +242,7 @@ export default function Player({ video, frame, start, long, ref }: Props) {
       if (kind === "youtube") yt.current?.playVideo();
       else void media.current?.play();
     }
+    folded.current = open;
     setOpen(!open);
   }
 
