@@ -87,9 +87,9 @@ app/
 │   └── settings_router.py  /api/settings 셋. core에 라우터가 있는 유일한 곳 (아래 「기본형과 다른 점」)
 │
 ├── domains/
-│   ├── video/              영상 — inbox · 올리기 · 등록 · 목록 · 삭제. 올린 사본의 수명도 여기
-│   │   ├── router.py       /api/inbox · /api/videos · /api/uploads(본문 스트림) · /api/videos/{id} (GET · DELETE) · /api/videos/{id}/media(원본 재생 — 구간 응답)
-│   │   ├── schemas.py      Video · VideoSummary · VideoDetail · RegisterRequest · RegisterResponse · InboxListing
+│   ├── video/              영상 — inbox · Google Drive · 올리기 · 등록 · 목록 · 삭제. 올린 사본의 수명도 여기
+│   │   ├── router.py       /api/inbox · /api/drive(연결 폴더 목록) · /api/videos · /api/uploads(본문 스트림) · /api/videos/{id} (GET · DELETE) · /api/videos/{id}/media(원본 재생 — 구간 응답)
+│   │   ├── schemas.py      Video · VideoSummary · VideoDetail · RegisterRequest · RegisterResponse · InboxListing · DriveListing
 │   │   ├── service.py      VideoService
 │   │   ├── crud.py
 │   │   ├── models.py       Video
@@ -138,7 +138,7 @@ app/
 │
 ├── shared/                 두 묶음 이상이 쓰는 순수 유틸(규약 1.9)
 │   ├── captions.py         yt-dlp 정보 → 자막 트랙(키 · 언어 · 종류). YouTube 정보(video)와 자막 가져오기(job) 두 어댑터가 같은 규칙을 쓴다(MINISPEC 어댑터 `captions.pick`)
-│   ├── sources.py          로컬 영상의 원본 경로 — inbox 파일이면 inbox/{이름}, 올린 사본이면 data/uploads/{SHA-256}.{확장자}.
+│   ├── sources.py          로컬 영상의 원본 경로 — inbox 파일이면 inbox/{이름}, Google Drive 파일이면 drive/{상대 경로}(원본이 `drive:`로 시작), 올린 사본이면 data/uploads/{SHA-256}.{확장자}.
 │   │                       올리기 · 지우기(video) · 음성 추출(job) · 장면(analysis)이 같은 규칙을 쓴다(MINISPEC 어댑터 `sources.local_path`)
 │   ├── timecode.py         초 ↔ `mm:ss` · `h:mm:ss`. 내보내기(analysis)와 OpenAI 어댑터 둘(analysis · chat)이 쓴다(MINISPEC 어댑터 `timecode.label` · MINISPEC 어댑터 `timecode.parse`)
 │   └── tokens.py           스크립트 → 토큰 어림. 요약 상한(analysis)과 대화 상한(chat)이 같은 식을 쓴다(MINISPEC 어댑터 `tokens.estimate`)
@@ -192,6 +192,7 @@ frontend/
     ├── screens/               화면 하나 = 파일 하나. 와이어프레임 항목과 1:1 —
     │   │                      Home(UI-1) · Estimate(UI-2) · Progress(UI-3) · Result(UI-4) · Settings(UI-5) · Delete(UI-6) · Export(UI-7) ·
     │   │                      Infographic(UI-8) · InfographicView(UI-9)
+    │   ├── home/              UI-1만 쓰는 부분 — DriveList(4.20 ~ 4.25 Google Drive에서 고르기: 고를 곳 · 경로 · 폴더 행 · 영상 행 · 상태, [[VA-INFRA-001#C14]])
     │   └── result/            UI-4만 쓰는 부분 — Glance(12 ~ 14 한눈에 보기: 막대 · 파트 띠 · 점 · 마인드맵) · InfographicCard(15) ·
     │                          Player(16 영상 같이 보기: 재생 판 · YouTube IFrame Player API · <video> · <audio>, [[VA-INFRA-001#C13]])
     ├── components/            두 화면 이상이 쓰는 조각만. 와이어프레임 1장 공통 컴포넌트와 1:1 —
@@ -252,9 +253,9 @@ classDiagram
 - `Video` 1 — 0..* `AnalysisJob`
 - `Video` 1 — 0..1 `Transcript` · 0..1 `Summary` · 0..* `Part` · 0..* `Chapter` · 0..3 `SuggestedQuestion` · 0..* `ChatTurn` · 0..1 `Infographic`
 
-`source_id`는 YouTube면 영상 ID(11자), 로컬이면 파일 내용 SHA-256. unique. `origin`은 URL, inbox 파일 이름 또는 올린 파일의 원래 이름. `channel` · `caption_language` · `caption_kind`는 로컬이면 null.
+`source_id`는 YouTube면 영상 ID(11자), 로컬이면 파일 내용 SHA-256 — Google Drive 파일은 크기 + 앞뒤 16MB의 SHA-256([[VA-INFRA-001#C14]]). unique. `origin`은 URL, inbox 파일 이름, `drive:{연결 폴더 안 상대 경로}`(Google Drive) 또는 올린 파일의 원래 이름. `channel` · `caption_language` · `caption_kind`는 로컬이면 null.
 
-**`uploaded`는 로컬 영상의 원본 자리다**([[VA-DOM-001#Video]]) — false면 inbox 파일(앱은 읽기만 한다), true면 올린 사본 `data/uploads/{source_id}.{origin의 확장자}`(앱이 관리한다). 경로는 `shared/sources.py` 한곳이 푼다(5장 12). 사본은 분석하는 동안만 있다 — 작업이 `done`이 되면 지우고, 실패하면 남기며, 영상을 지우면 지운다(4.1). 사본을 지운 뒤에도 `uploaded`는 그대로다 — 다시 시도할 때 어디서 읽을지 정하는 값이다([[VA-DOM-001]] 5장 6). 응답의 `upload_bytes`는 컬럼이 아니라 사본 파일이 있으면 그 크기다.
+**`uploaded`는 로컬 영상의 원본 자리다**([[VA-DOM-001#Video]]) — false면 inbox 파일 또는 Google Drive 파일(앱은 읽기만 한다), true면 올린 사본 `data/uploads/{source_id}.{origin의 확장자}`(앱이 관리한다). 경로는 `shared/sources.py` 한곳이 푼다(5장 12). 사본은 분석하는 동안만 있다 — 작업이 `done`이 되면 지우고, 실패하면 남기며, 영상을 지우면 지운다(4.1). 사본을 지운 뒤에도 `uploaded`는 그대로다 — 다시 시도할 때 어디서 읽을지 정하는 값이다([[VA-DOM-001]] 5장 6). 응답의 `upload_bytes`는 컬럼이 아니라 사본 파일이 있으면 그 크기다.
 
 **`status`와 `analyzed_at`은 컬럼이 아니다.** [[VA-API-001]]의 `Video.status`(registered · in_progress · failed · analyzed)와 `analyzed_at`은 가장 최근 `AnalysisJob`에서 계산한다 — 작업이 없으면 `registered`, `queued` · `running`이면 `in_progress`, `failed`면 `failed`, `done`이면 `analyzed`이고 `analyzed_at = finished_at`. [[VA-DOM-001#Video]]의 「분석완료시각」이 이 계산값이다(5장 5). `chat_turn_count`도 대화 묶음에서 센 값이다.
 
@@ -567,7 +568,7 @@ classDiagram
 
 ### 2.6 응답·내부 타입 (DTO)
 
-**API 응답 스키마([[VA-API-001]] 4장)와 같은 이름은 그것을 그대로 쓴다** — `Video` `VideoSummary` `VideoDetail` `RegisterRequest` `RegisterResponse` `Estimate` `InboxListing` `InboxFile` `Job` `JobSummary` `Chunks` `Chunk` `JobError` `Models` `Result` `Transcript` `Segment` `Summary` `Insight` `Part` `Chapter` `SuggestedQuestion` `ChatTurn` `AskRequest` `ExportRequest` `ExportPreview` `ExportResult` `Settings` `KeyStatus` `ModelOption` `KeyRequest` `ModelsRequest` `Frame` `FrameSet` `FrameProgress` `FrameProgressItem` `Infographic` `InfographicImage` `ImageSettings` `ImageQualityOption` `ExportFile`. DTO와 ORM 이름이 같을 때 ORM은 코드에서 `*Row`로 부른다(`VideoRow` · `TranscriptRow` · `InfographicRow`). 서비스가 밖으로 내는 것은 DTO다.
+**API 응답 스키마([[VA-API-001]] 4장)와 같은 이름은 그것을 그대로 쓴다** — `Video` `VideoSummary` `VideoDetail` `RegisterRequest` `RegisterResponse` `Estimate` `InboxListing` `InboxFile` `DriveListing` `DriveFile` `DriveConnection` `Job` `JobSummary` `Chunks` `Chunk` `JobError` `Models` `Result` `Transcript` `Segment` `Summary` `Insight` `Part` `Chapter` `SuggestedQuestion` `ChatTurn` `AskRequest` `ExportRequest` `ExportPreview` `ExportResult` `Settings` `KeyStatus` `ModelOption` `KeyRequest` `ModelsRequest` `Frame` `FrameSet` `FrameProgress` `FrameProgressItem` `Infographic` `InfographicImage` `ImageSettings` `ImageQualityOption` `ExportFile`. DTO와 ORM 이름이 같을 때 ORM은 코드에서 `*Row`로 부른다(`VideoRow` · `TranscriptRow` · `InfographicRow`). 서비스가 밖으로 내는 것은 DTO다.
 
 여기는 API에 나가지 않는 것만.
 
@@ -731,6 +732,7 @@ classDiagram
     class VideoService {
         «service»
         +list_inbox() InboxListing
+        +browse(path: str) DriveListing
         +register(req: RegisterRequest) Video
         +upload(name: str, size: int, body: AsyncIterator~bytes~) Video
         +list() list~VideoSummary~
