@@ -14,7 +14,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 브라우저(Next.js)가 부르는 REST API다. 와이어프레임의 화면 9개([[VA-UI-002]])가 서버에서 받아야 하는 값과 서버에 시켜야 하는 일을 엔드포인트로 옮겼다. 입구는 웹 하나뿐이라 MCP 문서는 없다([[VA-INFRA-001#C10]]).
 
-엔드포인트는 24개, 묶음은 여섯이다 — 설정과 키 · inbox · 영상 · 작업 · 결과와 내보내기 · 대화. 결과를 그림으로 보이는 요구와 로컬 파일 끌어 놓기(2026-09-29, [[VA-PRD-001#R1]] · [[VA-PRD-001#R11]] ~ [[VA-PRD-001#R13]])로 일곱을 더했다. 영상 같이 보기(2026-10-02, [[VA-PRD-001#R14]])로 원본 재생 [[#GET/api/videos/{id}/media]] 하나를 더했다 — 파일 올리기 하나(영상 묶음), 장면 셋 · 인포그래픽 셋(결과 묶음). 한눈에 보기는 이미 있는 결과로 화면이 그려 입구가 없다. 뒤 넷은 [[VA-DOM-001]] 4장의 묶음(video · job · analysis · chat)과 같고, 설정과 inbox는 도메인이 아니라 인프라 값을 읽고 쓰는 곳이다([[VA-INFRA-001#C4]], [[VA-INFRA-001#C6]]).
+엔드포인트는 25개, 묶음은 여섯이다 — 설정과 키 · inbox와 Google Drive · 영상 · 작업 · 결과와 내보내기 · 대화. 결과를 그림으로 보이는 요구와 로컬 파일 끌어 놓기(2026-09-29, [[VA-PRD-001#R1]] · [[VA-PRD-001#R11]] ~ [[VA-PRD-001#R13]])로 일곱을 더했다. 영상 같이 보기(2026-10-02, [[VA-PRD-001#R14]])로 원본 재생 [[#GET/api/videos/{id}/media]] 하나를 더했다 — 파일 올리기 하나(영상 묶음), 장면 셋 · 인포그래픽 셋(결과 묶음). 한눈에 보기는 이미 있는 결과로 화면이 그려 입구가 없다. Google Drive에서 고르기(2026-10-02, [[VA-PRD-001#R15]])로 연결 폴더 목록 [[#GET/api/drive]] 하나를 더했다 — 등록은 [[#POST/api/videos]]가 그대로 받는다. 뒤 넷은 [[VA-DOM-001]] 4장의 묶음(video · job · analysis · chat)과 같고, 설정과 inbox는 도메인이 아니라 인프라 값을 읽고 쓰는 곳이다([[VA-INFRA-001#C4]], [[VA-INFRA-001#C6]]).
 
 이 문서가 정하는 것: 경로·메서드·요청과 응답의 모양·에러·호출 순서. 정하지 않는 것: 서비스 메서드의 안(MINISPEC), 테이블(ERD), 화면 문구(와이어프레임).
 
@@ -59,7 +59,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 | type | status | 언제 | 확장 필드 | 근거 |
 |---|---|---|---|---|
-| `urn:va:not-found` | 404 | 영상·작업·inbox 파일·장면·인포그래픽 그림·재생할 원본 없음 | `resource`(`video` · `job` · `inbox_file` · `frame` · `infographic` · `media`) · `id` | [[VA-UI-002#UI-3]] 규칙(영상이 없으면 UI-1로) |
+| `urn:va:not-found` | 404 | 영상·작업·inbox 파일·장면·인포그래픽 그림·재생할 원본·Google Drive(연결하지 않음 · 폴더 · 파일) 없음 | `resource`(`video` · `job` · `inbox_file` · `frame` · `infographic` · `media` · `drive` · `drive_folder` · `drive_file`) · `id` | [[VA-UI-002#UI-3]] 규칙(영상이 없으면 UI-1로) |
 | `urn:va:validation` | 422 | 요청 본문 형식 오류(빈 질문, 모르는 모델 값, 필수 필드 없음) | `errors: [{field, message}]` | — |
 | `urn:va:key-missing` | 503 | 저장된 키가 없다 | — | [[VA-UC-001#UC-H8]], [[VA-PRD-001#N3]] |
 | `urn:va:key-invalid` | 503 | 저장된 키가 마지막 확인에 실패했다(분석 시작·다시 시도·질문에서). 마지막 실패가 `network`였으면 그 자리에서 다시 확인한 결과다 | `reason_kind`(`format` · `auth` · `quota` · `network`) · `reason` · `checked_at` | [[VA-UC-001#UC-H8]] 3a |
@@ -69,7 +69,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 | `urn:va:video-too-long` | 422 | 3시간 초과 | `duration_sec` · `max_sec`(10800) | [[VA-PRD-001#N2]], [[VA-UC-001#UC-S1]] 2a |
 | `urn:va:no-audio-track` | 422 | 로컬 영상에 음성 트랙이 없다 | `duration_sec` | [[VA-UC-001#UC-H2]] 2a |
 | `urn:va:unsupported-file` | 422 | 영상·음성 파일이 아니거나 열 수 없다 | `reason` · `accepted: [mp4, mkv, mov, webm, mp3, m4a, wav]` | [[VA-UC-001#UC-H2]] 1a |
-| `urn:va:path-outside-inbox` | 422 | inbox 폴더 밖을 가리키는 경로(`..`, 절대 경로, 하위 폴더) | — | [[VA-INFRA-001#C4]] |
+| `urn:va:path-outside-inbox` | 422 | inbox 폴더 밖을 가리키는 경로(`..`, 절대 경로, 하위 폴더) · Google Drive 연결 폴더 밖(`..` · 절대 경로 · 숨김 칸 · 심볼릭 링크로 나감, [[VA-INFRA-001#C14]]) | — | [[VA-INFRA-001#C4]] |
 | `urn:va:job-exists` | 409 | 이 영상에 이미 작업이 있는데 새로 시작하려 함 | `job_id` · `job_status` | [[VA-UC-001#UC-S5]], [[VA-UI-002#UI-1]] |
 | `urn:va:job-not-failed` | 409 | 실패 상태가 아닌 작업을 다시 시도 | `job_status` | [[VA-UC-001#UC-S3]] 3a3 |
 | `urn:va:result-not-ready` | 409 | 결과가 아직 없다(작업 없음 · 진행 중 · 실패) | `video_status` | [[VA-UI-002#UI-4]] 규칙(UI-3으로 넘김) |
@@ -79,6 +79,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 | `urn:va:upload-incomplete` | 400 | 받은 본문이 `Content-Length`보다 짧다(올리다 끊김). 받은 부분은 지웠다 | `received_bytes` · `expected_bytes` | [[VA-UC-001#UC-H2]] 1c |
 | `urn:va:frames-unavailable` | 409 | 장면을 만들 수 없는 영상에 장면 채우기를 시킴(음성 파일 · 원본을 찾을 수 없는 로컬 파일) | `reason` | [[VA-UC-001#UC-S7]] 1a · 2a |
 | `urn:va:media-unavailable` | 409 | 앱이 원본을 내보내지 않는 영상의 재생을 청함 — YouTube(브라우저가 YouTube 플레이어로 본다) · 올린 파일(분석이 끝나면 사본을 지운다) | `reason_kind`(`youtube` · `uploaded`) | [[VA-UC-001#UC-H3]] 6a · 6b, [[VA-INFRA-001#C13]] |
+| `urn:va:drive-unavailable` | 503 | 연결한 Google Drive에 닿지 못함 — 마운트가 비었거나 읽기에 실패했다(Google Drive 앱이 꺼짐 · 로그인 풀림) | — | [[VA-UC-001#UC-H2]] 1f, [[VA-INFRA-001#C14]] |
 | `urn:va:infographic-busy` | 409 | 이 영상의 인포그래픽을 이미 그리는 중인데 또 시킴 | — | [[VA-UC-001#UC-H9]] |
 | `urn:va:internal` | 500 | 예상 못 한 오류. `detail`은 고정 문구, 원인은 로그만 | — | — |
 
@@ -86,7 +87,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 **problem+json이 아닌 오류 응답은 web 프록시가 대신 답한 것이다.** api는 늘 problem+json으로 답한다. 평문 오류(500 'Internal Server Error')는 web 프록시가 api 대신 답한 것이다 — api가 꺼졌거나, 프록시 시간 제한(60초, [[VA-DOM-002]] 6장)을 넘었다. 프록시는 둘을 같은 500으로 답해 가를 수 없다. 화면은 fetch 자체가 실패한 것과 같이 '서버에 연결할 수 없음'으로 다룬다([[VA-UI-002#UI-1]] 규칙, 카드 B5). 60초를 넘는 요청이 없게 하는 것이 먼저다 — 남은 하나는 큰 로컬 파일 등록의 해시다(VA-MS-001 미결, 카드 C).
 
-**에러 22종마다 라우터 테스트가 있다.** HTTP 응답으로 `type` · `status` · `content-type: application/problem+json` · 확장 필드를 본다. 화면이 `type`으로 입력 오류 · 배너 · 시작 불가 판을 고르기 때문이다(카드 B5).
+**에러 23종마다 라우터 테스트가 있다.** HTTP 응답으로 `type` · `status` · `content-type: application/problem+json` · 확장 필드를 본다. 화면이 `type`으로 입력 오류 · 배너 · 시작 불가 판을 고르기 때문이다(카드 B5).
 
 **삭제 실패에는 종류가 없다.** [[VA-UI-002#UI-6]]의 실패 한 줄('분석 결과를 지우지 못했어요 — {이유}')은 `internal`의 `detail`을 쓴다. 지우기가 실패하는 경우는 디스크·DB 오류뿐이라 따로 가를 것이 없다.
 
@@ -110,6 +111,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 - 키가 사는 곳은 `.env` 파일 하나다. 처음 설치 때 사용자가 직접 적은 키도, 화면에서 넣은 키도 같은 줄이다([[VA-INFRA-001#C6]], [[VA-UC-001#UC-H8]] 1a). `key.stored_in`은 키가 있으면 늘 '.env에 저장됨'이고 없으면 null이다.
 - `key.reason_kind = network`면 화면은 배너 문구를 '연결을 확인하지 못했어요 — …'로 가르고 [키 넣으러 가기]를 빼며 버튼을 막지 않는다([[VA-UI-002]] 1.4).
 - `model_options`의 단가는 UI-5 도움말과 UI-2 예상 비용이 같이 쓴다. 받아쓰기 목록은 `gpt-transcribe` 하나다 — 구간 시각은 앱이 잘게 나눈 경계로 만든다([[VA-INFRA-001#C3]], 2026-10-01). 요약 목록은 값 오름차순이다.
+- `drive`는 연결한 Google Drive다 — 보일 이름('Google Drive') · 보일 경로. 연결하지 않았으면 null이고 UI-1에 그 입구가 없다([[VA-INFRA-001#C14]]).
 - `image`는 인포그래픽 설정이다 — 고른 이미지 모델 · 품질과, 고를 수 있는 모델 · 품질마다 한 장 값(`price_usd`). UI-5 인포그래픽 카드, UI-4 인포그래픽 카드의 '한 장 약 ${값}', UI-8 예상 비용이 이 값을 쓴다([[VA-PRD-001#R13]]).
 
 화면 [[VA-UI-002#UI-5]] · [[VA-UI-002#UI-1]] · [[VA-UI-002#UI-3]] · [[VA-UI-002#UI-4]](키 없음 배너) · 유스케이스 [[VA-UC-001#UC-H8]] 1번 · 서비스 `SettingsService.get`
@@ -193,7 +195,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
         $ref: '#/components/responses/Problem'
 ```
 
-### 3.2 inbox
+### 3.2 inbox와 Google Drive
 
 #### GET/api/inbox inbox 폴더의 파일 목록
 
@@ -218,6 +220,45 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
           application/json:
             schema:
               $ref: '#/components/schemas/InboxListing'
+```
+
+#### GET/api/drive Google Drive 폴더 하나의 목록
+
+연결한 Google Drive 폴더([[VA-INFRA-001#C14]]) 안의 폴더 하나를 준다. UI-1 「내 파일」 카드에서 Google Drive로 바꿨을 때, 폴더를 열 때마다 부른다.
+
+- `path`는 연결 폴더 안의 상대 경로다(`/`로 나눈다). 비우면 맨 위(내 드라이브). `..` · 절대 경로 · 숨김 칸(`.`으로 시작)이 있거나, 심볼릭 링크를 따른 실제 경로가 연결 폴더 밖이면 422 `urn:va:path-outside-inbox`.
+- 하위 폴더(숨김 제외)와 받는 확장자 파일만 준다. 둘 다 자연 순서다 — 숫자는 수로 견준다(1, 2, … 10).
+- 파일은 이름 · 크기 · 수정 시각 · 종류만 준다 — 길이는 재지 않는다(재려면 Drive가 파일마다 클라우드에서 받는다). 길이는 고른 뒤 [[#POST/api/videos]]가 잰다.
+- 연결하지 않았으면 404 `urn:va:not-found`(`resource: drive`), 그 폴더가 없으면 404(`resource: drive_folder`, `id`는 `path`), 마운트가 비었거나 읽기에 실패하면 503 `urn:va:drive-unavailable`.
+- 폴더가 비었으면 둘 다 빈 배열이다. 에러가 아니다.
+
+화면 [[VA-UI-002#UI-1]] · 유스케이스 [[VA-UC-001#UC-H2]] 1번, 확장 1f · 1g · 서비스 `VideoService.browse`
+
+```yaml
+/api/drive:
+  get:
+    summary: Google Drive 폴더 하나의 목록
+    parameters:
+    - name: path
+      in: query
+      required: false
+      schema:
+        type: string
+        default: ''
+      description: 연결 폴더 안의 상대 경로. 비우면 맨 위
+    responses:
+      '200':
+        description: 그 폴더의 하위 폴더와 영상
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriveListing'
+      '404':
+        $ref: '#/components/responses/Problem'
+      '422':
+        $ref: '#/components/responses/Problem'
+      '503':
+        $ref: '#/components/responses/Problem'
 ```
 
 ### 3.3 영상
@@ -251,17 +292,17 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 
 #### POST/api/videos 영상을 등록하고 사전 안내를 만든다
 
-YouTube 주소 또는 inbox 파일을 받아 정보를 확인하고, 같은 영상이 있는지 보고, 없으면 영상을 만들고 예상치를 계산한다. UI-1 [분석]·[선택한 파일 분석]이 부르고 응답으로 UI-2가 열린다.
+YouTube 주소 또는 로컬 파일(inbox · Google Drive)을 받아 정보를 확인하고, 같은 영상이 있는지 보고, 없으면 영상을 만들고 예상치를 계산한다. UI-1 [분석]·[선택한 파일 분석]이 부르고 응답으로 UI-2가 열린다.
 
 순서대로 판정하고 걸리는 곳에서 멈춘다.
 
 1. 저장된 키 확인 — 없으면 503 `urn:va:key-missing`, 확인 실패면 503 `urn:va:key-invalid`. 화면은 이동 없이 키 없음 배너를 띄운다([[VA-UI-002#UI-1]] 규칙).
-2. 형식 검사 — YouTube 주소가 watch · youtu.be · shorts가 아니면 422 `urn:va:url-invalid`. inbox 밖 경로면 422 `urn:va:path-outside-inbox`, 받지 않는 확장자거나 열 수 없으면 422 `urn:va:unsupported-file`([[VA-PRD-001#R1]], [[VA-PRD-001#R2]]).
-3. 정보 조회 — YouTube는 yt-dlp로 제목 · 채널 · 길이 · 자막 유무 · 자막 언어 · 수동/자동을 가져온다. 못 가져오면 502 `urn:va:source-unavailable`. 로컬은 ffprobe로 길이 · 음성 트랙을 확인하고 내용 SHA-256을 만든다. 음성이 없으면 422 `urn:va:no-audio-track`([[VA-UC-001#UC-S1]] 1번, 1a).
+2. 형식 검사 — YouTube 주소가 watch · youtu.be · shorts가 아니면 422 `urn:va:url-invalid`. inbox · Google Drive 연결 폴더 밖 경로면 422 `urn:va:path-outside-inbox`(Google Drive를 연결하지 않았으면 404 `urn:va:not-found` `resource: drive`, 닿지 못하면 503 `urn:va:drive-unavailable`, 그 파일이 없으면 404 `resource: drive_file`), 받지 않는 확장자거나 열 수 없으면 422 `urn:va:unsupported-file`([[VA-PRD-001#R1]], [[VA-PRD-001#R2]]).
+3. 정보 조회 — YouTube는 yt-dlp로 제목 · 채널 · 길이 · 자막 유무 · 자막 언어 · 수동/자동을 가져온다. 못 가져오면 502 `urn:va:source-unavailable`. 로컬은 ffprobe로 길이 · 음성 트랙을 확인하고 내용 SHA-256을 만든다 — Google Drive 파일은 크기 + 앞뒤 16MB의 SHA-256이다(끝까지 읽으면 Drive가 파일 전체를 받아 1분이 넘는다, [[VA-INFRA-001#C14]]). 음성이 없으면 422 `urn:va:no-audio-track`([[VA-UC-001#UC-S1]] 1번, 1a).
 4. 길이 상한 — 3시간을 넘으면 422 `urn:va:video-too-long`(`duration_sec` 포함. 화면은 시작 불가 판에 길이를 보인다)([[VA-UC-001#UC-S1]] 2a).
 5. 중복 판정 — 출처 식별자(YouTube 영상 ID 또는 내용 해시)로 찾는다. 있으면 그 영상을 돌려준다([[VA-UC-001#UC-S5]] 1번, 1a, 1b). 작업이 있는 영상이면 `estimate`는 null이다.
 6. 없으면 Video를 만든다. `status = registered`. 이미 등록만 되고 작업이 없는 영상을 다시 넣으면 3번에서 가져온 정보로 덮어쓰고 `registered`로 돌려준다 — 처음 넣은 것과 같은 경험이다([[VA-UI-002#UI-1]] 규칙).
-7. 예상치 계산 — `registered`일 때만. 자막 있음: `needs_stt = false`, `seconds`는 약 60, 받아쓰기 비용 0, 요약 비용 추정값. 받아쓰기 필요: 조각 수 `chunks`, 동시 수 `concurrency`, `stt_minutes × stt_price_per_min`, 요약 비용 추정값, 합계([[VA-UC-001#UC-S1]] 5번). 단가는 지금 설정된 모델의 값이다.
+7. 예상치 계산 — `registered`일 때만. 자막 있음: `needs_stt = false`, `seconds`는 약 60, 받아쓰기 비용 0, 요약 비용 추정값. 받아쓰기 필요: 조각 수 `chunks`, 동시 수 `concurrency`, `stt_minutes × stt_price_per_min`, 요약 비용 추정값, 합계([[VA-UC-001#UC-S1]] 5번). 단가는 지금 설정된 모델의 값이다. Google Drive 원본은 분석이 한 번 끝까지 받으므로 `source_bytes`에 그 크기를 싣고 `seconds`에 받는 몫을 더한다([[VA-INFRA-001#C14]]).
 
 응답은 항상 200이다. 중복이면 기존 것을 돌려주므로 201을 쓰지 않는다. 화면은 `video.status`로 갈 곳을 정한다(1장 표): `registered` → UI-2, `analyzed` → UI-4와 짧은 알림, `in_progress` · `failed` → UI-3. 이 요청까지는 OpenAI로 음성이나 텍스트가 나가지 않는다. 나가는 것은 키 확인 요청과 YouTube에 보내는 영상 ID뿐이다([[VA-UC-001#UC-H0]] 3a).
 
@@ -1061,7 +1102,7 @@ components:
           $ref: '#/components/schemas/SourceKind'
         source_id:
           type: string
-          description: YouTube 영상 ID(11자) 또는 파일 내용 SHA-256. 중복 판정 기준
+          description: YouTube 영상 ID(11자) 또는 파일 내용 SHA-256(Google Drive 파일은 크기 + 앞뒤 16MB의 SHA-256). 중복 판정 기준
         title:
           type: string
           description: YouTube 제목 또는 파일 이름
@@ -1072,7 +1113,7 @@ components:
           type: integer
         origin:
           type: string
-          description: YouTube URL, inbox 파일 이름 또는 올린 파일의 원래 이름. UI-4 '원본 영상 열기'(YouTube만)
+          description: YouTube URL, inbox 파일 이름, `drive:{연결 폴더 안 상대 경로}`(Google Drive) 또는 올린 파일의 원래 이름. UI-4 '원본 영상 열기'(YouTube만), UI-2 출처 줄 · UI-4 플레이어의 Google Drive 표시
         uploaded:
           type: boolean
           description: 끌어 놓아 올린 파일이면 true(원본 자리 = 올린 사본, VA-DOM-001 Video). UI-1 부제 '올린 파일', UI-6 「남는 것」
@@ -1171,9 +1212,14 @@ components:
         source:
           type: string
           const: local
+        place:
+          type: string
+          enum: [inbox, drive]
+          default: inbox
+          description: 어디서 골랐나 — inbox 또는 연결한 Google Drive
         path:
           type: string
-          description: inbox 안 파일 이름. 하위 폴더·절대 경로·.. 금지
+          description: inbox면 안의 파일 이름(하위 폴더 · 절대 경로 · .. 금지), drive면 연결 폴더 안의 상대 경로(하위 폴더 허용, 절대 경로 · .. · 숨김 칸 금지)
     RegisterRequest:
       oneOf:
       - $ref: '#/components/schemas/YouTubeSource'
@@ -1214,6 +1260,9 @@ components:
         total_cost_usd:
           type: number
           description: 합계. 화면은 '약 $'를 붙인다
+        source_bytes:
+          type: [integer, 'null']
+          description: Google Drive 원본의 크기 — 분석이 한 번 끝까지 받는다(seconds에 그 몫이 들어 있다). inbox · 올린 사본 · YouTube면 null. UI-2 예상 시간 설명
         stt_model:
           type: string
           description: 전송 안내 상자의 받아쓰기 모델 이름
@@ -1248,6 +1297,47 @@ components:
         modified_at:
           type: string
           format: date-time
+    DriveFile:
+      type: object
+      required: [name, size_bytes, kind, modified_at]
+      properties:
+        name:
+          type: string
+        size_bytes:
+          type: integer
+        kind:
+          type: string
+          enum: [video, audio]
+        modified_at:
+          type: string
+          format: date-time
+    DriveListing:
+      type: object
+      required: [path, folders, files]
+      properties:
+        path:
+          type: string
+          description: 연결 폴더 안의 상대 경로. 맨 위면 빈 문자열
+        folders:
+          type: array
+          items:
+            type: string
+          description: 하위 폴더 이름, 자연 순서
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriveFile'
+          description: 받는 확장자 파일, 자연 순서
+    DriveConnection:
+      type: object
+      required: [name, path]
+      properties:
+        name:
+          type: string
+          description: 보일 이름 — 'Google Drive'
+        path:
+          type: string
+          description: 사용자에게 보일 경로 — 예 'G:\내 드라이브'
     InboxListing:
       type: object
       required: [path, files]
@@ -1786,7 +1876,7 @@ components:
             $ref: '#/components/schemas/ImageQualityOption'
     Settings:
       type: object
-      required: [key, models, model_options, image, inbox_path]
+      required: [key, models, model_options, image, inbox_path, drive]
       properties:
         key:
           $ref: '#/components/schemas/KeyStatus'
@@ -1799,6 +1889,11 @@ components:
         inbox_path:
           type: string
           description: 사용자에게 보일 호스트 쪽 경로
+        drive:
+          oneOf:
+          - $ref: '#/components/schemas/DriveConnection'
+          - type: 'null'
+          description: 연결한 Google Drive. 없으면 null — UI-1에 입구가 없다
     KeyRequest:
       type: object
       required: [key]
@@ -1889,6 +1984,7 @@ components:
 - [x] 올리기 요청의 시간 제한 — 결정: 그대로 둔다. 카드 D4 실측: 588MB가 약 3초(같은 PC, 진짜 스택). web의 API 라우트는 Node `http.request`로 넘겨 기다림 제한이 없고, 남은 제한은 web(Node 서버)이 요청 전체를 받는 300초(`requestTimeout` 기본값)다 — 같은 PC 속도면 수십 GB다(MINISPEC 영상 서비스 3장과 같은 항목)
 - [x] 디스크 판정의 여유분 — 결정: 고정 1 GiB. 파일 크기의 몇 %로 두면 작은 파일에 여유가 모자란다. 분석이 그 뒤에 쓰는 임시 음성 · 조각 · 장면을 넉넉히 덮는다(MINISPEC 영상 서비스 0장 `UPLOAD_SPARE_BYTES`)
 - [x] 조각이 없는 단계의 `Job.remaining_sec` 계산 — 결정: 예상 전체 시간 − 지난 시간, 0이면 화면이 비운다(MINISPEC 작업 서비스 `JobService.remaining_sec`). 바꿈(사용자 결정, 2026-09-23): 작업 전체가 끝날 때까지, 끝난 단계의 오차는 넘기지 않는다 — 받아쓰기에 요약 세 단계 몫을 더하고 요약 세 단계는 그 몫에서 뺀다([[VA-UI-001]] 8장)
+- [x] Google Drive 목록에 길이를 실을지 — 결정: 싣지 않는다. 재려면 Drive가 파일마다 클라우드에서 받는다(53개 폴더). 길이는 고른 뒤 등록이 잰다([[#GET/api/drive]], 사용자 결정 2026-10-02 캔버스)
 - [ ] inbox 파일 길이 재기 비용 — 파일마다 ffprobe. 수십 개면 첫 응답이 느릴 수 있어 수정 시각 기준 캐시를 둘지 MINISPEC
 - [x] 내보내기 파일 이름 규칙(제목 → 파일 이름, 금지 문자, 같은 이름) — 반영: MINISPEC 결과 서비스 `AnalysisService.filename_for`. 같은 이름은 덮어쓴다 — `-{id}`를 붙이지 않는다(사용자 결정 2026-09-28)
 - [x] 서버 재시작으로 죽은 작업 — 반영: 시작 때 `running`인 작업을 `failed`(kind `unknown`, '서버가 다시 시작됨')로 되돌려 다시 시도로 이어 간다(MINISPEC 작업 서비스 `JobService.fail_orphans`, 카드 B1)
