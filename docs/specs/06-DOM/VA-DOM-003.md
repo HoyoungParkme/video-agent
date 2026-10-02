@@ -204,12 +204,12 @@ erDiagram
 | 컬럼 | 타입 | 제약 | 의미 | 예시 |
 |---|---|---|---|---|
 | source_kind | varchar(10) | not null, SourceKind | 출처 종류 | `youtube` |
-| source_id | varchar(64) | UK not null | YouTube 영상 ID(11자) 또는 파일 내용 SHA-256(64자). 같은 영상 판정의 근거 | `dQw4w9WgXcQ` |
+| source_id | varchar(64) | UK not null | YouTube 영상 ID(11자) 또는 파일 내용 SHA-256(64자) — Google Drive 파일은 크기 + 앞뒤 16MB의 SHA-256. 같은 영상 판정의 근거 | `dQw4w9WgXcQ` |
 | title | varchar(300) | not null | YouTube 제목 또는 파일 이름 | `RAG 서비스 1년 운영기` |
 | channel | varchar(200) | null 허용 | YouTube 채널. 로컬이면 null | |
 | duration_sec | int | not null, > 0, ≤ 10800 | 길이(초). 3시간 상한은 앱이 등록 때 거부하지만 CHECK로도 막는다([[VA-PRD-001#N2]]) | `3012` |
-| origin | varchar(500) | not null | YouTube URL, inbox 파일 이름 또는 올린 파일의 원래 이름. 결과 화면 '원본 영상 열기'와 내보내기 링크의 재료 | `https://www.youtube.com/watch?v=…` |
-| uploaded | boolean | not null, default false | 원본 자리 — true면 끌어 놓아 올린 사본(`data/uploads`), false면 inbox 파일 또는 YouTube. 사본을 지운 뒤에도 그대로다 — 다시 시도할 때 어디서 읽을지 정한다([[VA-DOM-001]] 5장 6) | `false` |
+| origin | varchar(500) | not null | YouTube URL, inbox 파일 이름, `drive:{연결 폴더 안 상대 경로}`(Google Drive) 또는 올린 파일의 원래 이름. 결과 화면 '원본 영상 열기'와 내보내기 링크의 재료 | `https://www.youtube.com/watch?v=…` |
+| uploaded | boolean | not null, default false | 원본 자리 — true면 끌어 놓아 올린 사본(`data/uploads`), false면 inbox 파일 · Google Drive 파일 또는 YouTube. 사본을 지운 뒤에도 그대로다 — 다시 시도할 때 어디서 읽을지 정한다([[VA-DOM-001]] 5장 6) | `false` |
 | has_captions | boolean | not null | 자막 유무. 사전 안내 판과 단계 목록을 가른다 | `true` |
 | caption_language | varchar(10) | null 허용 | 자막 언어 코드. 자막이 없거나 로컬이면 null | `ko` |
 | caption_kind | varchar(10) | null 허용, CaptionKind | 수동 · 자동 | `manual` |
