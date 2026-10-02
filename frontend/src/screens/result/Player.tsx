@@ -327,7 +327,10 @@ export default function Player({ video, frame, start, long, ref }: Props) {
 
   return (
     <div className="player" data-el="16">
-      <div className={`player-area${kind === "audio" ? " is-audio" : ""}`} hidden={!open}>
+      <div
+        className={`player-area${kind === "audio" ? " is-audio" : ""}${phase === "failed" ? " is-failed" : ""}`}
+        hidden={!open}
+      >
         {kind === "youtube" && (
           <div
             ref={ytHost}

@@ -2975,6 +2975,9 @@ html {
   height: calc(100vh - var(--header-h) - var(--banner-h, 0px));
   display: flex;
   flex-direction: column;
+  /* 플레이어 자리 높이 — 16:9(292px)이되, 창이 낮으면 대화 목록에 160px이 남게 줄인다(최소 160px, UI-4 규칙).
+     455 = 막대 44 + 아래선 1 + 탭 바 60 + 질문 입력 영역 190 + 대화 목록 160 */
+  --player-h: clamp(160px, calc(100vh - var(--header-h) - var(--banner-h, 0px) - 455px), 292px);
 }
 /* UI-4 16 플레이어 — 패널 맨 위, 16:9 자리 + 막대(VA-UI-002 UI-4 규칙, 네 번째 캔버스 ①). 접으면 막대만 */
 .player {
@@ -2987,14 +2990,19 @@ html {
 .player-area {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: var(--player-h);
   overflow: hidden;
   background: var(--c-ink);
 }
 .player-area.is-audio {
-  aspect-ratio: auto;
+  height: auto;
   padding: var(--space-12) var(--space-16);
   background: var(--c-faint);
+}
+/* 재생할 수 없음 — 글과 버튼이 다 보이게, 자리보다 길면 늘어난다 */
+.player-area.is-failed {
+  height: auto;
+  padding: 0;
 }
 .player-area[hidden],
 .player-audio[hidden] {
@@ -3082,8 +3090,8 @@ html {
   color: var(--c-bg);
 }
 .player-failed {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  min-height: var(--player-h);
   padding: 28px 40px;
   background: var(--c-chip);
   display: flex;

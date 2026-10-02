@@ -378,6 +378,30 @@ test("YouTube를 불러오는 사이에 접으면 준비돼도 재생하지 않�
   expect((await yt(page)).calls).toEqual(["play"]);
 });
 
+test("창이 낮으면 플레이어 자리를 줄여 대화 목록에 160px을 남긴다 — 재생할 수 없음은 글과 버튼이 다 보이게", async ({
+  page,
+}) => {
+  await page.route(IFRAME_API, (r) => r.fulfill({ contentType: "text/javascript", body: FAKE_YT }));
+  const height = async (n: string) => Math.round((await el(page, n).boundingBox())?.height ?? 0);
+  await openResult(page, PLAYER); // E2E 창 1280×720
+  await el(page, "7.2").click();
+  expect(await height("16.1")).toBe(201); // 720 − 헤더 64 − (막대 · 탭 바 · 입력 영역 · 목록 160) 455
+  expect(await height("9")).toBeGreaterThanOrEqual(150);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect.poll(() => height("16.1")).toBe(292); // 보드 그대로
+  await page.setViewportSize({ width: 1366, height: 650 });
+  await expect.poll(() => height("16.1")).toBe(160); // 160px 아래로는 줄이지 않는다
+  await expect(el(page, "10.5")).toBeInViewport({ ratio: 1 });
+
+  await page.evaluate(() => {
+    (window as unknown as FakeYT).__ytError = 150;
+  });
+  await el(page, "16.1").click();
+  await expect(el(page, "16.9")).toBeInViewport({ ratio: 1 });
+  expect(await height("16.8")).toBeGreaterThan(160);
+  await expect(el(page, "10.5")).toBeInViewport({ ratio: 1 });
+});
+
 test("로컬 원본 — 그 시각부터 재생, 접으면 멈추고 펼치면 이어 보며, 원본을 옮기면 알린다", async ({
   page,
   request,
