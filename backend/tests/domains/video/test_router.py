@@ -15,6 +15,7 @@ from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
 from app.domains.video.models import SourceKind
+from app.domains.video.router import MEDIA_TYPES
 from app.domains.video.service import VideoService
 from app.infra.openai import ReasonKind
 
@@ -149,6 +150,11 @@ async def test_get_media_type_by_extension(api, make, tmp_path, monkeypatch, nam
     row = await make.video(source_kind=SourceKind.local, source_id=name[0] * 64, origin=name)
     r = await api.get(f"/api/videos/{row.id}/media")
     assert r.headers["content-type"].split(";")[0] == media_type
+
+
+def test_media_types_cover_accepted() -> None:
+    """받는 확장자마다 재생 형식이 있다 — 등록이 받는 것을 재생은 octet-stream으로 내보내지 않게(카드 E7 코드 리뷰)."""
+    assert set(MEDIA_TYPES) == {f".{e}" for e in config.VIDEO_EXTS + config.AUDIO_EXTS}
 
 
 async def test_get_media_problems(api, make, tmp_path, monkeypatch) -> None:
