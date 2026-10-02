@@ -20,6 +20,11 @@ const VIDEOS = {
   e2eAskVid01: { title: "RAG 검색 품질 회고", duration: 3000, subtitles: { ko: [] } },
   // 탭을 오가도 읽던 대화 위치(카드 E6)
   e2eChatPos1: { title: "읽던 자리를 지키는 대화", duration: 1800, subtitles: { ko: [] } },
+  // 기록과 답이 엇갈려도 — 질문이 없는 영상이라 추천 질문을 누르면 기록 GET과 질문 POST가 함께 간다(S4)
+  e2eRaceAns1: { title: "답이 먼저 오는 대화", duration: 1800, subtitles: { ko: [] } },
+  e2eRaceLst1: { title: "기록이 먼저 오는 대화", duration: 1800, subtitles: { ko: [] } },
+  // 보낸 추천 질문 — 체크 · 답 보기, 누르면 그 답으로(카드 E8)
+  e2eAskedQ01: { title: "이미 물어본 추천 질문", duration: 1800, subtitles: { ko: [] } },
   // 3시간 — 10초마다 70자 줄이라 대화 토큰 상한(3만)을 넘는다. 질문과 맞는 챕터만 보낸다
   e2eLong3h01: {
     title: "데이터 카탈로그 워크숍 종일",

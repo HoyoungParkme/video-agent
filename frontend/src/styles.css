@@ -684,6 +684,8 @@ html { scroll-padding-top: calc(var(--header-h) + var(--banner-h, 0px) + var(--s
 .pill:hover { background: var(--c-hover); }
 /* 앞 아이콘은 청록 — 말풍선 · 이미 물어본 체크(UI-4 5.1, #31) */
 .pill .icon { color: var(--c-teal); }
+/* 이미 물어본 알약 끝의 '답 보기 →'(5.2) — 알약의 일부라 따로 누르지 않는다 */
+.pill-answer { flex-shrink: 0; display: flex; align-items: center; gap: var(--space-4); font-size: var(--text-13); font-weight: 600; color: var(--c-teal); }
 .chapters { display: flex; flex-direction: column; gap: var(--space-6); }
 .chapter {
   width: 100%; padding: var(--space-14) var(--space-16); display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--space-12);
@@ -954,6 +956,9 @@ html { scroll-padding-top: calc(var(--header-h) + var(--banner-h, 0px) + var(--s
   background: var(--c-card); color: var(--c-ink-2); font-size: var(--text-13); white-space: nowrap; cursor: pointer;
 }
 .chat-chip:hover { background: var(--c-hover); }
+/* 이미 물어본 칩(10.1) — 앞에 14px 청록 체크, 왼쪽 안쪽 8px */
+.chat-chip.is-asked { padding-left: var(--space-8); display: flex; align-items: center; gap: var(--space-4); }
+.chat-chip .icon { color: var(--c-teal); }
 .chat-key { margin: 0; font-size: var(--text-13); line-height: 1.55; color: var(--c-danger-deep); }
 .chat-key a { color: var(--c-danger-deep); font-weight: 600; }
 .chat-box {
