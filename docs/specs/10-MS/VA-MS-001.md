@@ -27,7 +27,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 | 함수 | 한 줄 |
 |---|---|
 | [[#VideoService.list_inbox]] | inbox 파일 목록 — 길이 · 크기까지 |
-| [[#VideoService.browse]] | Google Drive 폴더 하나 — 하위 폴더 · 영상, 자연 순서. 길이는 재지 않는다 |
+| [[#VideoService.browse]] | Google Drive 폴더 하나 — 하위 폴더 · 영상, 자연 순서 · 받지 않는 파일 수. 길이는 재지 않는다 |
 | [[#VideoService.register]] | 등록 — 키 확인 → 형식 → 정보 → 상한 → 중복 → 생성 |
 | [[#VideoService.upload]] | 올린 파일 등록 — 키 → 이름 → 디스크 → 쓰며 해시 → 정보 → 중복 → 사본 |
 | [[#VideoService.list]] | 작업이 있는 영상 목록, 최근 순 |
@@ -76,8 +76,8 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 2. `rel = drive_rel(path)` — 빈 문자열이면 맨 위. `/`로 나눈 칸 중 빈 칸 · `.` · `..` · `.`으로 시작하는 칸이 있거나 절대 경로면 `! path-outside-inbox` · `dir = DRIVE_DIR / rel` · `FS: realpath(dir)`가 `realpath(DRIVE_DIR)` 안이 아니면(심볼릭 링크로 나감) `! path-outside-inbox` — 등록([[#VideoService.register]])과 같은 함수
 3. `FS: DRIVE_DIR 맨 위 항목` — 읽기에 실패하거나 비었으면 `! drive-unavailable` (Google Drive 앱이 꺼지면 마운트가 빈다. 빈 내 드라이브는 없다고 본다)
 4. if `dir`이 폴더가 아니면 `! not-found(resource=drive_folder, id=rel)`
-5. `FS: dir 바로 아래 항목` — 폴더면(숨김 제외) `folders`, 파일이고 숨김이 아니고 확장자(소문자) ∈ `ACCEPTED`면 `files`에 `DriveFile(name, size_bytes=stat.st_size, kind, modified_at=stat.st_mtime UTC)`. 길이는 재지 않는다 · 항목 하나의 stat이 실패하면(읽는 사이 사라짐) 그 항목만 뺀다 · 목록 읽기 자체가 실패하면 `! drive-unavailable`
-6. 둘 다 자연 순서 — 이름을 숫자 칸과 글자 칸으로 나눠 숫자는 수로, 글자는 소문자로 견준다 → `DriveListing(path=rel, folders, files)`
+5. `FS: dir 바로 아래 항목` — 폴더면(숨김 제외) `folders`, 파일이고 숨김이 아니고 확장자(소문자) ∈ `ACCEPTED`면 `files`에 `DriveFile(name, size_bytes=stat.st_size, kind, modified_at=stat.st_mtime UTC)`, 그 밖의 파일(숨김 · `desktop.ini` 빼고)은 `other_files`로 센다 — 화면이 빈 폴더와 받을 영상이 없는 폴더를 가른다. `desktop.ini`는 Google Drive 앱이 폴더마다 두는 Windows 숨김 파일이다(실측) · 길이는 재지 않는다 · 항목 하나의 stat이 실패하면(읽는 사이 사라짐) 그 항목만 뺀다 · 목록 읽기 자체가 실패하면 `! drive-unavailable`
+6. 둘 다 자연 순서 — 이름을 숫자 칸과 글자 칸으로 나눠 숫자는 수로, 글자는 소문자로 견준다 → `DriveListing(path=rel, folders, files, other_files)`
 
 **출력** `DriveListing`
 
@@ -85,7 +85,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **호출하는 것** 없음(파일 시스템만)
 
-**테스트 관점** 임시 폴더를 연결 폴더로: 맨 위 → 하위 폴더와 영상 · `1.a.mp4 · 10.b.mp4 · 2.c.mp4` → 1 · 2 · 10 순서 · 하위 폴더 안으로 · 숨김 폴더 · 숨김 파일 · `desktop.ini` · pdf는 안 보인다 · `MP4` 대문자 확장자도 받는다 · `..` · `/etc` · `a/../..` · `.hidden/x` → `path-outside-inbox` · 연결 폴더 밖을 가리키는 심볼릭 링크 → `path-outside-inbox` · 없는 폴더 → `not-found(drive_folder)` · 연결하지 않음(표시 경로 빔) → `not-found(drive)` · 맨 위가 비었음 → `drive-unavailable` · 빈 하위 폴더 → 둘 다 `[]`, 200 · 크기 · 수정 시각이 실린다, 길이는 없다
+**테스트 관점** 임시 폴더를 연결 폴더로: 맨 위 → 하위 폴더와 영상 · `1.a.mp4 · 10.b.mp4 · 2.c.mp4` → 1 · 2 · 10 순서 · 하위 폴더 안으로 · 숨김 폴더 · 숨김 파일 · `desktop.ini` · pdf는 안 보인다 · pdf 둘이면 `other_files=2`이고 숨김 파일 · `desktop.ini`는 세지 않는다 · `MP4` 대문자 확장자도 받는다 · `..` · `/etc` · `a/../..` · `.hidden/x` → `path-outside-inbox` · 연결 폴더 밖을 가리키는 심볼릭 링크 → `path-outside-inbox` · 없는 폴더 → `not-found(drive_folder)` · 연결하지 않음(표시 경로 빔) → `not-found(drive)` · 맨 위가 비었음 → `drive-unavailable` · 빈 하위 폴더 → 둘 다 `[]`, 200 · 크기 · 수정 시각이 실린다, 길이는 없다
 
 ---
 
