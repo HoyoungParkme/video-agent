@@ -80,22 +80,22 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001, VA-INFRA-0
 
 근거: [[VA-SEQ-001#SEQ-1]] 27~31번 · [[VA-API-001#POST/api/videos]] 7번 · [[VA-UC-001#UC-S1]] 5번 · [[VA-UI-002#UI-2]]
 
-**입력** `video` — `register`가 돌려준 DTO. `status` · `duration_sec` · `has_captions` · `source_kind`를 본다
+**입력** `video` — `register`가 돌려준 DTO. `status` · `duration_sec` · `has_captions` · `source_kind` · `origin`을 본다
 
 **처리**
 1. if `video.status != registered` → `→ None` (작업이 있다. 라우터는 분기 없이 그대로 응답에 싣는다)
 2. `models = SettingsService.current_models()` — 모델 이름과 단가
 3. `needs_stt = not video.has_captions`
 4. if `not needs_stt` → `chunks = None` · `concurrency = None` · `stt_minutes = None` · `stt_price_per_min = None` · `stt_cost = 0` · `seconds = config.TEXT_EST_SEC`
-   else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기, 로컬 음성이면 mp3 변환 몫으로 `duration_sec / 60`초를 더한다 — 로컬 음성도 받아쓰기 단계가 조각을 나누기 전에 바꾼다, [[#pipeline.run]]) · 어느 쪽이든 장면 단계가 있으면(로컬 음성이 아니면, [[#JobService.stages_for]]) `seconds += config.FRAMES_EST_SEC`
+   else → `chunks = ceil(duration_sec / config.CHUNK_SEC)` · `concurrency = config.STT_CONCURRENCY` · `stt_minutes = duration_sec / 60`(소수 첫째 자리) · `stt_price_per_min = models.stt.price.per_min_usd` · `stt_cost = stt_minutes × stt_price_per_min` · `seconds = ceil(chunks / concurrency) × config.CHUNK_EST_SEC + config.TEXT_EST_SEC` (+ 로컬 영상이면 추출, YouTube면 내려받기, 로컬 음성이면 mp3 변환 몫으로 `duration_sec / 60`초를 더한다 — 로컬 음성도 받아쓰기 단계가 조각을 나누기 전에 바꾼다, [[#pipeline.run]]) · 어느 쪽이든 장면 단계가 있으면(로컬 음성이 아니면, [[#JobService.stages_for]]) `seconds += config.FRAMES_EST_SEC` · Google Drive 원본이면(`origin`이 `drive:`로 시작) `source_bytes = FS: 원본 크기`(`sources.local_path`) · `seconds += ceil(source_bytes / config.DRIVE_READ_BPS)` — 분석이 원본을 한 번 끝까지 받는다(60MB/s 실측, [[VA-INFRA-001#C14]]). 크기를 못 읽으면(그 사이 사라짐) `source_bytes = None`, 몫을 더하지 않는다 — 시작하면 파이프라인이 알린다. 그 밖의 출처는 `source_bytes = None`
 5. `in_tokens = duration_sec / 60 × config.TOKENS_PER_MIN` · `text_cost = (in_tokens × 3 × models.text.price.input_per_mtok_usd + 3000 × models.text.price.output_per_mtok_usd) / 1_000_000` — 스크립트를 세 번(요약 · 챕터 · 추천 질문) 보내고 출력은 합쳐 3천 토큰으로 본다. 추론 모델은 생각한 토큰도 출력으로 센다 — 실측(카드 C, gpt-5-mini): 추론 강도 기본(medium)은 6.8천~10.6천, `low`([[VA-MS-007]] `TEXT_REASONING_EFFORT`)는 42분 영상에서 2.5천
-6. `→ Estimate(needs_stt, seconds, chunks, concurrency, stt_minutes, stt_price_per_min, stt_cost_usd=round(stt_cost, 4), text_cost_usd=round(text_cost, 4), total_cost_usd=round(stt_cost + text_cost, 2), stt_model=models.stt.id, text_model=models.text.id)`
+6. `→ Estimate(needs_stt, seconds, chunks, concurrency, stt_minutes, stt_price_per_min, stt_cost_usd=round(stt_cost, 4), text_cost_usd=round(text_cost, 4), total_cost_usd=round(stt_cost + text_cost, 2), stt_model=models.stt.id, text_model=models.text.id, source_bytes)`
 
 **출력** `Estimate` 또는 `None`. 화면은 숫자를 그대로 보이고 합계에 '약'을 붙인다
 
 **호출하는 것** `SettingsService.current_models`
 
-**테스트 관점** 자막 있음 50분 → `chunks=None`, `stt_cost=0`, `seconds=60`(텍스트 45 + 장면 15 — '약 1분'), `text_cost>0` · 로컬 음성 → 장면 몫이 없다 · 로컬 150분 → `chunks=15`, `concurrency=3`, `stt_minutes=150`, `stt_cost=0.9`(단가 0.006) · 상태가 `in_progress`면 `None` · 단가를 바꾸면 값이 따라 바뀐다(설정에서 읽는다)
+**테스트 관점** 자막 있음 50분 → `chunks=None`, `stt_cost=0`, `seconds=60`(텍스트 45 + 장면 15 — '약 1분'), `text_cost>0` · 로컬 음성 → 장면 몫이 없다 · 로컬 150분 → `chunks=15`, `concurrency=3`, `stt_minutes=150`, `stt_cost=0.9`(단가 0.006) · 상태가 `in_progress`면 `None` · 단가를 바꾸면 값이 따라 바뀐다(설정에서 읽는다) · Drive 원본 60분 · 4.4GB → `source_bytes=4398246814`, `seconds`에 74초가 더해진다 · inbox · YouTube → `source_bytes=None`
 
 ---
 
