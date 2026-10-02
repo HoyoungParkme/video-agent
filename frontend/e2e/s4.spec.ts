@@ -364,3 +364,48 @@ test("보낸 추천 질문 — 다시 열면 체크 · 답 보기, 누르면 그
   await expect(el(page, "7.3")).toHaveText("6");
   expect((await fakeOpenAI(request)).asks.length).toBe(sent + 1);
 });
+
+test("이 화면에서 물은 추천 질문 — 기록을 받기 전에 다시 눌러도 또 보내지 않고, 탭을 오가도 기록은 한 번만 청한다", async ({
+  page,
+  request,
+}) => {
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  const url = await openResult(page, "https://youtu.be/e2eAskedQ02");
+  const CHAT = "**/api/videos/*/chat";
+  // 기록 GET을 붙잡아 둔다 — 답은 오는데 기록은 늦다
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(CHAT, async (route) => {
+    if (route.request().method() === "GET") await held;
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await page.locator(".pill").first().click();
+  await expect(el(page, "7.3")).toHaveText("1"); // 답이 왔다 — 기록은 아직
+  await page.locator(".pill").first().click(); // 질문 수가 0이 아닌데 기록을 받는 중 — 탭만
+  await page.locator(".chat-chip").first().click();
+  release();
+  await expect(page.locator(".pill").first()).toHaveAttribute("aria-label", /이미 물어봤어요/);
+  await expect(page.locator(".turn")).toHaveCount(1);
+  expect((await fakeOpenAI(request)).asks.length).toBe(1);
+  await page.unroute(CHAT);
+
+  // 질문이 있는 영상을 열면 기록을 바로 청한다 — 받는 동안 탭을 오가도 다시 청하지 않는다
+  let gets = 0;
+  let open = () => {};
+  const late = new Promise<void>((resolve) => (open = resolve));
+  await page.route(CHAT, async (route) => {
+    if (route.request().method() === "GET") {
+      gets += 1;
+      await late;
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await page.goto(url);
+  await expect(el(page, "7.1")).toHaveAttribute("aria-selected", "true");
+  await el(page, "7.2").click();
+  await el(page, "7.1").click();
+  await el(page, "7.2").click();
+  open();
+  await expect(page.locator(".turn")).toHaveCount(1);
+  expect(gets).toBe(1);
+});

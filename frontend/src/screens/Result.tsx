@@ -301,11 +301,8 @@ export default function Result({ id }: { id: number }) {
   const [rejected, setRejected] = useState<string | null>(null);
   // 질문 기록 — 질문이 있으면 결과를 열 때, 없으면 질문하기 탭을 처음 열 때 받는다(받기 전에는 null)
   const [turns, setTurns] = useState<ChatTurn[] | null>(null);
-  // 이미 물어본 추천 질문을 눌렀다 — 그 턴을 대화 목록 맨 위로(n은 누른 횟수, 같은 것을 다시 눌러도 돈다).
-  // goToAsked는 누른 횟수, wentTo는 옮긴 횟수 — 둘이 다르면 아직 옮기지 않았다
-  const [goTo, setGoTo] = useState<{ turn: number; n: number } | null>(null);
-  const goToAsked = useRef(0);
-  const wentTo = useRef(0);
+  // 이미 물어본 추천 질문을 눌렀다 — 그 턴을 대화 목록 맨 위로 옮길 때까지 들고 있다(옮기면 비운다)
+  const [goTo, setGoTo] = useState<{ turn: number } | null>(null);
   // 이 화면에서 받은 답 — 기록이 답보다 늦게 오거나 저장 전에 읽은 것이어도 받을 때 합친다
   const answered = useRef<ChatTurn[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -425,9 +422,9 @@ export default function Result({ id }: { id: number }) {
 
   // 기록을 받는다 — 질문이 있으면 결과를 열 때(이미 물어본 추천 질문을 가르려고, 공통 1.8), 없으면 질문하기 탭을
   // 처음 열 때. 잠깐 닿지 못하면 다시
-  const hasTurns = (result?.video.chat_turn_count ?? 0) > 0;
+  const needHistory = (result?.video.chat_turn_count ?? 0) > 0 || tab === "chat";
   useEffect(() => {
-    if (turns !== null || (tab !== "chat" && !hasTurns)) return;
+    if (turns !== null || !needHistory) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
@@ -443,7 +440,7 @@ export default function Result({ id }: { id: number }) {
       alive = false;
       clearTimeout(timer);
     };
-  }, [tab, turns, id, hasTurns]);
+  }, [needHistory, turns, id]);
 
   // 질문하기 탭으로 돌아오면 — 떠난 사이 새 턴 · 대기 · 실패가 생겼으면 끝, 아니면 읽던 위치 그대로다. 숨긴
   // 패널의 스크롤 위치는 브라우저가 지킨다 — 스크립트(8)와 같다(UI-4 규칙, Chromium 진짜 스택 확인)
@@ -452,20 +449,20 @@ export default function Result({ id }: { id: number }) {
     if (tab !== "chat" || !box || !chatMissed.current) return;
     chatMissed.current = false;
     // 이미 물어본 추천 질문을 눌러 왔으면 끝이 아니라 그 턴으로 간다(아래 효과)
-    if (goToAsked.current !== wentTo.current) return;
+    if (goTo) return;
     box.scrollTop = box.scrollHeight;
-  }, [tab]);
+  }, [tab, goTo]);
 
-  // 이미 물어본 추천 질문 — 그 턴을 대화 목록 맨 위로(공통 1.8). 누를 때마다 한 번, 그 턴이 그려진 뒤에 돈다
+  // 이미 물어본 추천 질문 — 그 턴을 대화 목록 맨 위로(공통 1.8). 그 턴이 그려진 뒤에 돌고, 옮기면 비운다
   useEffect(() => {
     const box = chatList.current;
-    if (!goTo || goTo.n === wentTo.current || tab !== "chat" || !box) return;
+    if (!goTo || tab !== "chat" || !box) return;
     const row = box.querySelector<HTMLElement>(`[data-turn="${goTo.turn}"]`);
     if (!row) return;
-    wentTo.current = goTo.n;
     chatMissed.current = false;
     const pad = parseFloat(getComputedStyle(box).paddingTop) || 0;
     box.scrollTop += row.getBoundingClientRect().top - box.getBoundingClientRect().top - pad;
+    setGoTo(null);
   }, [goTo, tab, turns]);
 
   // 새 턴 · 대기 · 실패가 생기면 대화 목록의 끝을 보인다. 숨어 있으면(높이 0) 돌아올 때 — 창 전체는 움직이지 않는다
@@ -508,6 +505,8 @@ export default function Result({ id }: { id: number }) {
     window.history.replaceState(null, "", url);
   };
   const keyBlocked = settings ? keyBlocks(settings.key) : false;
+  // 질문 수 — 저장된 수 + 이 화면에서 늘어난 수(배지 7.3과 같다)
+  const turnCount = video.chat_turn_count + asked;
   const keyNote = settings ? keyNotice(settings.key) : null;
   const waiting = pending !== null && pending.error === null;
   // 이미 물어본 추천 질문 — 글(앞뒤 공백 뺌)이 같은 질문의 가장 최근 턴(공통 1.8)
@@ -540,12 +539,10 @@ export default function Result({ id }: { id: number }) {
   // 동안이나 키가 막혀도 같다). 기록을 받는 동안에는 이미 물어본 것인지 몰라 탭만 바꾼다
   function pick(text: string) {
     setTab("chat");
-    if (turns === null && video.chat_turn_count > 0) return;
+    if (turns === null && turnCount > 0) return;
     const turn = askedTurn.get(text.trim());
-    if (turn !== undefined) {
-      goToAsked.current += 1;
-      setGoTo({ turn, n: goToAsked.current });
-    } else void ask(text);
+    if (turn !== undefined) setGoTo({ turn });
+    else void ask(text);
   }
 
   function submit() {
@@ -876,7 +873,7 @@ export default function Result({ id }: { id: number }) {
               </svg>
               질문하기
               <span className="tab-count" data-el="7.3">
-                {video.chat_turn_count + asked}
+                {turnCount}
               </span>
             </button>
           </div>
@@ -1052,7 +1049,7 @@ export default function Result({ id }: { id: number }) {
       {dialog === "export" && (
         <Export
           video={video}
-          turns={video.chat_turn_count + asked}
+          turns={turnCount}
           onClose={() => setDialog(null)}
           onDone={(message) => {
             setDialog(null);
@@ -1089,7 +1086,7 @@ export default function Result({ id }: { id: number }) {
       {dialog === "delete" && (
         <Delete
           video={video}
-          turns={video.chat_turn_count + asked}
+          turns={turnCount}
           onClose={() => setDialog(null)}
           onDeleted={() => {
             markListFocus();

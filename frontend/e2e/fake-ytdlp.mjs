@@ -25,6 +25,8 @@ const VIDEOS = {
   e2eRaceLst1: { title: "기록이 먼저 오는 대화", duration: 1800, subtitles: { ko: [] } },
   // 보낸 추천 질문 — 체크 · 답 보기, 누르면 그 답으로(카드 E8)
   e2eAskedQ01: { title: "이미 물어본 추천 질문", duration: 1800, subtitles: { ko: [] } },
+  // 이 화면에서 물은 추천 질문 — 기록이 늦어도 또 보내지 않는다(카드 E8 코드 리뷰)
+  e2eAskedQ02: { title: "기록이 늦은 추천 질문", duration: 1800, subtitles: { ko: [] } },
   // 3시간 — 10초마다 70자 줄이라 대화 토큰 상한(3만)을 넘는다. 질문과 맞는 챕터만 보낸다
   e2eLong3h01: {
     title: "데이터 카탈로그 워크숍 종일",
