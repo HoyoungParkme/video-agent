@@ -682,6 +682,8 @@ html { scroll-padding-top: calc(var(--header-h) + var(--banner-h, 0px) + var(--s
   font-size: var(--text-15); text-align: left; cursor: pointer;
 }
 .pill:hover { background: var(--c-hover); }
+/* 앞 아이콘은 청록 — 말풍선 · 이미 물어본 체크(UI-4 5.1, #31) */
+.pill .icon { color: var(--c-teal); }
 .chapters { display: flex; flex-direction: column; gap: var(--space-6); }
 .chapter {
   width: 100%; padding: var(--space-14) var(--space-16); display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--space-12);
