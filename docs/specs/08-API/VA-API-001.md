@@ -227,7 +227,7 @@ upstream: [VA-UI-002, VA-UI-001, VA-UC-001, VA-DOM-001, VA-INFRA-001]
 연결한 Google Drive 폴더([[VA-INFRA-001#C14]]) 안의 폴더 하나를 준다. UI-1 「내 파일」 카드에서 Google Drive로 바꿨을 때, 폴더를 열 때마다 부른다.
 
 - `path`는 연결 폴더 안의 상대 경로다(`/`로 나눈다). 비우면 맨 위(내 드라이브). `..` · 절대 경로 · 숨김 칸(`.`으로 시작)이 있거나, 심볼릭 링크를 따른 실제 경로가 연결 폴더 밖이면 422 `urn:va:path-outside-inbox`.
-- 하위 폴더(숨김 제외)와 받는 확장자 파일만 준다. 둘 다 자연 순서다 — 숫자는 수로 견준다(1, 2, … 10).
+- 하위 폴더(숨김 제외)와 받는 확장자 파일만 준다. 둘 다 자연 순서다 — 숫자는 수로 견준다(1, 2, … 10). 받지 않는 파일(문서 · 이미지 등)은 주지 않고 그 수만 `other_files`에 싣는다 — 화면이 빈 폴더와 받을 영상이 없는 폴더를 가른다([[VA-UI-002#UI-1]] 4.25). 숨김(`.`으로 시작)과 `desktop.ini`(Google Drive 앱이 폴더마다 두는 Windows 숨김 파일)는 세지 않는다.
 - 파일은 이름 · 크기 · 수정 시각 · 종류만 준다 — 길이는 재지 않는다(재려면 Drive가 파일마다 클라우드에서 받는다). 길이는 고른 뒤 [[#POST/api/videos]]가 잰다.
 - 연결하지 않았으면 404 `urn:va:not-found`(`resource: drive`), 그 폴더가 없으면 404(`resource: drive_folder`, `id`는 `path`), 마운트가 비었거나 읽기에 실패하면 503 `urn:va:drive-unavailable`.
 - 폴더가 비었으면 둘 다 빈 배열이다. 에러가 아니다.
@@ -1313,7 +1313,7 @@ components:
           format: date-time
     DriveListing:
       type: object
-      required: [path, folders, files]
+      required: [path, folders, files, other_files]
       properties:
         path:
           type: string
@@ -1328,6 +1328,9 @@ components:
           items:
             $ref: '#/components/schemas/DriveFile'
           description: 받는 확장자 파일, 자연 순서
+        other_files:
+          type: integer
+          description: 받지 않는 형식이라 뺀 파일 수(숨김 · desktop.ini는 세지 않는다). 0이고 folders · files가 비었으면 빈 폴더
     DriveConnection:
       type: object
       required: [name, path]
