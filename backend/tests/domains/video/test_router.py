@@ -14,6 +14,7 @@ from app.core.errors import SourceUnavailable
 from app.domains.analysis.service import AnalysisService
 from app.domains.job.models import JobStatus
 from app.domains.job.service import JobService
+from app.domains.video.models import SourceKind
 from app.domains.video.service import VideoService
 from app.infra.openai import ReasonKind
 
@@ -110,6 +111,61 @@ async def test_get_video(api, make) -> None:
     row = await make.video()
     body = (await api.get(f"/api/videos/{row.id}")).json()
     assert (body["video"]["id"], body["job"]) == (row.id, None)
+
+
+async def test_get_media_ranges(api, make, tmp_path, monkeypatch) -> None:
+    """원본 재생 — 구간 요청은 206과 그 바이트, 없으면 200으로 전부, HEAD는 본문 없이 길이."""
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    data = bytes(range(256)) * 4
+    (tmp_path / "talk.webm").write_bytes(data)
+    row = await make.video(source_kind=SourceKind.local, source_id="d" * 64, origin="talk.webm")
+    r = await api.get(f"/api/videos/{row.id}/media", headers={"Range": "bytes=100-199"})
+    assert (r.status_code, r.headers["content-range"], r.content) == (
+        206,
+        "bytes 100-199/1024",
+        data[100:200],
+    )
+    assert (r.headers["content-type"], r.headers["accept-ranges"]) == ("video/webm", "bytes")
+    full = await api.get(f"/api/videos/{row.id}/media")
+    assert (full.status_code, full.content) == (200, data)
+    head = await api.head(f"/api/videos/{row.id}/media")
+    assert (head.status_code, head.content, head.headers["content-length"]) == (200, b"", "1024")
+
+
+@pytest.mark.parametrize(
+    ("name", "media_type"),
+    [
+        ("a.mp4", "video/mp4"),
+        ("b.mov", "video/quicktime"),
+        ("c.MKV", "video/x-matroska"),
+        ("d.mp3", "audio/mpeg"),
+        ("e.m4a", "audio/mp4"),
+        ("f.wav", "audio/wav"),
+    ],
+)
+async def test_get_media_type_by_extension(api, make, tmp_path, monkeypatch, name, media_type):
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / name).write_bytes(b"x")
+    row = await make.video(source_kind=SourceKind.local, source_id=name[0] * 64, origin=name)
+    r = await api.get(f"/api/videos/{row.id}/media")
+    assert r.headers["content-type"].split(";")[0] == media_type
+
+
+async def test_get_media_problems(api, make, tmp_path, monkeypatch) -> None:
+    """YouTube는 409 media-unavailable, 옮긴 원본은 404(media) — HEAD도 같은 판정이다."""
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    yt = await make.video()
+    r = await api.get(f"/api/videos/{yt.id}/media")
+    assert (r.status_code, r.headers["content-type"]) == (409, PROBLEM)
+    assert (r.json()["type"], r.json()["reason_kind"]) == ("urn:va:media-unavailable", "youtube")
+    moved = await make.video(source_kind=SourceKind.local, source_id="e" * 64, origin="moved.mp4")
+    r = await api.get(f"/api/videos/{moved.id}/media")
+    assert (r.status_code, r.json()["type"], r.json()["resource"]) == (
+        404,
+        "urn:va:not-found",
+        "media",
+    )
+    assert (await api.head(f"/api/videos/{moved.id}/media")).status_code == 404
 
 
 async def test_inbox_lists_files(api, probe, tmp_path, monkeypatch) -> None:
