@@ -464,6 +464,11 @@ export const api = {
   makeInfographic: (id: number) => call<Infographic>("POST", `/api/videos/${id}/infographic`),
   /** GET /api/videos/{id}/chat — 질문 · 답변 기록, 시간순 */
   chat: (id: number) => call<ChatTurn[]>("GET", `/api/videos/${id}/chat`),
+  /** 원본 재생 주소 — 플레이어의 <video> · <audio>가 그대로 부른다(구간 요청은 브라우저가 한다) */
+  mediaUrl: (id: number) => `/api/videos/${id}/media`,
+  /** 원본이 아직 있는가 — 재생이 실패했을 때 원본 없음 · 형식을 가른다(HEAD, VA-API-001 GET …/media) */
+  mediaExists: async (id: number) =>
+    (await fetch(`/api/videos/${id}/media`, { method: "HEAD" })).ok,
   /** POST /api/videos/{id}/chat — 질문하고 답을 받는다. 실패하면 저장되지 않는다 */
   ask: (id: number, question: string) =>
     call<ChatTurn>("POST", `/api/videos/${id}/chat`, { question }),

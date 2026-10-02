@@ -32,6 +32,8 @@ const VIDEOS = {
   e2eA11yLng1: { title: "키보드로 보는 워크숍", duration: 10800, subtitles: { ko: [] } },
   // 시각을 고른 뒤의 자리 · 주소 ?t= — 37.5초마다라 구간 시각 절반이 소수다(카드 E6)
   e2eScroll01: { title: "주소에 남는 시각", duration: 3000, subtitles: { ko: [] }, step: 37.5 },
+  // 영상 같이 보기 — 재생 판 · 그 시각부터 · 접기 · 재생할 수 없음(카드 E7)
+  e2ePlayer01: { title: "같이 보는 발표", duration: 3000, subtitles: { ko: [] } },
   // 며칠 뒤 다시 열어 묻고 내보내고 지운다 — S5
   e2eNoteVid1: { title: "벡터 DB 운영 노트", duration: 1800, subtitles: { ko: [] } },
   // 대기열에서 지운다 — 도는 영상 · 기다리는 영상 둘(s5)

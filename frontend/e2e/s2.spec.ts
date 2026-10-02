@@ -29,6 +29,7 @@ test("inbox 워크숍 — 받아쓰기 필요 판부터 파트로 묶인 챕터�
     "silent_demo.mp4",
     "notes.mp4",
     "marathon_0901.mp4",
+    "player_demo.mp4",
   ]);
   await expect(el(page, "4.3")).toHaveAttribute("aria-pressed", "true");
   await expect(el(page, "4.3").locator(".file-length")).toHaveText("2:30:00");

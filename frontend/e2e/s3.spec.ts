@@ -5,10 +5,15 @@
  * 시각을 고른 뒤의 자리(카드 E6, 공통 1.3) — 이미 보이는 구간은 움직이지 않고, 안 보이면 가운데, 같은 시각을
  * 다시 눌러도 같다. 고른 시각은 주소 `?t={초}`에 남아 새로 고치거나 다녀와도 그 자리다. 37.5초마다 줄이 있는
  * 50분 발표라 구간 시각 절반이 소수다.
+ * 영상 같이 보기(카드 E7, UI-4 16) — YouTube는 IFrame API를 가짜로 바꿔 불린 것을 세고, 로컬 원본은 진짜 짧은
+ * webm(e2e/fixtures/player.webm, 10분)으로 바꿔 준다. E2E inbox 파일은 길이만 담은 JSON이라 재생되지 않는다.
  */
+import { readFileSync, renameSync } from "node:fs";
+import path from "node:path";
+
 import { expect, test, type Page } from "@playwright/test";
 
-import { el, fakeOpenAI, openResult, saveKey } from "./helpers";
+import { el, fakeOpenAI, inDialog, INBOX, openResult, saveKey } from "./helpers";
 
 const VIDEO = "https://youtu.be/e2eA11yLng1";
 const SCROLL = "https://youtu.be/e2eScroll01";
@@ -253,5 +258,167 @@ test("고른 시각은 주소에 — 소수 시각 · 새로 고침 · 설정에
     await expect(el(page, "8.3")).toBeVisible();
     await expect(el(page, "8.2")).toHaveText("");
     await expect(page.locator(".segment.is-selected")).toHaveCount(0);
+  }
+});
+
+// ── 영상 같이 보기(카드 E7) ───────────────────────────────────────────────
+const PLAYER = "https://youtu.be/e2ePlayer01";
+const IFRAME_API = "https://www.youtube.com/iframe_api";
+const FIXTURE = path.join(__dirname, "fixtures", "player.webm");
+// 가짜 IFrame Player API — 만든 플레이어와 부른 것을 적는다. __ytError가 있으면 준비 뒤 그 오류를 낸다
+const FAKE_YT = `
+window.__yt = { made: [], calls: [] };
+window.YT = { Player: function (el, opts) {
+  window.__yt.made.push({ videoId: opts.videoId, host: opts.host, start: opts.playerVars.start });
+  const box = document.createElement("div");
+  box.className = "fake-yt";
+  el.replaceWith(box);
+  const self = this;
+  this.seekTo = (s) => window.__yt.calls.push("seekTo " + s);
+  this.playVideo = () => window.__yt.calls.push("play");
+  this.pauseVideo = () => window.__yt.calls.push("pause");
+  this.getPlayerState = () => 1;
+  this.destroy = () => {};
+  setTimeout(() => {
+    opts.events.onReady({ target: self });
+    if (window.__ytError) opts.events.onError({ data: window.__ytError });
+  }, 0);
+} };
+if (window.onYouTubeIframeAPIReady) window.onYouTubeIframeAPIReady();
+`;
+interface FakeYT {
+  __yt: { made: { videoId: string; host: string; start: number }[]; calls: string[] };
+  __ytError?: number;
+}
+const chip = (page: Page, t: string) =>
+  page.getByRole("button", { name: `${t} 위치의 스크립트로 이동`, exact: true });
+
+test("YouTube — 누르기 전에는 YouTube로 아무것도 가지 않고, 누르면 그 시각부터 · 시각을 누르면 그리로 · 접으면 멈춘다", async ({
+  page,
+}) => {
+  const hits: string[] = [];
+  page.on("request", (r) => {
+    if (/youtube|ytimg|googlevideo/.test(new URL(r.url()).hostname)) hits.push(r.url());
+  });
+  await page.route(IFRAME_API, (r) => r.fulfill({ contentType: "text/javascript", body: FAKE_YT }));
+  await openResult(page, PLAYER);
+  await expect(el(page, "16.3")).toHaveText("누르면 YouTube 플레이어를 불러와요");
+  await expect(el(page, "16.6")).toHaveText("YouTube · 누르면 불러와요");
+  await chip(page, "20:00").click();
+  await expect(el(page, "16.2")).toHaveText("20:00부터 재생");
+  expect(hits).toEqual([]); // 재생 판을 누르기 전에는 YouTube로 아무것도 가지 않는다
+
+  await el(page, "16.1").click();
+  await expect(el(page, "16.6")).toHaveText("YouTube · 20:00부터 재생 중");
+  await expect(el(page, "16.4").locator(".fake-yt")).toHaveCount(1);
+  expect(hits).toEqual([IFRAME_API]);
+  expect(await page.evaluate(() => (window as unknown as FakeYT).__yt.made)).toEqual([
+    { videoId: "e2ePlayer01", host: "https://www.youtube-nocookie.com", start: 1200 },
+  ]);
+
+  // 연 뒤에는 시각을 누르면 그 시각부터
+  await chip(page, "30:00").click();
+  await expect(el(page, "16.6")).toHaveText("YouTube · 30:00부터 재생 중");
+  // 접으면 멈추고, 접힌 동안 시각을 눌러도 재생하지 않는다. 펼치면 이어 본다
+  await el(page, "16.7").click();
+  await expect(el(page, "16.6")).toHaveText("영상 — 펼치면 이 자리에서 재생해요");
+  await chip(page, "20:00").click();
+  await el(page, "16.7").click();
+  expect(await page.evaluate(() => (window as unknown as FakeYT).__yt.calls)).toEqual([
+    "play",
+    "seekTo 1800",
+    "play",
+    "pause",
+    "play",
+  ]);
+});
+
+test("YouTube를 재생할 수 없을 때 — 퍼가기 막힘은 원본 영상 열기, 연결 안 됨은 다시 시도", async ({
+  page,
+}) => {
+  await page.route(IFRAME_API, (r) => r.fulfill({ contentType: "text/javascript", body: FAKE_YT }));
+  await openResult(page, PLAYER);
+  await page.evaluate(() => {
+    (window as unknown as FakeYT).__ytError = 150;
+  });
+  await el(page, "16.1").click();
+  await expect(el(page, "16.8")).toContainText("이 영상은 YouTube 밖에서 재생할 수 없어요");
+  await expect(el(page, "16.9")).toHaveAttribute("href", /e2ePlayer01/);
+  await expect(el(page, "16.6")).toHaveText("YouTube");
+
+  await page.unroute(IFRAME_API);
+  await page.route(IFRAME_API, (r) => r.abort());
+  await page.reload();
+  await el(page, "16.1").click();
+  await expect(el(page, "16.8")).toContainText("YouTube에 연결하지 못했어요");
+  await page.unroute(IFRAME_API);
+  await page.route(IFRAME_API, (r) => r.fulfill({ contentType: "text/javascript", body: FAKE_YT }));
+  await el(page, "16.9").click(); // 다시 시도 — 재생 판을 누른 것과 같다
+  await expect(el(page, "16.6")).toHaveText("YouTube · 00:00부터 재생 중");
+});
+
+test("로컬 원본 — 그 시각부터 재생, 접으면 멈추고 펼치면 이어 보며, 원본을 옮기면 알린다", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(90_000);
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0, stt_delay_ms: 0, stt_fail: null });
+  await page.goto("/");
+  await page.locator(".file-row", { hasText: "player_demo.mp4" }).click();
+  await el(page, "4.6").click();
+  const start = inDialog(page, "6.3");
+  await Promise.race([
+    start.waitFor().catch(() => undefined),
+    page.waitForURL(/\/videos\/\d+$/).catch(() => undefined),
+  ]);
+  if (await start.isVisible()) await start.click();
+  await expect(page).toHaveURL(/\/videos\/\d+$/, { timeout: 60_000 });
+
+  await expect(el(page, "16.3")).toHaveText("누르면 원본 파일을 재생해요");
+  await expect(el(page, "16.6")).toHaveText("원본 파일 · mp4 · 누르면 재생해요");
+  // 서버처럼 구간 요청에 206으로 답한다 — 통째(200)로만 주면 브라우저가 건너뛸 수 없는 자료로 본다
+  const bytes = readFileSync(FIXTURE);
+  await page.route("**/api/videos/*/media", (r) => {
+    const m = /bytes=(\d+)-(\d*)/.exec(r.request().headers()["range"] ?? "");
+    const from = m ? Number(m[1]) : 0;
+    const to = m?.[2] ? Number(m[2]) : bytes.length - 1;
+    return r.fulfill({
+      status: m ? 206 : 200,
+      contentType: "video/webm",
+      headers: {
+        "accept-ranges": "bytes",
+        ...(m ? { "content-range": `bytes ${from}-${to}/${bytes.length}` } : {}),
+      },
+      body: bytes.subarray(from, to + 1),
+    });
+  });
+  const media = page.locator('video[data-el="16.4"]');
+  const at = () => media.evaluate((v) => Math.round((v as HTMLVideoElement).currentTime));
+  await chip(page, "01:40").click();
+  await expect(el(page, "16.2")).toHaveText("01:40부터 재생");
+  await el(page, "16.1").click();
+  await expect.poll(at).toBeGreaterThanOrEqual(100);
+  await expect(el(page, "16.6")).toHaveText("원본 파일 · 01:40부터 재생 중");
+  await chip(page, "05:00").click();
+  await expect.poll(at).toBeGreaterThanOrEqual(300);
+  await expect(el(page, "16.6")).toHaveText("원본 파일 · 05:00부터 재생 중");
+
+  // 접으면 멈추고, 펼치면 이어 본다
+  await el(page, "16.7").click();
+  await expect(media).toBeHidden();
+  expect(await media.evaluate((v) => (v as HTMLVideoElement).paused)).toBe(true);
+  await el(page, "16.7").click();
+  await expect.poll(() => media.evaluate((v) => (v as HTMLVideoElement).paused)).toBe(false);
+
+  // 원본을 옮기면 — 재생이 실패하고 원본이 있는지 다시 물어 '원본 파일을 찾지 못했어요'
+  await page.unroute("**/api/videos/*/media");
+  renameSync(path.join(INBOX, "player_demo.mp4"), path.join(INBOX, "player_demo.moved"));
+  try {
+    await page.reload();
+    await el(page, "16.1").click();
+    await expect(el(page, "16.8")).toContainText("원본 파일을 찾지 못했어요");
+    await expect(el(page, "16.6")).toHaveText("원본 파일 · inbox/player_demo.mp4");
+  } finally {
+    renameSync(path.join(INBOX, "player_demo.moved"), path.join(INBOX, "player_demo.mp4"));
   }
 });
