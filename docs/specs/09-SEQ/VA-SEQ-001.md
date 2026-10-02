@@ -84,6 +84,7 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | [[VA-API-001#GET/api/settings]] | [[#SEQ-C1]] | | |
 | [[VA-API-001#PUT/api/settings/models]] | [[#SEQ-C1]] | | |
 | [[VA-API-001#GET/api/inbox]] | [[#SEQ-C1]] | | ffprobe |
+| [[VA-API-001#GET/api/drive]] | [[#SEQ-C1]] | | 파일(연결한 Google Drive 폴더 목록) |
 | [[VA-API-001#GET/api/videos/{id}/chat]] | [[#SEQ-8]] | ○ | |
 | [[VA-API-001#POST/api/uploads]] | [[#SEQ-15]] | ○ | 파일 · ffprobe · OpenAI(키 확인) |
 | 백그라운드 파이프라인 — 장면 단계와 끝 | [[#SEQ-16]] | ○ | YouTube(스토리보드) 또는 ffmpeg · 파일 |
