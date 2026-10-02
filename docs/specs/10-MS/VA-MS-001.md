@@ -10,7 +10,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 ## 0. 이 문서가 다루는 것
 
-`domains/video/service.py`의 함수 10개. 클래스 명세 [[VA-DOM-002#VideoService]]의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나 = 코드 파일 하나** — 이 파일을 짤 때 이 문서를 본다. 포트 · 어댑터(`youtube_info` · `media_probe`)는 4.6 · 4.7의 MS 문서에서.
+`domains/video/service.py`의 함수 11개. 클래스 명세 [[VA-DOM-002#VideoService]]의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나 = 코드 파일 하나** — 이 파일을 짤 때 이 문서를 본다. 포트 · 어댑터(`youtube_info` · `media_probe`)는 4.6 · 4.7의 MS 문서에서.
 
 형식은 명세 작성 규약 2.10 — 시그니처 · 근거 · 입력 · 처리 · 출력 · 예외 · 호출하는 것 · 테스트 관점, 분기는 `if 조건 → 결과`, 간략형 허용. 내부 타입(`SourceInfo` 등)은 [[VA-DOM-002]] 2.6, 응답 형태(`Video` `VideoSummary` `VideoDetail` `InboxListing`)는 [[VA-API-001]] 4장.
 
@@ -31,6 +31,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 | [[#VideoService.upload]] | 올린 파일 등록 — 키 → 이름 → 디스크 → 쓰며 해시 → 정보 → 중복 → 사본 |
 | [[#VideoService.list]] | 작업이 있는 영상 목록, 최근 순 |
 | [[#VideoService.get]] | 영상 하나 + 작업 요약 |
+| [[#VideoService.media]] | 원본 재생 경로 — inbox 원본만 |
 | [[#VideoService.delete]] | 영상과 딸린 것 전부 삭제 — 행 · 임시 음성 · 장면 · 인포그래픽 · 올린 사본 |
 | [[#VideoService.release_upload]] | 올린 사본 놓기 (작업이 done이 된 뒤 · 지울 때) |
 | [[#VideoService.sweep_uploads]] | 시작 때 올리다 만 것 · 주인 없는 사본 · 끝난 작업의 사본 청소 |
@@ -179,6 +180,18 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 **호출하는 것** `JobService.latest` · `ChatService.count_by_videos` · [[#VideoService.to_dto]]
 
 **테스트 관점** 없는 id → `not-found` · 작업 없는 영상 → `job=None`, `status=registered` · `chat_turn_count`가 UI-6 '질문 기록 {n}개'와 같다
+
+---
+
+#### VideoService.media 원본 재생 경로
+
+**시그니처** `async def media(video_id: int) -> Path`
+
+근거: [[VA-API-001#GET/api/videos/{id}/media]] · [[VA-UC-001#UC-H3]] 6 · 6b · 6c · [[VA-INFRA-001#C13]] · [[VA-DOM-002]] VideoService
+
+**처리** `DB: videos 행` — 없으면 `!not-found(resource=video)` · if `source_kind == youtube` → `!media-unavailable(reason_kind=youtube)` · if `uploaded` → `!media-unavailable(reason_kind=uploaded)` — 올린 사본은 분석이 끝나면 지운다. 실패한 작업이라 사본이 남아 있어도 재생하지 않는다(결과 화면은 분석이 끝난 영상만 연다) · `path = sources.local_path(origin, source_id, False)` · `FS: 있나` — 없으면 `!not-found(resource=media)` → path. 파일을 여는 것 · 구간 요청(`Range`) · HEAD · 형식(`Content-Type`)은 라우터의 `FileResponse`가 한다([[VA-API-001#GET/api/videos/{id}/media]]의 확장자 표)
+
+**테스트 관점** inbox 영상 → 그 경로 · 구간 요청에 206 · `Content-Range` · 그 바이트(라우터) · HEAD에 본문 없이 길이(라우터) · 확장자마다 `Content-Type`(라우터) · YouTube 영상 → media-unavailable(youtube) · 올린 영상 → media-unavailable(uploaded) · inbox에서 옮긴 원본 → not-found(media) · 없는 영상 → not-found(video) · 요청에서 경로를 받지 않는다(id만)
 
 ---
 
