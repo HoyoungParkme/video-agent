@@ -276,11 +276,13 @@ window.YT = { Player: function (el, opts) {
   el.replaceWith(box);
   const self = this;
   this.destroy = () => {};
+  let state = 1;
   setTimeout(() => {
-    self.seekTo = (s) => window.__yt.calls.push("seekTo " + s);
+    // 시각을 옮기면 버퍼링(3)이다 — 진짜도 그 자리의 영상이 오기 전까지 3이다
+    self.seekTo = (s) => { window.__yt.calls.push("seekTo " + s); state = 3; };
     self.playVideo = () => window.__yt.calls.push("play");
     self.pauseVideo = () => window.__yt.calls.push("pause");
-    self.getPlayerState = () => 1;
+    self.getPlayerState = () => state;
     window.__yt.ready = true;
     opts.events.onReady({ target: self });
     if (window.__ytError) opts.events.onError({ data: window.__ytError });
@@ -327,7 +329,7 @@ test("YouTube — 누르기 전에는 YouTube로 아무것도 가지 않고, 누
   // 연 뒤에는 시각을 누르면 그 시각부터
   await chip(page, "30:00").click();
   await expect(el(page, "16.6")).toHaveText("YouTube · 30:00부터 재생 중");
-  // 접으면 멈추고, 접힌 동안 시각을 눌러도 재생하지 않는다. 펼치면 이어 본다
+  // 접으면 멈추고, 접힌 동안 시각을 눌러도 재생하지 않는다. 펼치면 이어 본다 — 시각을 옮긴 직후(버퍼링)에 접어도
   await el(page, "16.7").click();
   await expect(el(page, "16.6")).toHaveText("영상 — 펼치면 이 자리에서 재생해요");
   await chip(page, "20:00").click();

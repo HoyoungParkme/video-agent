@@ -51,7 +51,9 @@ declare global {
   }
 }
 
+// 재생 중 · 버퍼링(시각을 옮긴 직후) — 접을 때 이 둘이면 펼칠 때 이어 본다
 const YT_PLAYING = 1;
+const YT_BUFFERING = 3;
 let ytApi: Promise<YTNamespace> | null = null;
 
 /** IFrame Player API를 한 번 불러온다 — 재생 판을 처음 누를 때. 못 불러오면 다음에 다시 시도한다. */
@@ -220,7 +222,8 @@ export default function Player({ video, frame, start, long, ref }: Props) {
           yt.current?.playVideo();
         } else if (media.current) {
           media.current.currentTime = sec;
-          void media.current.play();
+          // 멈추기 · 접기가 재생을 끊으면 약속이 거절된다 — 할 일이 없다
+          media.current.play().catch(() => undefined);
         }
       },
     }),
@@ -232,7 +235,8 @@ export default function Player({ video, frame, start, long, ref }: Props) {
       if (kind === "youtube") {
         // 준비되기 전(불러오는 중)에는 재생 함수가 아직 없다 — 준비되면 onReady가 재생하지 않고 남긴다
         const ready = phase === "playing";
-        resume.current = !ready || yt.current?.getPlayerState() === YT_PLAYING;
+        const state = ready ? yt.current?.getPlayerState() : undefined;
+        resume.current = !ready || state === YT_PLAYING || state === YT_BUFFERING;
         if (ready) yt.current?.pauseVideo();
       } else {
         resume.current = media.current ? !media.current.paused : false;
@@ -240,7 +244,7 @@ export default function Player({ video, frame, start, long, ref }: Props) {
       }
     } else if (resume.current && phase === "playing") {
       if (kind === "youtube") yt.current?.playVideo();
-      else void media.current?.play();
+      else media.current?.play().catch(() => undefined);
     }
     folded.current = open;
     setOpen(!open);
