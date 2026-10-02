@@ -14,6 +14,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "reac
 
 import { api, type Video } from "@/api/client";
 import { timeLabel } from "@/components/TimeChip";
+import { isAudioFile } from "@/labels";
 
 /** 결과 화면이 시각 누르기로 부른다 — 열려 재생 중이면 그 시각부터. */
 export interface PlayerHandle {
@@ -54,25 +55,35 @@ declare global {
 // 재생 중 · 버퍼링(시각을 옮긴 직후) — 접을 때 이 둘이면 펼칠 때 이어 본다
 const YT_PLAYING = 1;
 const YT_BUFFERING = 3;
+// IFrame API가 이 안에 준비되지 않으면 불러오지 못한 것으로 본다 — 첫 스크립트는 왔는데 그다음(www-widgetapi)이
+// 막혀도 「불러오는 중」에 머물지 않게(UI-4 규칙)
+const YT_READY_MS = 15_000;
 let ytApi: Promise<YTNamespace> | null = null;
 
-/** IFrame Player API를 한 번 불러온다 — 재생 판을 처음 누를 때. 못 불러오면 다음에 다시 시도한다. */
+/** IFrame Player API를 한 번 불러온다 — 재생 판을 처음 누를 때. 못 불러오면 다음에 처음부터 다시 불러온다. */
 function loadYouTube(): Promise<YTNamespace> {
   if (window.YT?.Player) return Promise.resolve(window.YT);
   ytApi ??= new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    let timer = 0;
+    const fail = () => {
+      window.clearTimeout(timer);
+      ytApi = null;
+      s.remove();
+      // 반쯤 불러온 것(YT.loading)이 남으면 다시 넣은 스크립트가 아무것도 불러오지 않는다
+      window.YT = undefined;
+      reject(new Error("YouTube에 연결하지 못함"));
+    };
+    timer = window.setTimeout(fail, YT_READY_MS);
     const before = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => {
       before?.();
+      window.clearTimeout(timer);
       if (window.YT) resolve(window.YT);
     };
-    const s = document.createElement("script");
     s.src = "https://www.youtube.com/iframe_api";
     s.async = true;
-    s.onerror = () => {
-      ytApi = null;
-      s.remove();
-      reject(new Error("YouTube에 연결하지 못함"));
-    };
+    s.onerror = fail;
     document.head.appendChild(s);
   });
   return ytApi;
@@ -80,7 +91,7 @@ function loadYouTube(): Promise<YTNamespace> {
 
 type Kind = "youtube" | "video" | "audio" | "uploaded";
 type Phase = "facade" | "loading" | "playing" | "failed";
-type Failure = "missing" | "format" | "blocked" | "gone" | "offline";
+type Failure = "missing" | "format" | "network" | "blocked" | "gone" | "offline";
 
 const FAILURES: Record<Failure, { title: string; body: string }> = {
   missing: {
@@ -90,6 +101,10 @@ const FAILURES: Record<Failure, { title: string; body: string }> = {
   format: {
     title: "이 브라우저가 재생하지 못하는 형식이에요",
     body: "원본은 그대로예요. 다른 플레이어로 열어 보세요.",
+  },
+  network: {
+    title: "원본을 받지 못했어요",
+    body: "앱 서버에 연결하지 못했어요. 다시 눌러 주세요.",
   },
   blocked: {
     title: "이 영상은 YouTube 밖에서 재생할 수 없어요",
@@ -108,7 +123,7 @@ const FAILURES: Record<Failure, { title: string; body: string }> = {
 function kindOf(video: Video): Kind {
   if (video.source_kind === "youtube") return "youtube";
   if (video.uploaded) return "uploaded";
-  return /\.(mp3|m4a|wav)$/i.test(video.origin) ? "audio" : "video";
+  return isAudioFile(video.origin) ? "audio" : "video";
 }
 
 function ext(name: string): string {
@@ -174,6 +189,8 @@ export default function Player({ video, frame, start, long, ref }: Props) {
       host.replaceChildren(); // 다시 시도면 앞의 것을 치운다
       const el = document.createElement("div");
       host.appendChild(el); // API가 이 자리를 iframe으로 바꾼다 — React가 그린 것이 아니다
+      // 오류가 준비(onReady)보다 먼저 올 수도 있다 — 그러면 실패 판을 그대로 둔다
+      let failed = false;
       yt.current = new YT.Player(el, {
         host: "https://www.youtube-nocookie.com",
         videoId: video.source_id,
@@ -183,12 +200,16 @@ export default function Player({ video, frame, start, long, ref }: Props) {
         playerVars: { start: Math.floor(sec), playsinline: 1, rel: 0 },
         events: {
           onReady: (e) => {
+            if (failed) return;
             if (folded.current) resume.current = true;
             else e.target.playVideo();
             setPhase("playing");
           },
           // 101 · 150 — 올린 사람이 다른 사이트의 재생을 막았다. 그 밖(지워짐 · 비공개 · 재생 오류)
-          onError: (e) => fail(e.data === 101 || e.data === 150 ? "blocked" : "gone"),
+          onError: (e) => {
+            failed = true;
+            fail(e.data === 101 || e.data === 150 ? "blocked" : "gone");
+          },
         },
       });
     } catch {
@@ -204,10 +225,15 @@ export default function Player({ video, frame, start, long, ref }: Props) {
     else setPhase("playing");
   }
 
-  /** 로컬 원본을 재생하지 못했다 — 원본이 있는지 물어 까닭을 가른다 */
-  async function mediaFailed() {
-    const exists = await api.mediaExists(video.id).catch(() => true);
-    fail(exists ? "format" : "missing");
+  /**
+   * 로컬 원본을 재생하지 못했다 — 원본이 있는지 다시 물어 까닭을 가른다(UI-4 규칙). 404면 원본 없음, 답이 없거나
+   * 서버 오류면 앱 서버, 원본이 있는데 받다가 끊겼으면(네트워크 오류) 앱 서버, 그 밖은 형식
+   */
+  async function mediaFailed(code: number | undefined) {
+    const status = await api.mediaStatus(video.id);
+    if (status === "missing") fail("missing");
+    else if (status === "unreachable" || code === MediaError.MEDIA_ERR_NETWORK) fail("network");
+    else fail("format");
   }
 
   useImperativeHandle(
@@ -239,8 +265,10 @@ export default function Player({ video, frame, start, long, ref }: Props) {
         resume.current = !ready || state === YT_PLAYING || state === YT_BUFFERING;
         if (ready) yt.current?.pauseVideo();
       } else {
-        resume.current = media.current ? !media.current.paused : false;
-        media.current?.pause();
+        // 아직 한 번도 재생되지 않았으면(원본을 받는 중) 재생할 뜻이다 — 지금 멈추면 저절로 재생(autoplay)도 거둔다
+        const m = media.current;
+        resume.current = m ? !m.paused || (m.autoplay && m.played.length === 0) : false;
+        m?.pause();
       }
     } else if (resume.current && phase === "playing") {
       if (kind === "youtube") yt.current?.playVideo();
@@ -299,23 +327,25 @@ export default function Player({ video, frame, start, long, ref }: Props) {
   if (kind === "audio" && phase === "facade") {
     return (
       <div className="player" data-el="16">
-        <div className="player-audio" data-el="16.11" hidden={!open}>
-          <button
-            type="button"
-            className="player-audio-play"
-            aria-label={`음성 재생 — ${timeLabel(start, long)}부터`}
-            onClick={play}
-          >
-            <PlayGlyph size={18} />
-          </button>
-          <span className="player-audio-text">
-            <span className="player-audio-title">
-              음성 파일 · {timeLabel(start, long)}부터 재생
+        {open && (
+          <div className="player-audio" data-el="16.11">
+            <button
+              type="button"
+              className="player-audio-play"
+              aria-label={`음성 재생 — ${timeLabel(start, long)}부터`}
+              onClick={play}
+            >
+              <PlayGlyph size={18} />
+            </button>
+            <span className="player-audio-text">
+              <span className="player-audio-title">
+                음성 파일 · {timeLabel(start, long)}부터 재생
+              </span>
+              <span>누르면 이 줄이 브라우저 재생 막대로 바뀌어요</span>
             </span>
-            <span>누르면 이 줄이 브라우저 재생 막대로 바뀌어요</span>
-          </span>
-          {fold}
-        </div>
+            {fold}
+          </div>
+        )}
         {!open && (
           <div className="player-bar" data-el="16.5">
             <VideoIcon />
@@ -355,7 +385,7 @@ export default function Player({ video, frame, start, long, ref }: Props) {
             onLoadedMetadata={(e) => {
               e.currentTarget.currentTime = at;
             }}
-            onError={() => void mediaFailed()}
+            onError={(e) => void mediaFailed(e.currentTarget.error?.code)}
           />
         )}
         {kind === "audio" && phase === "playing" && (
@@ -370,7 +400,7 @@ export default function Player({ video, frame, start, long, ref }: Props) {
             onLoadedMetadata={(e) => {
               e.currentTarget.currentTime = at;
             }}
-            onError={() => void mediaFailed()}
+            onError={(e) => void mediaFailed(e.currentTarget.error?.code)}
           />
         )}
         {(phase === "facade" || phase === "loading") && kind !== "audio" && (
@@ -436,7 +466,7 @@ export default function Player({ video, frame, start, long, ref }: Props) {
                 </svg>
               </a>
             )}
-            {failure === "offline" && (
+            {(failure === "offline" || failure === "network") && (
               <button type="button" className="btn btn-secondary" data-el="16.9" onClick={play}>
                 <svg className="icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />

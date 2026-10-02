@@ -11,7 +11,7 @@
 import { readFileSync, renameSync } from "node:fs";
 import path from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 
 import { el, fakeOpenAI, inDialog, INBOX, openResult, saveKey } from "./helpers";
 
@@ -266,7 +266,7 @@ const PLAYER = "https://youtu.be/e2ePlayer01";
 const IFRAME_API = "https://www.youtube.com/iframe_api";
 const FIXTURE = path.join(__dirname, "fixtures", "player.webm");
 // 가짜 IFrame Player API — 만든 플레이어와 부른 것을 적는다. 진짜처럼 재생 함수는 준비(onReady) 때 생긴다.
-// __ytDelay(ms)만큼 준비를 늦추고, __ytError가 있으면 준비 뒤 그 오류를 낸다
+// __ytDelay(ms)만큼 준비를 늦추고, __ytError가 있으면 준비 뒤(__ytErrorFirst면 준비 앞) 그 오류를 낸다
 const FAKE_YT = `
 window.__yt = { made: [], calls: [], ready: false };
 window.YT = { Player: function (el, opts) {
@@ -284,8 +284,9 @@ window.YT = { Player: function (el, opts) {
     self.pauseVideo = () => window.__yt.calls.push("pause");
     self.getPlayerState = () => state;
     window.__yt.ready = true;
+    if (window.__ytError && window.__ytErrorFirst) opts.events.onError({ data: window.__ytError });
     opts.events.onReady({ target: self });
-    if (window.__ytError) opts.events.onError({ data: window.__ytError });
+    if (window.__ytError && !window.__ytErrorFirst) opts.events.onError({ data: window.__ytError });
   }, window.__ytDelay || 0);
 } };
 if (window.onYouTubeIframeAPIReady) window.onYouTubeIframeAPIReady();
@@ -297,6 +298,7 @@ interface FakeYT {
     ready: boolean;
   };
   __ytError?: number;
+  __ytErrorFirst?: boolean;
   __ytDelay?: number;
 }
 const yt = (page: Page) => page.evaluate(() => (window as unknown as FakeYT).__yt);
@@ -350,6 +352,18 @@ test("YouTube를 재생할 수 없을 때 — 퍼가기 막힘은 원본 영상 
   await expect(el(page, "16.9")).toHaveAttribute("href", /e2ePlayer01/);
   await expect(el(page, "16.6")).toHaveText("YouTube");
 
+  // 지워진 영상 — 오류(100)가 준비보다 먼저 와도 실패 판 그대로이고 재생하지 않는다
+  await page.reload();
+  await page.evaluate(() => {
+    Object.assign(window, { __ytError: 100, __ytErrorFirst: true });
+  });
+  await el(page, "16.1").click();
+  await expect.poll(async () => (await yt(page))?.ready).toBe(true);
+  await expect(el(page, "16.8")).toContainText("YouTube에서 재생하지 못했어요");
+  await expect(el(page, "16.9")).toHaveText("원본 영상 열기");
+  await expect(el(page, "16.6")).toHaveText("YouTube");
+  expect((await yt(page)).calls).toEqual([]);
+
   await page.unroute(IFRAME_API);
   await page.route(IFRAME_API, (r) => r.abort());
   await page.reload();
@@ -358,6 +372,28 @@ test("YouTube를 재생할 수 없을 때 — 퍼가기 막힘은 원본 영상 
   await page.unroute(IFRAME_API);
   await page.route(IFRAME_API, (r) => r.fulfill({ contentType: "text/javascript", body: FAKE_YT }));
   await el(page, "16.9").click(); // 다시 시도 — 재생 판을 누른 것과 같다
+  await expect(el(page, "16.6")).toHaveText("YouTube · 00:00부터 재생 중");
+});
+
+test("YouTube가 15초 안에 준비되지 않으면 연결 안 됨 — 다시 시도는 처음부터 불러온다", async ({
+  page,
+}) => {
+  // 첫 스크립트는 왔는데 그다음이 막혔다 — 반쯤 불러온 YT만 남고 준비 신호가 끝내 오지 않는다
+  await page.route(IFRAME_API, (r) =>
+    r.fulfill({ contentType: "text/javascript", body: "window.YT = { loading: 1, loaded: 0 };" }),
+  );
+  await page.clock.install();
+  await openResult(page, PLAYER);
+  await el(page, "16.1").click();
+  await expect(el(page, "16.6")).toHaveText("YouTube · 불러오는 중");
+  await page.clock.fastForward(15_000);
+  await expect(el(page, "16.8")).toContainText("YouTube에 연결하지 못했어요");
+  // 진짜 스크립트처럼 YT가 이미 있으면 아무것도 하지 않는다 — 반쯤 불러온 것을 치워야 다시 불러온다
+  await page.unroute(IFRAME_API);
+  await page.route(IFRAME_API, (r) =>
+    r.fulfill({ contentType: "text/javascript", body: `if (!window.YT) {${FAKE_YT}}` }),
+  );
+  await el(page, "16.9").click();
   await expect(el(page, "16.6")).toHaveText("YouTube · 00:00부터 재생 중");
 });
 
@@ -373,7 +409,7 @@ test("YouTube를 불러오는 사이에 접으면 준비돼도 재생하지 않�
   await expect(el(page, "16.6")).toHaveText("YouTube · 불러오는 중");
   await el(page, "16.7").click(); // 아직 재생 함수가 없다 — 접기만 한다
   await expect(el(page, "16.6")).toHaveText("영상 — 펼치면 이 자리에서 재생해요");
-  await expect.poll(async () => (await yt(page)).ready).toBe(true);
+  await expect.poll(async () => (await yt(page))?.ready).toBe(true);
   expect((await yt(page)).calls).toEqual([]);
   await el(page, "16.7").click();
   await expect(el(page, "16.6")).toHaveText("YouTube · 00:00부터 재생 중");
@@ -404,7 +440,7 @@ test("창이 낮으면 플레이어 자리를 줄여 대화 목록에 160px을 �
   await expect(el(page, "10.5")).toBeInViewport({ ratio: 1 });
 });
 
-test("로컬 원본 — 그 시각부터 재생, 접으면 멈추고 펼치면 이어 보며, 원본을 옮기면 알린다", async ({
+test("로컬 원본 — 그 시각부터 재생, 접으면 멈추고 펼치면 이어 보며, 원본을 옮기거나 서버에 닿지 못하면 알린다", async ({
   page,
   request,
 }) => {
@@ -425,7 +461,7 @@ test("로컬 원본 — 그 시각부터 재생, 접으면 멈추고 펼치면 �
   await expect(el(page, "16.6")).toHaveText("원본 파일 · mp4 · 누르면 재생해요");
   // 서버처럼 구간 요청에 206으로 답한다 — 통째(200)로만 주면 브라우저가 건너뛸 수 없는 자료로 본다
   const bytes = readFileSync(FIXTURE);
-  await page.route("**/api/videos/*/media", (r) => {
+  const serve = (r: Route) => {
     const m = /bytes=(\d+)-(\d*)/.exec(r.request().headers()["range"] ?? "");
     const from = m ? Number(m[1]) : 0;
     const to = m?.[2] ? Number(m[2]) : bytes.length - 1;
@@ -438,12 +474,28 @@ test("로컬 원본 — 그 시각부터 재생, 접으면 멈추고 펼치면 �
       },
       body: bytes.subarray(from, to + 1),
     });
+  };
+  // 처음 응답은 붙잡아 둔다 — 원본을 받는 동안(재생이 시작되기 전) 접기
+  let release = () => {};
+  const held = new Promise<void>((r) => {
+    release = r;
+  });
+  await page.route("**/api/videos/*/media", async (r) => {
+    await held;
+    await serve(r);
   });
   const media = page.locator('video[data-el="16.4"]');
   const at = () => media.evaluate((v) => Math.round((v as HTMLVideoElement).currentTime));
+  const paused = () => media.evaluate((v) => (v as HTMLVideoElement).paused);
   await chip(page, "01:40").click();
   await expect(el(page, "16.2")).toHaveText("01:40부터 재생");
   await el(page, "16.1").click();
+  await el(page, "16.7").click();
+  release();
+  await page.waitForTimeout(500);
+  expect(await paused()).toBe(true); // 접힌 동안은 받아도 저절로 재생하지 않는다
+  await el(page, "16.7").click(); // 펼치면 그때 재생한다
+  await expect.poll(paused).toBe(false);
   await expect.poll(at).toBeGreaterThanOrEqual(100);
   await expect(el(page, "16.6")).toHaveText("원본 파일 · 01:40부터 재생 중");
   await chip(page, "05:00").click();
@@ -468,4 +520,15 @@ test("로컬 원본 — 그 시각부터 재생, 접으면 멈추고 펼치면 �
   } finally {
     renameSync(path.join(INBOX, "player_demo.moved"), path.join(INBOX, "player_demo.mp4"));
   }
+
+  // 앱 서버에 닿지 못하면 — 원본도 HEAD도 답이 없다 → '원본을 받지 못했어요', 다시 시도하면 재생
+  await page.route("**/api/videos/*/media", (r) => r.abort("connectionrefused"));
+  await page.reload();
+  await el(page, "16.1").click();
+  await expect(el(page, "16.8")).toContainText("원본을 받지 못했어요");
+  await expect(el(page, "16.6")).toHaveText("원본 파일 · mp4");
+  await page.unroute("**/api/videos/*/media");
+  await page.route("**/api/videos/*/media", serve);
+  await el(page, "16.9").click();
+  await expect.poll(paused).toBe(false);
 });
