@@ -55,7 +55,7 @@ upstream: [VA-UI-001, VA-UC-001]
 
 **두 번째 캔버스 — 결과 그림과 파일 올리기.** 카드 D1~D4의 모양은 두 번째 캔버스(https://claude.ai/artifact/Y7ax1e9CfUWZyqVVrCa7tc, [[VA-UI-001]] 0장)가 원본이다. 이 문서는 그 보드를 **상태 보드로 더했다** — 주 보드는 첫 캔버스 그대로 두고, 새 요소가 나오는 모습만 잘라 그렸다. 메타 표 「디자인 보드」의 「그림 ·」이 두 번째 캔버스 보드다. 새 요소는 **이미 있는 번호를 바꾸지 않으려고 번호를 뒤에 이었다**(UI-1 4.7~4.19 · 8, UI-2 6.4, UI-3 4.9~4.11, UI-4 6.7 · 6.8 · 12~15, UI-5 4.2 · 7, UI-7 2.3 · 2.4) — 읽는 순서는 각 화면 규칙의 첫 줄에 적었다. 장면 · 인포그래픽 그림은 배치에 자리만 그렸다. 두 번째 캔버스는 실제 영상에서 뽑은 장면을 쓴다. 다이얼로그 보드(UI-2 · UI-6)의 뒤 화면은 첫 캔버스의 홈 그대로다.
 
-**캔버스에 없는 상태는 이 문서에서 그렸다.** 승인 뒤에 정해진 상태(대기열 · 연결 확인 못함)와 처음부터 보드가 없던 상태(입력 오류 · 빈 inbox · 시작 불가 · 답 대기와 실패 · 키 없는 질문 · 짧은 알림 · 키 카드 · 삭제와 내보내기 실패)다. 캔버스의 부품과 [[VA-UI-001]] 3장의 색만 써서 그렸고, 상태 보드 주석에 「캔버스에 없음」으로 표시했다. 모양은 디자인 보강 때 사용자 검토를 받아 캔버스에 보드로 더한다([[VA-UI-001]] 8장, 2장 미결).
+**캔버스에 없는 상태는 이 문서에서 그렸다.** 승인 뒤에 정해진 상태(대기열 · 연결 확인 못함)와 처음부터 보드가 없던 상태(입력 오류 · 빈 inbox · 시작 불가 · 답 대기와 실패 · 키 없는 질문 · 짧은 알림 · 키 카드 · 삭제와 내보내기 실패)다. 캔버스의 부품과 [[VA-UI-001]] 3장의 색만 써서 그렸고, 상태 보드 주석에 「캔버스에 없음」으로 표시했다. 모양은 디자인 보강 때 사용자 검토를 받아 캔버스에 보드로 더한다([[VA-UI-001]] 8장, 2장 미결). — **네 번째 캔버스 ③에 보드로 옮겨 사용자가 그대로 확정했다(사용자 2026-10-02, [[VA-UI-001]] 7장 36).** 보드 주석의 「캔버스에 없음」은 「네 번째 캔버스 ③」으로 바꿨다. 영상 같이 보기(UI-4 16)와 보낸 추천 질문(5.2 · 10.1)은 네 번째 캔버스 ① · ②가 모양의 원본이다([[VA-UI-001]] 0장).
 
 **세 번째 캔버스 — 접근성 보강.** 초점 고리 · hover · 대비 · 한눈에 보기 키보드의 모양은 세 번째 캔버스(https://claude.ai/artifact/HQyWTuusSvs3yktqEHaQ4p, [[VA-UI-001]] 0장)가 원본이다. 화면을 새로 그린 것이 아니라 상태를 얹은 것이라 배치는 이렇게 맞췄다 — 바뀐 색(헤더 지금 위치 밑줄 · 입력칸 · select · 채팅 입력 상자 테두리 · 끌어 놓기 칸 점선 · 받아쓰는 중 · 실패 조각 · 한눈에 보기 막대와 파트 띠)은 배치 html을 그 모양으로 고쳤고, 새 요소는 UI-4 13.6(가리킨 칸 이름) 하나다(상태 보드 「한눈에 보기 · 키보드로 막대에 들어옴」). 초점 고리와 hover는 모든 부품에 같은 규칙이라 배치에 그리지 않는다 — 모양은 [[VA-UI-001]] 4.2 hover 표 · 4.6과 캔버스 보드 ① ②가 원본이다.
 
@@ -100,9 +100,10 @@ upstream: [VA-UI-001, VA-UC-001]
   2. 그 시각이 들어 있는 스크립트 구간이 노란 바탕으로 강조된다. 그 구간이 패널 안에 다 보이면 스크롤하지 않고, 아니면 패널 가운데로 스크롤한다 — 읽던 줄이 눈앞에서 뛰지 않게. 같은 시각을 다시 눌러도 같다: 스크롤해서 떠났으면 다시 가운데로 온다(사용자 결정 2026-10-01).
   3. 시작 시각이 같은 챕터 카드가 선택 모양(흰 바탕 + 청록 테두리)으로 바뀐다.
   4. 스크립트 머리줄 오른쪽의 시각이 그 시각으로 바뀐다.
+  5. 플레이어(UI-4 16)가 열려 있으면 그 시각부터 재생한다. 열기 전이거나 접혀 있으면 재생하지 않는다.
 - 선택은 한 번에 하나만 된다. 다른 시각을 누르면 앞의 선택이 풀린다. 모두 애니메이션 없이 바로 바뀐다([[VA-UI-001]] 3.4).
 - **고른 시각은 주소에 남는다** — `/videos/{id}?t={초}`(예: 19:30이면 `?t=1170`). 초는 누른 시각 그대로다 — 스크립트 구간 · 챕터의 시각은 소수(셋째 자리까지)일 수 있어 `?t=14.6`처럼 남긴다. 정수로 깎으면 새로 고친 뒤 앞 구간이 골라지고, 시작 시각이 같아야 하는 챕터 카드 선택도 풀린다(카드 E6에서 찾음). 주소만 바꿔 써서 방문 기록은 늘지 않는다 — 뒤로 가기는 시각마다 멈추지 않고 앞 화면으로 간다. 새로 고치거나 다른 화면에 다녀와 이 주소로 열면 그 시각을 누른 것과 같이 열린다(위 1~4, 탭은 [스크립트]). `t`가 0 이상 영상 길이 이하의 수(소수 셋째 자리까지)가 아니면 고르지 않은 채로 연다(사용자 결정 2026-10-01, [[VA-UI-001]] 7장 29).
-- 결과 화면의 시각을 눌러도 YouTube로 가지 않는다. YouTube 시점 링크(`https://youtu.be/{영상ID}?t={초}`)는 내보낸 마크다운(UI-7)에만 생긴다 — 위의 `?t=`는 이 앱 결과 화면의 주소다.
+- 결과 화면의 시각을 눌러도 YouTube 사이트로 가지 않는다 — 플레이어가 열려 있으면 화면 안에서 그 시각부터 재생한다(5). YouTube 시점 링크(`https://youtu.be/{영상ID}?t={초}`)는 내보낸 마크다운(UI-7)에만 생긴다 — 위의 `?t=`는 이 앱 결과 화면의 주소다.
 - 누를 수 없는 시각·길이는 칩이 아니다. UI-1 목록·inbox 행의 길이와 UI-3 단계 메모는 고정폭 글자이고, UI-2·UI-4 메타 칩 안의 길이와 UI-3 부제·영상 머리의 길이·조각 수는 일반 UI 글자다([[VA-UI-001]] 4.4).
 
 ### 1.4 키 없음 배너
@@ -127,7 +128,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - 화면이 바뀌면서 알리는 경우에는 새로 열린 화면에서 보인다. UI-7의 완료 알림은 다이얼로그가 닫힌 뒤 UI-4 위에 뜬다.
 - 스크린 리더가 읽을 수 있게 `role="status"`로 둔다. 초점은 옮기지 않는다.
 - **보이는 시간은 4초**다. 마우스를 올린 동안은 사라지지 않고, 내리면 4초를 처음부터 다시 센다 — 읽는 중에 사라지지 않게. 새 알림이 뜨면 앞의 것을 바꾸고 4초를 처음부터 센다(같은 글이어도). 쌓지 않는다 — 쓰는 곳이 둘뿐이고 잇달아 뜨는 일이 사실상 없다(사용자 결정 2026-10-01, [[VA-UI-001]] 7장 31).
-- 위치와 모양은 캔버스에 없다. 모양은 UI-4 배치의 「짧은 알림」 보드(11)에 캔버스 부품으로 그렸고, 위치와 함께 디자인 보강 때 상태 보드로 확정한다([[VA-UI-001]] 8장, 2장 미결 193).
+- 위치는 창 아래 가운데(아래에서 40px)다. 모양은 UI-4 배치의 「짧은 알림」 보드(11)이고, 네 번째 캔버스 ③에서 위치와 함께 확정했다([[VA-UI-001]] 7장 36).
 - 위 두 경우 말고 다른 곳에서 쓰려면 [[VA-UI-001]] 4.5 표에 먼저 추가한다.
 
 ### 1.6 실패 알림
@@ -171,6 +172,7 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - 기다리는 동안: 서버가 영상 정보를 확인하는 동안 [분석]·[선택한 파일 분석]에 대기 표시를 한다. 답을 기다리는 동안에는 입력칸과 [보내기]를 잠근다.
 - **추천 질문은 같은 3개가 두 가지 모양으로 나온다.** 큰 알약은 UI-4 본문 「이런 걸 물어볼 수 있어요」에 말풍선 아이콘과 함께 놓이고, 줄바꿈된다. 작은 칩은 [질문하기] 입력칸 위에 한 줄로 놓이고, 줄바꿈 없이 넘치는 부분은 잘린다.
 - 어느 모양이든 누르면 오른쪽 패널이 [질문하기] 탭으로 바뀌고 그 문장이 바로 질문으로 전송된다. 입력칸에 그 문장을 쳐서 [보내기]를 누른 것과 같다. 답을 기다리는 동안이나 키가 없을 때는 두 모양 모두 문장을 보내지 않는다. 큰 알약은 탭만 바꾼다.
+- **이미 물어본 추천 질문**(대화 기록에 같은 글의 질문이 있다)은 두 모양 모두 앞 아이콘이 청록 체크이고, 큰 알약은 끝에 '답 보기 →'(UI-4 5.2)를 붙인다. 누르면 [질문하기] 탭으로 가서 그 질문 턴(같은 글이 여럿이면 가장 최근 것)이 대화 목록 맨 위에 오게 스크롤하고, 다시 보내지 않는다 — 보내지 않으므로 답을 기다리는 동안이나 키가 없을 때도 같다. 같은 글인지는 앞뒤 공백을 뺀 글 그대로 본다. 표시하려고 결과를 열 때 대화 기록을 받는다(질문 수가 0이면 받지 않는다). aria-label '{질문} — 이미 물어봤어요, 누르면 그 답으로'(네 번째 캔버스 ②, [[VA-UI-001]] 7장 35)
 - **hover와 초점** — 모든 버튼 · 칩 · 행의 hover는 [[VA-UI-001]] 4.2 hover 표, 키보드 초점 고리는 4.6을 따른다. 부품마다 같아서 배치에는 그리지 않는다(0장 세 번째 캔버스).
 
 ---
@@ -191,10 +193,10 @@ OpenAI API 키가 없거나 키 확인에 실패했을 때 헤더 위에 전체 
 - [x] 인터넷이 없어 키를 확인하지 못했을 때 — 결정: 배너 문구를 가르고 [키 넣으러 가기]를 뺀다(VA-UI-001 7장 17). 공통 1.4 · UI-1 · UI-3 · UI-4 10.2에 넣었다
 - [x] UI-5 2.2 저장 위치 캡션 — 결정: '.env에 저장됨' 고정([[VA-INFRA-001#C6]])
 - [x] (반영: 화면 설계 v6 UI-1 규칙 · 설정 서비스 MINISPEC v2 `require_key`) **되먹임** 연결 문구일 때는 버튼을 막지 않는다(1.4) — [[VA-UI-001]] UI-1 규칙은 확인 실패를 한데 묶어 「분석 버튼과 질문 입력을 막는다」고 쓴다. 연결 실패만 막지 않는다는 한 문장이 필요하다. MINISPEC(설정 서비스)의 「마지막 결과로 막기」도 마지막 결과가 연결 실패면 그때 한 번 다시 확인해야 다시 시도와 질문에서도 풀린다 — 지금은 분석 버튼(영상 등록)만 다시 확인한다
-- [ ] 대기 상태의 모양 — 캔버스에 없다. UI-1 대기 중 행의 글자색, UI-3 대기 상태 카드는 정상 상태의 색을 그대로 써서 배치에 그렸다. 디자인 보강 때 같이 본다
-- [ ] 캔버스에 없는 상태 보드의 검토 — 0장 「캔버스에 없는 상태는 이 문서에서 그렸다」의 보드들(UI-1 넷 · UI-2 둘 · UI-3 하나 · UI-4 다섯 · UI-5 둘 · UI-6 하나 · UI-7 하나, 대기 중 행 포함). 사용자가 보고 확정하면 캔버스에 보드로 더한다([[VA-UI-001]] 8장 디자인 보강)
+- [x] 대기 상태의 모양 — 캔버스에 없다. UI-1 대기 중 행의 글자색, UI-3 대기 상태 카드는 정상 상태의 색을 그대로 써서 배치에 그렸다. 디자인 보강 때 같이 본다 — **결정(네 번째 캔버스 ③, 사용자 2026-10-02)**: 정상 상태의 색 그대로 확정 — 차례를 기다리는 것은 오류가 아니다([[VA-UI-001]] 7장 36)
+- [x] 캔버스에 없는 상태 보드의 검토 — 0장 「캔버스에 없는 상태는 이 문서에서 그렸다」의 보드들(UI-1 넷 · UI-2 둘 · UI-3 하나 · UI-4 다섯 · UI-5 둘 · UI-6 하나 · UI-7 하나, 대기 중 행 포함). 사용자가 보고 확정하면 캔버스에 보드로 더한다([[VA-UI-001]] 8장 디자인 보강) — **결정(사용자 2026-10-02)**: 열여덟 보드를 네 번째 캔버스 ③에 옮겨 지금 모양 그대로 확정했다. 두 번째 캔버스가 그리지 않은 일곱도 함께([[VA-UI-001]] 7장 36)
 - [x] 배치를 싱크독 새 뷰에 맞춘다(2026-09-23) — 싱크독이 배치 html을 iframe에 격리해 그대로 그리게 되면서(카드 Z · AC · AE) 뷰가 주던 클래스 사전이 없어졌다. 클래스로 그린 뼈대가 스타일 없이 보여, 배치를 승인된 캔버스 html로 옮기고 「3. 공통 틀」을 더했다. 요소 번호와 요소 표·규칙·시나리오는 그대로다
-- [ ] 이미 보낸 추천 질문: 두 모양에서 뺄지, 그대로 두고 다시 누르면 같은 질문을 또 보내게 할지(1.8) — **결정(사용자, 2026-10-01)**: 그대로 두고, 누르면 [질문하기]에서 그 답으로 간다(다시 보내지 않는다). 「물어봄」 표시 모양은 네 번째 디자인 캔버스에서 정하고 그때 닫는다
+- [x] 이미 보낸 추천 질문: 두 모양에서 뺄지, 그대로 두고 다시 누르면 같은 질문을 또 보내게 할지(1.8) — **결정(사용자, 2026-10-01)**: 그대로 두고, 누르면 [질문하기]에서 그 답으로 간다(다시 보내지 않는다). 「물어봄」 표시 모양은 네 번째 디자인 캔버스에서 정하고 그때 닫는다 — 표시: 네 번째 캔버스 ② 안 ② 체크 + '답 보기 →', 작은 칩은 체크만(사용자 2026-10-02, 1.8 · UI-4 규칙)
 - [x] 한눈에 보기 막대(UI-4 13.3)의 아주 좁은 칸 — 2시간 30분 · 27챕터면 5px 안팎인 칸이 있어 누르기 어렵다. 같은 챕터를 마인드맵(14.5) · 챕터 카드로도 고를 수 있어 그대로 두었다. 키보드로는 칸마다 Tab이 멈춰 27번을 지난다 — 막대를 한 멈춤(화살표로 칸 이동)으로 묶을지 — **결정(세 번째 캔버스 ④, 사용자 승인 2026-10-01)**: 파트 띠 · 인사이트 점 · 챕터 막대를 줄마다 한 멈춤(`toolbar`)으로 묶고 ← → · Home · End로 옮기며 Enter로 고른다. 좁은 칸의 이름은 범례 자리의 이름 줄(13.6)로 읽는다. 마우스로 누르기 어려운 것은 그대로 — 마인드맵 · 챕터 카드로도 고른다(UI-4 규칙)
 - [x] UI-1 올리는 중에 새로 고침 · 뒤로 가기 — 지금 규칙은 묻지 않고 멈춘다. 큰 파일을 실수로 날리면 다시 올려야 한다. 브라우저의 떠나기 확인을 띄울지 — 결정: 새로 고침 · 창 닫기는 브라우저 확인 창, 앱 안 링크는 확인 창으로 먼저 묻는다. 앱 안의 브라우저 뒤로 가기는 막을 길이 없어 그대로 멈춘다(사용자 결정 2026-10-01, UI-1 규칙)
 - [ ] UI-4 인포그래픽 그리는 중 · 장면 가져오는 중에 다시 받는 간격 — 몇 초마다 받을지는 API · MINISPEC에서 정한다(진행 화면은 1초, 목록은 3초)
@@ -243,7 +245,7 @@ button, input, select, textarea { font-family: inherit; }
 ### 배치
 
 ```html
-<!-- 주 보드: 캔버스 Main. 목록 맨 위에 대기 중 행 하나를 더했다(캔버스에 없음). 「내 파일」 카드(4)는 두 번째 캔버스 Home의 것이다 — 카드가 길어져 보드 높이를 min-height로 바꿨다. 아래는 상태 보드 -->
+<!-- 주 보드: 캔버스 Main. 목록 맨 위에 대기 중 행 하나를 더했다(네 번째 캔버스 ③). 「내 파일」 카드(4)는 두 번째 캔버스 Home의 것이다 — 카드가 길어져 보드 높이를 min-height로 바꿨다. 아래는 상태 보드 -->
 <div style="width: 1440px; min-height: 960px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column;">
 <header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2DDD3; background: #F6F4EF;">
 <a href="#" style="height: 44px; display: flex; align-items: center; gap: 10px; color: #1B1A17; text-decoration: none;">
@@ -567,7 +569,7 @@ button, input, select, textarea { font-family: inherit; }
 </section>
 </main>
 </div>
-<div class="var"><b>키 확인 실패</b> — 키는 있는데 확인에 실패했을 때 배너 문구. 분석 버튼은 막힌다 · 캔버스에 없음</div>
+<div class="var"><b>키 확인 실패</b> — 키는 있는데 확인에 실패했을 때 배너 문구. 분석 버튼은 막힌다 · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 1440px; padding: 0;">
 <div role="status" style="min-height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 8px 40px; display: flex; align-items: center; gap: 12px; background: #F7E6E2; color: #7A2A1E; font-size: 15px;">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
@@ -575,7 +577,7 @@ button, input, select, textarea { font-family: inherit; }
 <a href="#" style="height: 40px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; border-radius: 8px; background: #7A2A1E; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none;">키 넣으러 가기</a>
 </div>
 </div>
-<div class="var"><b>연결을 확인하지 못함</b> — 인터넷이 없어 키를 확인하지 못했을 때. [키 넣으러 가기]가 없고 분석 버튼은 막지 않는다 · 캔버스에 없음</div>
+<div class="var"><b>연결을 확인하지 못함</b> — 인터넷이 없어 키를 확인하지 못했을 때. [키 넣으러 가기]가 없고 분석 버튼은 막지 않는다 · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 1440px; padding: 0;">
 <div role="status" style="min-height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 8px 40px; display: flex; align-items: center; gap: 12px; background: #F7E6E2; color: #7A2A1E; font-size: 15px;">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
@@ -584,7 +586,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div class="row">
 <div>
-<div class="var" style="width: 598px;"><b>주소 형식 오류</b> — [분석]을 눌렀는데 주소가 세 형태가 아닐 때(3.4) · 캔버스에 없음</div>
+<div class="var" style="width: 598px;"><b>주소 형식 오류</b> — [분석]을 눌렀는데 주소가 세 형태가 아닐 때(3.4) · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 598px;">
 <div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
 <div style="display: flex; align-items: center; gap: 12px;">
@@ -609,7 +611,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 <div>
-<div class="var" style="width: 598px;"><b>inbox가 빔</b> — inbox 폴더에 파일이 없을 때(4.4). 키가 있어도 [선택한 파일 분석]은 막힌 모양 · 캔버스에 없음</div>
+<div class="var" style="width: 598px;"><b>inbox가 빔</b> — inbox 폴더에 파일이 없을 때(4.4). 키가 있어도 [선택한 파일 분석]은 막힌 모양 · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 598px;">
 <div style="box-sizing: border-box; padding: 24px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 16px;">
 <div style="display: flex; align-items: center; gap: 12px;">
@@ -1289,7 +1291,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 <div>
-<div class="var" style="width: 700px;"><b>다른 영상이 분석 중</b> — 버튼 줄 왼쪽에 대기 안내(6.1) · 캔버스에 없음</div>
+<div class="var" style="width: 700px;"><b>다른 영상이 분석 중</b> — 버튼 줄 왼쪽에 대기 안내(6.1) · 네 번째 캔버스 ③</div>
 <div class="crop dim">
 <div role="dialog" aria-modal="true" aria-labelledby="est-title" style="width: 620px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 22px;">
 <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
@@ -1348,7 +1350,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 </div>
-<div class="var"><b>시작 불가 판</b> — 시작할 수 없는 영상일 때 1~6 대신 뜬다(7). 이유 · 길이 · [닫기]만 · 캔버스에 없음</div>
+<div class="var"><b>시작 불가 판</b> — 시작할 수 없는 영상일 때 1~6 대신 뜬다(7). 이유 · 길이 · [닫기]만 · 네 번째 캔버스 ③</div>
 <div class="crop dim">
 <div role="dialog" aria-modal="true" aria-labelledby="blk-title" data-el="7" style="width: 540px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 22px;">
 <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -1460,7 +1462,7 @@ button, input, select, textarea { font-family: inherit; }
 - 7.2는 2.4와 같은 '길이 {길이}' 메타 칩이고 길이를 알 때만 보인다. 정보 조회 실패나 파일이 아닐 때처럼 길이를 모르면 뺀다 (VA-UI-001에 없음).
 - 7은 7.3·Esc·덮개 누름으로 닫히고 UI-1로 돌아간다. 아무것도 전송되지 않는다.
 - 7이 열리면 처음 초점은 7.3이다 (VA-UI-001에 없음).
-- 7의 모양은 캔버스에 없어 배치의 「시작 불가 판」 보드에 캔버스 부품으로 그렸다. [닫기]는 보조 버튼이다. 디자인 보강 때 확정한다(VA-UI-001 8장).
+- 7의 모양은 캔버스에 없어 배치의 「시작 불가 판」 보드에 캔버스 부품으로 그렸다. [닫기]는 보조 버튼이다. 네 번째 캔버스 ③에서 그대로 확정했다(VA-UI-001 7장 36).
 
 ### 시나리오
 
@@ -1956,7 +1958,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </main>
 </div>
-<div class="var"><b>대기 중</b> — 다른 영상이 분석 중이라 차례를 기다릴 때. 단계는 모두 대기, 남은 시간 없음 · 캔버스에 없음</div>
+<div class="var"><b>대기 중</b> — 다른 영상이 분석 중이라 차례를 기다릴 때. 단계는 모두 대기, 남은 시간 없음 · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 1440px; padding: 0 0 28px;">
 <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 28px 260px 0; display: flex; flex-direction: column; gap: 24px;">
 <a href="#" style="align-self: flex-start; height: 44px; display: flex; align-items: center; gap: 6px; color: #4A463F; font-size: 15px; text-decoration: none;">
@@ -2689,7 +2691,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 <div>
-<div class="var" style="width: 520px;"><b>질문이 아직 없음</b> — 빈 상태 상자(9.1) · 캔버스에 없음</div>
+<div class="var" style="width: 520px;"><b>질문이 아직 없음</b> — 빈 상태 상자(9.1) · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 520px; padding: 0;">
 <aside aria-label="스크립트와 질문" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
 <div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
@@ -2734,7 +2736,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div class="row">
 <div>
-<div class="var" style="width: 520px;"><b>답을 기다리는 중</b> — 마지막 턴의 답 자리에 대기 표시(9.7) · 캔버스에 없음</div>
+<div class="var" style="width: 520px;"><b>답을 기다리는 중</b> — 마지막 턴의 답 자리에 대기 표시(9.7) · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 520px; padding: 0;">
 <aside aria-label="스크립트와 질문" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
 <div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
@@ -2807,7 +2809,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 <div>
-<div class="var" style="width: 520px;"><b>답을 받지 못함</b> — 마지막 턴의 답 자리에 실패 한 줄과 [다시 시도](9.8 · 9.9) · 캔버스에 없음</div>
+<div class="var" style="width: 520px;"><b>답을 받지 못함</b> — 마지막 턴의 답 자리에 실패 한 줄과 [다시 시도](9.8 · 9.9) · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 520px; padding: 0;">
 <aside aria-label="스크립트와 질문" style="min-width: 0; box-sizing: border-box; border-left: 1px solid #E2DDD3; background: #FBFAF7;">
 <div style="position: sticky; top: 0; height: 896px; box-sizing: border-box; display: flex; flex-direction: column;">
@@ -2878,7 +2880,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div class="row">
 <div>
-<div class="var" style="width: 520px;"><b>키 없이 질문하기</b> — 입력 영역에 키 없음 안내(10.2), [보내기]는 막힌 모양 · 캔버스에 없음</div>
+<div class="var" style="width: 520px;"><b>키 없이 질문하기</b> — 입력 영역에 키 없음 안내(10.2), [보내기]는 막힌 모양 · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 520px; padding: 0;">
 <div style="flex-shrink: 0; box-sizing: border-box; padding: 14px 20px 20px; border-top: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column; gap: 10px;">
 <div style="display: flex; gap: 6px; overflow: hidden;">
@@ -2899,7 +2901,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 <div>
-<div class="var" style="width: 420px;"><b>짧은 알림</b> — 이미 분석한 영상으로 열렸을 때(11). 위치는 정하지 않았다 · 캔버스에 없음</div>
+<div class="var" style="width: 420px;"><b>짧은 알림</b> — 이미 분석한 영상으로 열렸을 때(11). 창 아래 가운데 · 네 번째 캔버스 ③</div>
 <div class="crop">
 <div role="status" data-el="11" style="display: inline-flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 48px; padding: 12px 18px; border-radius: 12px; background: #1B1A17; color: #F6F4EF; font-size: 15px; box-shadow: 0 12px 32px rgba(27, 26, 23, 0.24);">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8FC7BE" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 6 9 17l-5-5"></path></svg>
@@ -3247,6 +3249,118 @@ button, input, select, textarea { font-family: inherit; }
 <div data-el="13.6" aria-hidden="true" style="min-height: 20px; display: flex; align-items: baseline; gap: 10px; font-size: 13px; color: #1B1A17;"><span style="flex-shrink: 0; font-weight: 600;">챕터 19</span><span style="flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #0F6E68;">1:09:14</span><span style="min-width: 0; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">디락과 720도</span><span style="flex-shrink: 0; font-size: 12px; color: #6B665C;">← → 옮기기 · Enter 이동</span></div>
 </div>
 </div>
+<!-- 네 번째 캔버스(영상 같이 보기 · 보낸 추천 질문, 사용자 승인 2026-10-02). 플레이어(16)는 오른쪽 패널 맨 위, 탭 위에 온다 — 주 보드는 첫 캔버스 그대로라 없다. 장면 그림은 자리 표시다 -->
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 재생 판(YouTube)</b> — 처음 모습. 첫 챕터 장면 위 재생 버튼 · 누르기 전에는 YouTube로 아무것도 가지 않는다 · 네 번째 캔버스 ① Main · PlayerFacade</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><button type="button" data-el="16.1" aria-label="영상 재생 — 12:40부터" style="position: relative; width: 520px; height: 292px; display: block; box-sizing: border-box; padding: 0; border: 0; background: #2C2A26; overflow: hidden;"><span aria-hidden="true" style="position: absolute; right: 16px; bottom: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9A958B;">[첫 챕터 장면]</span><span style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: rgba(27, 26, 23, 0.5);"></span><span style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;"><span style="width: 64px; height: 64px; border-radius: 32px; background: #F6F4EF; display: flex; align-items: center; justify-content: center;"><svg width="26" height="26" viewBox="0 0 24 24" fill="#1B1A17" aria-hidden="true" style="margin-left: 3px;"><path d="M8 5.5v13l10.5-6.5z"></path></svg></span><span data-el="16.2" style="font-size: 16px; font-weight: 600; color: #F6F4EF;">12:40부터 재생</span><span data-el="16.3" style="font-size: 13px; color: #E2DDD3;">누르면 YouTube 플레이어를 불러와요</span></span></button><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">YouTube · 누르면 불러와요</span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 재생 판(로컬)</b> — inbox 원본. 안내 글만 다르다 · PlayerFacadeLocal</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><button type="button" data-el="16.1" aria-label="영상 재생 — 12:40부터" style="position: relative; width: 520px; height: 292px; display: block; box-sizing: border-box; padding: 0; border: 0; background: #2C2A26; overflow: hidden;"><span aria-hidden="true" style="position: absolute; right: 16px; bottom: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9A958B;">[첫 챕터 장면]</span><span style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: rgba(27, 26, 23, 0.5);"></span><span style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;"><span style="width: 64px; height: 64px; border-radius: 32px; background: #F6F4EF; display: flex; align-items: center; justify-content: center;"><svg width="26" height="26" viewBox="0 0 24 24" fill="#1B1A17" aria-hidden="true" style="margin-left: 3px;"><path d="M8 5.5v13l10.5-6.5z"></path></svg></span><span data-el="16.2" style="font-size: 16px; font-weight: 600; color: #F6F4EF;">12:40부터 재생</span><span data-el="16.3" style="font-size: 13px; color: #E2DDD3;">누르면 원본 파일을 재생해요</span></span></button><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">원본 파일 · mp4 · 누르면 재생해요</span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 불러오는 중</b> — YouTube 플레이어를 불러오는 동안 · PlayerLoading</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div role="status" style="position: relative; width: 520px; height: 292px; display: block; box-sizing: border-box; padding: 0; border: 0; background: #2C2A26; overflow: hidden;"><span aria-hidden="true" style="position: absolute; right: 16px; bottom: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9A958B;">[첫 챕터 장면]</span><span style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: rgba(27, 26, 23, 0.62);"></span><span style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;"><span class="va-pulse" style="font-size: 15px; font-weight: 600; color: #F6F4EF;">불러오는 중</span></span></div><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">YouTube · 불러오는 중</span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 재생 중</b> — 화면과 재생 막대는 YouTube · 브라우저가 그린다. 시각을 누르면 그 시각부터 · PlayerPlaying</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div data-el="16.4" role="img" aria-label="플레이어 — 12:40부터 재생 중" style="position: relative; width: 520px; height: 292px; overflow: hidden; background: #0E0D0C;"><span style="position: absolute; left: 16px; top: 14px; right: 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 1.5; color: #9A958B;">[YouTube 플레이어 — 화면과 재생 막대는 YouTube가 그린다]</span><span style="position: absolute; left: 16px; bottom: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #F6F4EF;">12:40</span></div><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">YouTube · 12:40부터 재생 중</span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 접힘</b> — 재생을 멈추고 막대만 · PlayerFolded</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">영상 — 펼치면 이 자리에서 재생해요</span><button type="button" data-el="16.7" aria-label="영상 펼치기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m6 9 6 6 6-6"></path></svg></button></div></div>
+</div>
+</div>
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 음성 파일</b> — 그림 없이 72px 한 줄 · PlayerAudio</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div data-el="16.11" style="height: 72px; box-sizing: border-box; padding: 0 6px 0 16px; display: flex; align-items: center; gap: 12px; background: #FBFAF7; color: #4A463F;"><button type="button" aria-label="음성 재생 — 12:40부터" style="width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 22px; background: #1B1A17; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="#F6F4EF" aria-hidden="true" style="margin-left: 2px;"><path d="M8 5.5v13l10.5-6.5z"></path></svg></button><span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 14px; font-weight: 600; color: #1B1A17;">음성 파일 · 12:40부터 재생</span><span style="font-size: 13px; color: #5E5A52;">누르면 이 줄이 브라우저 재생 막대로 바뀌어요</span></span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 올린 파일</b> — 재생하지 않고 까닭 한 줄 · PlayerUploaded</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div data-el="16.10" role="note" style="min-height: 44px; box-sizing: border-box; padding: 10px 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg><span style="flex-grow: 1; min-width: 0; font-size: 13px; line-height: 1.5; color: #5E5A52;">올린 파일은 분석이 끝나면 지워서 여기서 재생할 수 없어요</span></div></div>
+</div>
+</div>
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 원본을 찾지 못함</b> — inbox에서 옮겼다 · PlayerMissing</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div data-el="16.8" role="alert" style="width: 520px; height: 292px; box-sizing: border-box; padding: 28px 40px; background: #EFECE5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;"><span style="width: 44px; height: 44px; border-radius: 22px; background: #F7E6E2; color: #A33A2B; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span><span style="font-size: 16px; font-weight: 600; color: #1B1A17;">원본 파일을 찾지 못했어요</span><span style="font-size: 14px; line-height: 1.55; color: #5E5A52;">inbox에서 옮기거나 지웠어요. 같은 이름으로 다시 두면 재생돼요.</span></div><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">원본 파일 · inbox/workshop_0912.mp4</span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 재생하지 못하는 형식</b> — 원본은 그대로 · PlayerUnsupported</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div data-el="16.8" role="alert" style="width: 520px; height: 292px; box-sizing: border-box; padding: 28px 40px; background: #EFECE5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;"><span style="width: 44px; height: 44px; border-radius: 22px; background: #F7E6E2; color: #A33A2B; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span><span style="font-size: 16px; font-weight: 600; color: #1B1A17;">이 브라우저가 재생하지 못하는 형식이에요</span><span style="font-size: 14px; line-height: 1.55; color: #5E5A52;">원본은 그대로예요. 다른 플레이어로 열어 보세요.</span></div><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">원본 파일 · mov</span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 퍼가기 막힘</b> — 올린 사람이 막은 YouTube 영상(오류 101 · 150) · PlayerBlocked</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div data-el="16.8" role="alert" style="width: 520px; height: 292px; box-sizing: border-box; padding: 28px 40px; background: #EFECE5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;"><span style="width: 44px; height: 44px; border-radius: 22px; background: #F7E6E2; color: #A33A2B; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span><span style="font-size: 16px; font-weight: 600; color: #1B1A17;">이 영상은 YouTube 밖에서 재생할 수 없어요</span><span style="font-size: 14px; line-height: 1.55; color: #5E5A52;">올린 사람이 다른 사이트에서 재생하지 못하게 했어요.</span><a data-el="16.9" href="#" style="height: 44px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;">원본 영상 열기<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg></a></div><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">YouTube</span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+</div>
+<div class="row">
+<div>
+<div class="var" style="width: 520px;"><b>플레이어 · 연결 안 됨</b> — YouTube를 불러오지 못했다 · PlayerOffline</div>
+<div class="crop" style="width: 520px; padding: 0;">
+<div data-el="16" style="width: 520px; box-sizing: border-box; border-left: 1px solid #E2DDD3; border-bottom: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column;"><div data-el="16.8" role="alert" style="width: 520px; height: 292px; box-sizing: border-box; padding: 28px 40px; background: #EFECE5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;"><span style="width: 44px; height: 44px; border-radius: 22px; background: #F7E6E2; color: #A33A2B; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span><span style="font-size: 16px; font-weight: 600; color: #1B1A17;">YouTube에 연결하지 못했어요</span><span style="font-size: 14px; line-height: 1.55; color: #5E5A52;">인터넷이 되면 다시 눌러 주세요.</span><button type="button" data-el="16.9" style="height: 44px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-radius: 10px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; font-weight: 600; text-decoration: none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>다시 시도</button></div><div data-el="16.5" style="height: 44px; box-sizing: border-box; padding: 0 6px 0 20px; display: flex; align-items: center; gap: 10px; background: #FBFAF7; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10 9 5 3-5 3z"></path></svg><span data-el="16.6" style="flex-grow: 1; min-width: 0; font-size: 13px; color: #5E5A52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">YouTube</span><button type="button" data-el="16.7" aria-label="영상 접기" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #4A463F;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m18 15-6-6-6 6"></path></svg></button></div></div>
+</div>
+</div>
+</div>
+<div class="var" style="width: 1368px;"><b>보낸 추천 질문</b> — 이미 물어본 알약(5.1)은 앞이 체크, 끝에 5.2. 입력칸 위 칩(10.1)은 체크만. 누르면 보내지 않고 그 답으로 · 네 번째 캔버스 ② AskedGo</div>
+<div class="crop" style="box-sizing: border-box; width: 1368px; padding: 24px; background: #F6F4EF; display: flex; align-items: flex-start; gap: 40px;"><div style="width: 760px; flex-shrink: 0;"><section aria-labelledby="ask-title" data-el="5" style="display: flex; flex-direction: column; gap: 14px;">
+<h2 id="ask-title" style="margin: 0; font-family: 'Hahmlet', 'Noto Serif KR', serif; font-size: 24px; font-weight: 600;">이런 걸 물어볼 수 있어요</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+<button type="button" data-el="5.1" aria-label="청킹 전략을 바꾼 근거는? — 이미 물어봤어요, 누르면 그 답으로" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 6 9 17l-5-5"></path></svg>
+<span>청킹 전략을 바꾼 근거는?</span><span data-el="5.2" style="flex-shrink: 0; display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: #0F6E68;">답 보기<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span>
+</button>
+<button type="button" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span>pgvector 대신 검토한 대안은?</span>
+</button>
+<button type="button" style="min-height: 44px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-radius: 22px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #1B1A17; font-size: 15px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span>운영 비용은 어떻게 달라졌나?</span>
+</button>
+</div>
+</section></div><div style="width: 520px; flex-shrink: 0; border-left: 1px solid #E2DDD3; background: #FBFAF7;"><div data-el="10" style="flex-shrink: 0; box-sizing: border-box; padding: 14px 20px 20px; border-top: 1px solid #E2DDD3; background: #FBFAF7; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; gap: 6px; overflow: hidden;">
+<button type="button" data-el="10.1" aria-label="청킹 전략을 바꾼 근거는? — 이미 물어봤어요, 누르면 그 답으로" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px 0 8px; display: flex; align-items: center; gap: 4px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F6E68" aria-hidden="true" style="flex-shrink: 0; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M20 6 9 17l-5-5"></path></svg>청킹 전략을 바꾼 근거는?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">pgvector 대신 검토한 대안은?</button>
+<button type="button" style="height: 32px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #CFC8BB; background: #FFFFFF; color: #4A463F; font-size: 13px; white-space: nowrap; cursor: pointer;">운영 비용은 어떻게 달라졌나?</button>
+</div>
+<div style="position: relative; box-sizing: border-box; padding: 8px 8px 8px 14px; display: flex; align-items: flex-end; gap: 8px; border-radius: 14px; border: 1px solid #948D80; background: #FFFFFF;">
+<label for="ask-box" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">이 영상에 질문하기</label>
+<span data-el="10.3" style="flex-grow: 1; min-width: 0; display: flex;"><textarea id="ask-box" rows="2" placeholder="이 영상에 대해 물어보세요" style="width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 0; border: 0; resize: none; background: transparent; color: #1B1A17; font-size: 15px; line-height: 1.6;"></textarea></span>
+<button type="button" aria-label="보내기" data-el="10.4" aria-disabled="false" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: #1B1A17; color: #F6F4EF; cursor: pointer;">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
+</button>
+</div>
+<span data-el="10.5" style="font-size: 12px; color: #6B665C;">질문, 앞선 대화, 관련 스크립트가 OpenAI로 전송됩니다.</span>
+</div></div></div>
+
 ```
 
 ### 요소
@@ -3268,7 +3382,8 @@ button, input, select, textarea { font-family: inherit; }
 | 4.2 | 인사이트 행 | 행 | 두 자리 번호(01, 02 …) · 문장 · 문장 끝 시각 칩 1개 이상. 행 사이 구분선 | — |
 | 4.3 | 인사이트 시각 칩 | 칩 | 공통 1.3 시각 칩. 한 행에 둘 이상 붙을 수 있다. aria-label '{시각} 위치의 스크립트로 이동' | 시각 선택: 7.1 탭 · 8.3 강조와 스크롤 · 6.3/6.6 선택 · 8.2 바뀜 |
 | 5 | 이런 걸 물어볼 수 있어요 | 영역 | 섹션 제목과 추천 질문 알약 3개. 줄바꿈된다 | — |
-| 5.1 | 추천 질문 알약 | 버튼 | 공통 1.8의 큰 알약. 말풍선 아이콘 + 질문 문장 | 7.2 탭으로 바뀌고 그 문장이 바로 전송된다 |
+| 5.1 | 추천 질문 알약 | 버튼 | 공통 1.8의 큰 알약. 말풍선 아이콘 + 질문 문장. 이미 물어본 것은 말풍선 대신 청록 체크, 끝에 5.2 | 7.2 탭으로 바뀌고 그 문장이 바로 전송된다. 이미 물어본 것은 7.2 탭의 그 답으로(보내지 않는다) |
+| 5.2 | 답 보기 | 텍스트 | 이미 물어본 알약의 끝. '답 보기' 13px 600 청록 + 14px 오른쪽 화살표. 알약의 일부라 따로 누르지 않는다 | — |
 | 6 | 챕터 | 영역 | 섹션 제목 '챕터', 개수, 안내, 챕터 카드 목록 또는 파트 카드 | — |
 | 6.1 | 챕터 개수 | 텍스트 | '{n}개'. 파트로 묶었으면 '{n}개 · 파트 {m}개' | — |
 | 6.2 | 챕터 안내 | 텍스트 | '누르면 오른쪽 스크립트가 그 위치로 이동해요' | — |
@@ -3297,7 +3412,7 @@ button, input, select, textarea { font-family: inherit; }
 | 9.8 | 답변 실패 | 텍스트 | 답을 받지 못했을 때 9.4 자리에 무엇이 왜 안 됐는지 한 줄 | — |
 | 9.9 | 다시 시도 | 버튼 | '다시 시도' | 같은 질문을 다시 보내고 9.7로 돌아간다 |
 | 10 | 질문 입력 영역 | 영역 | 패널 아래에 고정. 추천 칩, 키 없음 안내, 입력칸, 보내기, 전송 안내 | — |
-| 10.1 | 추천 질문 칩 | 칩 | 공통 1.8의 작은 칩. 5.1과 같은 3개를 한 줄로, 넘치면 잘림 | 7.2 탭 그대로 그 문장이 바로 전송된다 |
+| 10.1 | 추천 질문 칩 | 칩 | 공통 1.8의 작은 칩. 5.1과 같은 3개를 한 줄로, 넘치면 잘림. 이미 물어본 것은 앞에 14px 청록 체크(왼쪽 안쪽 8px) | 7.2 탭 그대로 그 문장이 바로 전송된다. 이미 물어본 것은 그 답으로(보내지 않는다) |
 | 10.2 | 키 없음 안내 | 텍스트 | 키가 없으면 'API 키가 없어 질문할 수 없어요.', 키 확인에 실패하면 '키를 확인하지 못해 질문할 수 없어요 — {이유}'. 끝에 '키 넣으러 가기' 링크. 인터넷이 없어 확인하지 못했으면 '연결을 확인하지 못했어요 — 인터넷이 되면 분석 버튼을 누를 때 다시 확인합니다'이고 링크는 없다 (VA-UI-001에 없음) | [[#UI-5]] |
 | 10.3 | 질문 입력칸 | 입력 | 2줄 textarea. placeholder '이 영상에 대해 물어보세요', 숨은 라벨 '이 영상에 질문하기' | — |
 | 10.4 | 보내기 | 버튼 | 위 화살표 아이콘만. aria-label '보내기' | 10.3 문장을 보내고 9 끝에 새 9.2가 생긴다 |
@@ -3332,6 +3447,18 @@ button, input, select, textarea { font-family: inherit; }
 | 15.10 | 다시 만들기 | 버튼 | 보조 버튼 '다시 만들기'. 실패 상태에도 같은 버튼 | [[#UI-8]] |
 | 15.11 | 인포그래픽 실패 | 텍스트 | '인포그래픽을 만들지 못했어요 — {이유}'. role alert | — |
 | 15.12 | 키 넣으러 가기 | 링크 | 키 없음 상태. 주 버튼 모양 링크 '키 넣으러 가기' | [[#UI-5]] |
+| 16 | 플레이어 | 영역 | 오른쪽 패널(7) 맨 위, 탭(7.1 · 7.2) 위. 16:9 520×292 자리 + 막대(16.5) — 창이 낮으면 자리를 줄인다. 출처 · 상태로 모양이 바뀐다(규칙) | — |
+| 16.1 | 재생 판 | 버튼 | 첫 챕터 장면(6.7과 같은 그림, 자리를 채우고 덮개 색으로 어둡게 — 다이얼로그 덮개와 같은 52%) 위에 재생 버튼(지름 64px, 바탕 #F6F4EF · 잉크 삼각형) + 16.2 · 16.3. 장면이 없으면 잉크 바탕. aria-label '영상 재생 — {시각}부터' | 그 자리에서 재생 — YouTube는 이때 플레이어를 불러온다 |
+| 16.2 | 시작 시각 | 텍스트 | '{시각}부터 재생' 16px 600 #F6F4EF. {시각}은 고른 시각(8.2), 없으면 '00:00' | — |
+| 16.3 | 재생 안내 | 텍스트 | '누르면 YouTube 플레이어를 불러와요' 또는 '누르면 원본 파일을 재생해요' 13px #E2DDD3 | — |
+| 16.4 | 플레이어 화면 | 영역 | YouTube IFrame(youtube-nocookie) 또는 `<video controls>` 520×292 — 화면과 재생 막대는 YouTube · 브라우저가 그린다 | — |
+| 16.5 | 플레이어 막대 | 영역 | 44px. 영상 아이콘 · 16.6 · 16.7. 바탕 #FBFAF7 | — |
+| 16.6 | 막대 글 | 텍스트 | 출처와 상태 한 줄 13px #5E5A52(규칙) | — |
+| 16.7 | 접기 · 펼치기 | 아이콘 버튼 | 위 꺾쇠(접기) · 아래 꺾쇠(펼치기). aria-label '영상 접기' · '영상 펼치기' | 접으면 멈추고 막대만 남는다 |
+| 16.8 | 재생할 수 없음 | 상자 | 플레이어 자리에 칩 면 바탕 · 44px 위험 바탕 원과 느낌표 · 제목 16px 600 · 까닭 14px #5E5A52. role alert | — |
+| 16.9 | 할 수 있는 것 | 링크 · 버튼 | 퍼가기 막힘 · 그 밖의 YouTube 오류면 [원본 영상 열기](보조 버튼 모양 링크, 바깥 링크 아이콘), 연결 안 됨 · 앱 서버에 닿지 못함이면 [다시 시도](보조 버튼, 새로고침 아이콘) | YouTube 원본(새 탭) / 16.1을 누른 것과 같다 |
+| 16.10 | 재생하지 않음 안내 | 텍스트 | 올린 파일. 정보 아이콘 + '올린 파일은 분석이 끝나면 지워서 여기서 재생할 수 없어요' 13px. role note. 16.1 · 16.5 대신 | — |
+| 16.11 | 음성 재생 줄 | 영역 | 음성 파일. 72px — 재생 버튼(지름 44px, 잉크) · '음성 파일 · {시각}부터 재생' · '누르면 이 줄이 브라우저 재생 막대로 바뀌어요' · 16.7 | 재생 버튼: `<audio controls>`로 그 시각부터 |
 
 ### 규칙
 
@@ -3345,7 +3472,7 @@ button, input, select, textarea { font-family: inherit; }
 - 14는 파트가 없으면 14.1 → 14.2 → 14.3, 있으면 14.1 → 14.4 → (펼친 파트의) 14.5다. 14.4의 펼침은 챕터 목록의 파트 머리(6.5)와 같은 상태를 쓴다 — 한쪽에서 펴면 다른 쪽도 펴진다. 처음에는 첫 파트만 펴져 있다.
 - **인포그래픽 카드(15)** — 상태는 서버의 인포그래픽 상태를 그대로 따른다. 없음 → 만들기 전(15.1 · 15.2 · 15.3), 그리는 중 → 15.4, 있음 → 다 됨(15.5 ~ 15.10), 실패 → 15.11과 15.10, 키 없음 또는 확인 실패 → 15.1 · 키 없음 설명 · 15.12. 인터넷이 없어 키를 확인하지 못한 상태는 만들기 전과 같다(공통 1.4). 맡기기가 거절된 이유(UI-8 규칙)는 서버에 행이 없어 화면이 들고 있다가 15.11에 보인다 — 서버의 이전 실패 이유보다 먼저다. 다음 맡기기가 받아들여지면 거둔다(카드 D3 코드 리뷰).
 - 15.3 · 15.10은 UI-8을 연다. UI-8에서 만들기를 누르면 곧바로 15.4 상태가 된다. 그리는 동안 이 화면은 몇 초마다 인포그래픽 상태를 다시 받는다. 다른 화면으로 가도 서버는 계속 그린다 — 돌아오면 그리는 중이거나 다 된 모습이다 (VA-UI-001 UI-4).
-- 이미 그림이 있는데 다시 만들기가 실패하면 다 됨 카드 위에 15.11 한 줄을 붙이고 이전 그림(15.5)은 그대로 둔다([[VA-UC-001#UC-H9]] 4a). 이 모양은 캔버스에 없다.
+- 이미 그림이 있는데 다시 만들기가 실패하면 다 됨 카드 위에 15.11 한 줄을 붙이고 이전 그림(15.5)은 그대로 둔다([[VA-UC-001#UC-H9]] 4a). 실패 한 줄은 다 됨 카드 본문 맨 위다 — 네 번째 캔버스 ③(다시 만들기 실패)에서 확정했다.
 - 15.5 · 15.9는 UI-9를 연다. UI-9가 닫히면 초점이 연 버튼으로 돌아온다.
 - **대표 장면(6.7)** — 서버가 준 장면이 있는 챕터에만 있다. 있으면 챕터 카드 격자가 '84px 1fr 160px'(간격 16px), 없으면 '84px 1fr' 그대로다. 그림은 잘리지 않게 줄여 넣는다(VA-UI-001 7장 21).
 - 결과를 열었는데 서버가 장면을 뒤에서 만드는 중이면(장면 단계 전에 분석한 결과, [[VA-UC-001#UC-H3]] 1a) 장면이 올 챕터마다 6.8을 두고 몇 초마다 결과를 다시 받아, 다 된 장면부터 6.7로 바꾼다. 만들기가 끝났는데 장면이 없는 챕터는 6.8을 거두고 넓어진다. 채우기는 결과를 열 때 한 번만 맡긴다 — 맡긴 뒤 상태가 다시 absent면(서버가 장면을 쓰지 못하고 끝났다) 6.8을 거두고 다시 맡기지 않는다. 다음에 결과를 열 때 다시 맡긴다(카드 D2 코드 리뷰 — 3초마다 다시 맡기며 YouTube에 영상 정보를 거듭 묻지 않게). 음성 파일 결과는 처음부터 6.7 · 6.8이 없다.
@@ -3368,7 +3495,7 @@ button, input, select, textarea { font-family: inherit; }
 - 길이와 이 화면의 모든 시각은 영상 길이로 형식을 정한다. 1시간 미만 영상은 mm:ss, 1시간 이상 영상은 h:mm:ss이고 한 영상 안에서는 모두 같다(VA-UI-001 4.4).
 - 한 줄 요약(3)은 한 문장만 보인다.
 - 인사이트 행(4.2)에는 이모지 카테고리를 붙이지 않는다. 인사이트는 1시간 이하 영상이면 5~8개, 넘으면 10개까지이고 인사이트 개수(4.1)는 실제 행 수다.
-- 추천 질문 3개가 알약(5.1)과 칩(10.1) 두 곳에 같이 나온다. 어느 쪽이든 누르면 패널이 질문하기 탭(7.2)으로 바뀌고 그 문장이 바로 전송된다. 보드는 알약을 눌러 탭이 바뀌는 것까지만 그렸다.
+- 추천 질문 3개가 알약(5.1)과 칩(10.1) 두 곳에 같이 나온다. 어느 쪽이든 누르면 패널이 질문하기 탭(7.2)으로 바뀌고 그 문장이 바로 전송된다. 보드는 알약을 눌러 탭이 바뀌는 것까지만 그렸다. 이미 물어본 것은 체크와 5.2로 표시하고, 누르면 보내지 않고 그 답으로 간다(공통 1.8, [[VA-UC-001#UC-H4]] 1a2).
 - 챕터(6)는 영상이 1시간 이하면 챕터 카드(6.3) 목록, 1시간을 넘으면 파트 카드(6.4)로 묶는다. 챕터 개수(6.1)는 '{n}개' 또는 '{n}개 · 파트 {m}개'다.
 - 챕터 카드(6.3·6.6)는 시작 시각 · 제목 · 가운뎃점 요점 2~3줄이다. 시작 시각은 시각 칩과 모양만 같은 표시이고 카드 전체가 버튼이다. 보드의 요점 1~2줄은 예시 데이터다.
 - 파트 머리(6.5)를 누르면 그 파트만 펴고 접는다. 여러 파트를 함께 펼 수 있고, 처음에는 첫 파트만 펼친다. 화살표 회전과 aria-expanded가 함께 바뀌고 움직임은 없다(VA-UI-001 3.4).
@@ -3380,7 +3507,17 @@ button, input, select, textarea { font-family: inherit; }
 - 선택은 한 번에 하나다. 선택이 없는 챕터 카드와 구간은 바탕·테두리가 투명하다. 강조와 탭 전환은 바로 바뀐다.
 - 처음 열면 선택한 시각이 없다. 선택한 시각(8.2) 자리는 비어 있고 스크립트(8)는 맨 위에서 시작한다. 보드의 12:40·0:06:20은 누른 뒤의 그림이다 (VA-UI-001에 없음). 주소에 `?t=`가 있으면 그 시각을 누른 것과 같이 연다(공통 1.3)
 - 선택된 챕터가 접힌 파트 안에 있어도 그 파트를 저절로 펴지 않는다 (VA-UI-001에 없음)
-- 이 화면의 시각은 스크립트 이동에만 쓴다. YouTube 시점 링크는 여기 없고 내보내기(UI-7)에만 있다. [[VA-UC-001#UC-H3]] 6a와 달라 VA-UI-001 8장에 사용자 확인이 남아 있다.
+- 이 화면의 시각은 스크립트를 옮기고, 플레이어(16)가 열려 있으면 그 시각부터 재생한다(공통 1.3). YouTube 사이트로 가는 시점 링크는 여기 없고 내보내기(UI-7)에만 있다([[VA-UC-001#UC-H3]] 6a1).
+- **플레이어(16)** — 오른쪽 패널 맨 위, 탭 위(네 번째 캔버스 ①, VA-UI-001 7장 32 ~ 34). 어느 탭이든 그대로 있다. 처음에는 재생 판(16.1)이다 — 누르기 전에는 YouTube로 아무것도 보내지 않는다([[VA-PRD-001#N3]]).
+- **창이 낮으면 플레이어 자리(16.1 · 16.4 · 16.8)를 줄인다** — 막대(16.5) · 탭 바 · 질문 입력 영역(10)을 빼고 대화 목록(9)에 160px이 남을 때까지 줄이고, 160px 아래로는 줄이지 않는다. 1440×900 창(보드)에서는 292px 그대로, 1280×720 창 201px, 1366×650 창 160px이다. 키 없음 배너(공통 1.4)가 떠 있으면 배너 높이만큼 더 줄인다. 영상은 줄어든 자리 안에 비율을 지켜 들고 남는 좌우는 잉크 바탕이다. 재생할 수 없음(16.8)은 글과 버튼이 다 보이게 그보다 줄이지 않는다. 스크립트 탭에서도 같은 높이다 — 탭을 바꿔도 플레이어 크기가 바뀌지 않는다(사용자 결정 2026-10-02, VA-UI-001 7장 37 — 카드 E7에서 찾음: 플레이어가 들어오며 1280×720 창에서 대화 목록이 68px까지 줄고, 배너가 뜨면 입력 영역이 창 밖으로 밀렸다).
+- 16.1을 누르면 그 자리에서 16.2의 시각부터 재생한다. YouTube는 이때 IFrame Player API를 쿠키 없는 호스트(youtube-nocookie)로 처음 불러온다 — 불러오는 동안 16.1 자리에 '불러오는 중'(깜빡임). 로컬 영상은 `<video controls>`, 음성 파일은 `<audio controls>`가 앱이 내보내는 원본을 그 시각부터 재생한다([[VA-INFRA-001#C13]]).
+- 연 뒤에 시각을 누르면(공통 1.3) 그 시각부터 재생한다 — 멈춰 있었어도 재생한다. 재생 위치를 따라 스크립트(8)가 움직이지는 않는다(VA-UI-001 7장 34).
+- 접기(16.7)는 재생을 멈추고 막대(16.5)만 남긴다 — 스크립트가 넓어진다. 접힌 동안 시각을 누르면 스크립트만 옮긴다. 펼치면 멈춘 자리에서 이어 본다(열기 전에 접었으면 재생 판). 재생이 시작되기 전(YouTube를 불러오는 중 · 로컬 원본을 받는 중)에 접으면 준비돼도 재생하지 않고, 펼치면 그때 재생한다(카드 E7에서 찾음 · 코드 리뷰).
+- 막대 글(16.6)은 재생 판 'YouTube · 누르면 불러와요' 또는 '원본 파일 · {확장자} · 누르면 재생해요', 불러오는 중 'YouTube · 불러오는 중', 재생 중 '{YouTube 또는 원본 파일} · {시각}부터 재생 중'({시각}은 마지막으로 재생을 시작한 시각 — 재생하며 바뀌지 않는다), 재생할 수 없음 'YouTube' · '원본 파일 · inbox/{이름}'(원본 없음) · '원본 파일 · {확장자}'(형식 · 앱 서버에 닿지 못함), 접힘 '영상 — 펼치면 이 자리에서 재생해요'(카드 E7에서 정함).
+- 끌어 놓아 올린 파일은 재생하지 않는다 — 16.1 · 16.5 대신 16.10 한 줄만 있고 접기도 없다([[VA-UC-001#UC-H3]] 6b).
+- 음성 파일은 그림이 없어 16.1 대신 16.11 한 줄(72px)이다([[VA-UC-001#UC-H3]] 6e).
+- 재생할 수 없으면 16.4 자리에 16.8을 둔다. 로컬 원본이 없으면(서버가 404) '원본 파일을 찾지 못했어요' · 'inbox에서 옮기거나 지웠어요. 같은 이름으로 다시 두면 재생돼요.', 브라우저가 못 읽으면 '이 브라우저가 재생하지 못하는 형식이에요' · '원본은 그대로예요. 다른 플레이어로 열어 보세요.', 앱 서버에 닿지 못했으면 '원본을 받지 못했어요' · '앱 서버에 연결하지 못했어요. 다시 눌러 주세요.' + 16.9 [다시 시도](사용자 결정 2026-10-02, 카드 E7 코드 리뷰) — 재생이 실패하면 원본이 있는지 서버에 다시 물어(HEAD) 가른다: 404면 원본 없음, 답이 없거나 서버 오류면 앱 서버, 원본이 있는데 받다가 끊겼으면(네트워크 오류) 앱 서버, 그 밖은 형식이다. YouTube가 다른 사이트의 재생을 막았으면(오류 101 · 150) '이 영상은 YouTube 밖에서 재생할 수 없어요' · '올린 사람이 다른 사이트에서 재생하지 못하게 했어요.' + 16.9 [원본 영상 열기](새 탭), 그 밖의 YouTube 오류(지워짐 · 비공개 · 재생 오류 — 100 · 5 · 2 등)면 'YouTube에서 재생하지 못했어요' · '영상이 지워졌거나 비공개일 수 있어요.' + 16.9 [원본 영상 열기](카드 E7에서 찾음), 불러오지 못했으면(IFrame API가 15초 안에 준비되지 않은 것도 — 카드 E7 코드 리뷰) 'YouTube에 연결하지 못했어요' · '인터넷이 되면 다시 눌러 주세요.' + 16.9 [다시 시도]. 막대(16.5)는 그대로다([[VA-UC-001#UC-H3]] 6c · 6d).
+- API 키가 없어도 재생은 된다 — OpenAI를 부르지 않는다. 다른 화면으로 가면 멈추고, 돌아오면 재생 판부터다. 주소의 `?t=`로 열면 16.2가 그 시각이다(공통 1.3).
 - 패널(7)은 두 탭 중 하나만 보인다. 기본은 스크립트 탭(7.1)이다. 보드는 aria-pressed로 그렸고 코드에서는 tablist · tab · aria-selected로 옮긴다(VA-UI-001 4.6). 두 탭은 Tab 한 번에 묶고 ← →로 옮기며, 옮기면 그 탭이 바로 열린다(세 번째 캔버스).
 - 스크립트 구간(8.3)은 긴 영상도 조각 경계 없이 목록 하나로 보인다. 수천 구간도 가상 스크롤 없이 모두 그린다 — 2:30 영상의 4,875구간이 0.31초에 그려지고 스크롤은 60fps였다(VA-UI-001 8장, 카드 C 실측 · 사용자 결정 2026-09-29).
 - 질문 수 배지(7.3)는 이 영상에 저장된 질문 수이고, 0이어도 보인다.
@@ -3449,10 +3586,11 @@ button, input, select, textarea { font-family: inherit; }
 5. 챕터 카드(6.6) '1:22:40 비어 있는 설명과 소유자'를 누른다. 스크립트 구간(8.3)이 그 위치로 가고 선택한 시각(8.2)이 '1:22:40'이 된다.
 6. 첫 파트의 파트 머리(6.5)를 다시 눌러 접는다.
 
-**S-4 원본 영상에서 그 지점을 본다** — [[VA-UC-001#UC-H3]] 기본 흐름 6 (확장 6a와 다름, VA-UI-001 8장)
-1. 인사이트 시각 칩(4.3) '24:02'를 눌러 스크립트(8)에서 앞뒤 맥락을 읽는다.
-2. 원본 영상 열기(2.4)를 누른다. YouTube 원본이 새 탭으로 열린다.
-3. 사용자가 YouTube에서 24:02로 직접 옮겨 본다. 이 화면의 시각은 YouTube 시점 링크가 아니다(6a와 다름, VA-UI-001 8장).
+**S-4 그 장면을 영상으로 본다** — [[VA-UC-001#UC-H3]] 기본 흐름 6 · 7, 확장 6a · 7a
+1. 인사이트 시각 칩(4.3) '24:02'를 누른다. 스크립트(8)가 그 구간으로 가고 재생 판의 시작 시각(16.2)이 '24:02부터 재생'이 된다.
+2. 재생 판(16.1)을 누른다. YouTube 플레이어를 그때 불러와 24:02부터 재생한다. 막대 글(16.6)이 'YouTube · 24:02부터 재생 중'이다.
+3. 챕터 카드(6.3) '청킹 전략'을 누른다. 스크립트가 19:30으로 옮겨 가고 영상도 19:30부터 재생한다.
+4. 접기(16.7)를 누른다. 재생이 멈추고 막대만 남아 스크립트가 넓어진다. 펼치면 멈춘 자리에서 이어 본다.
 
 **S-5 추천 질문으로 묻고 근거를 따라간다** — [[VA-UC-001#UC-H4]] 기본 흐름 1~5, 확장 1a
 1. 추천 질문 알약(5.1) 'pgvector 대신 검토한 대안은?'을 누른다.
@@ -3505,6 +3643,15 @@ button, input, select, textarea { font-family: inherit; }
 2. [취소]를 누른다. UI-6이 닫히고 이 화면이 그대로 남으며 초점은 휴지통(1.3)으로 돌아온다.
 3. 휴지통(1.3)을 다시 누르고 UI-6에서 [삭제]를 누른다.
 4. 결과가 지워지고 UI-1로 간다. 목록에서 그 행이 사라져 있다.
+
+**S-16 로컬 파일 · 올린 파일을 본다** — [[VA-UC-001#UC-H3]] 확장 6b · 6c · 6e
+1. inbox에서 분석한 2시간 30분 강의를 연다. 재생 판(16.3)이 '누르면 원본 파일을 재생해요'다. 누르면 원본을 그 자리에서 재생한다.
+2. 끌어 놓아 올린 영상을 연다. 플레이어 자리에 16.10 한 줄만 있다.
+3. inbox에서 원본을 옮긴 영상의 재생 판을 누르면 16.8 '원본 파일을 찾지 못했어요'가 뜬다. 원본을 같은 이름으로 다시 두고 누르면 재생한다.
+
+**S-17 이미 물어본 추천 질문을 다시 누른다** — [[VA-UC-001#UC-H4]] 확장 1a2
+1. 질문 기록이 있는 결과를 연다. 이미 물어본 알약(5.1)은 앞이 체크이고 끝에 '답 보기 →'(5.2)가 있다. 입력칸 위 칩(10.1)도 앞이 체크다.
+2. 알약을 누른다. [질문하기] 탭으로 가서 그 질문 턴이 대화 목록 맨 위에 온다. 질문은 다시 보내지 않고 질문 수 배지(7.3)는 그대로다.
 
 ---
 
@@ -3661,9 +3808,14 @@ button, input, select, textarea { font-family: inherit; }
 <td style="padding: 12px 0 12px 12px; border-bottom: 1px solid #EFECE5; color: #4A463F;">인포그래픽을 만들 때</td>
 </tr>
 <tr>
+<td style="padding: 12px 12px 12px 0; border-bottom: 1px solid #EFECE5; font-weight: 600;">YouTube</td>
+<td style="padding: 12px; border-bottom: 1px solid #EFECE5;">영상 주소</td>
+<td style="padding: 12px 0 12px 12px; border-bottom: 1px solid #EFECE5; color: #4A463F;">정보 · 자막 · 음성 · 미리 보기 썸네일을 받을 때</td>
+</tr>
+<tr>
 <td style="padding: 12px 12px 12px 0; font-weight: 600;">YouTube</td>
 <td style="padding: 12px;">영상 주소</td>
-<td style="padding: 12px 0 12px 12px; color: #4A463F;">정보 · 자막 · 음성 · 미리 보기 썸네일을 받을 때</td>
+<td style="padding: 12px 0 12px 12px; color: #4A463F;">결과 화면에서 영상을 재생할 때(재생 판을 누를 때만)</td>
 </tr>
 </tbody>
 </table></div>
@@ -3677,7 +3829,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div class="row">
 <div>
-<div class="var" style="width: 928px;"><b>키 확인 실패</b> — 새 키가 확인을 통과하지 못했을 때(2.5). 전에 쓰던 키는 그대로 · 캔버스에 없음</div>
+<div class="var" style="width: 928px;"><b>키 확인 실패</b> — 새 키가 확인을 통과하지 못했을 때(2.5). 전에 쓰던 키는 그대로 · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 928px;">
 <section aria-labelledby="key-title" style="box-sizing: border-box; padding: 28px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
@@ -3710,7 +3862,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 <div class="row">
 <div>
-<div class="var" style="width: 928px;"><b>키 없음</b> — 저장된 키가 없을 때. 지금 쓰는 키(2.2)가 없고 라벨이 '키 넣기' · 캔버스에 없음</div>
+<div class="var" style="width: 928px;"><b>키 없음</b> — 저장된 키가 없을 때. 지금 쓰는 키(2.2)가 없고 라벨이 '키 넣기' · 네 번째 캔버스 ③</div>
 <div class="crop" style="width: 928px;">
 <section aria-labelledby="key-title" style="box-sizing: border-box; padding: 28px; border-radius: 16px; border: 1px solid #E2DDD3; background: #FFFFFF; display: flex; flex-direction: column; gap: 18px;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
@@ -3756,7 +3908,7 @@ button, input, select, textarea { font-family: inherit; }
 | 4.1 | 폴더 경로 | 상자 | 읽기 전용 값 상자. 폴더 아이콘 + `{inbox 경로}` + 오른쪽 캡션 '읽기 전용'. 바꾸는 입력칸 없음 | — |
 | 4.2 | 올린 사본 자리 | 상자 | 읽기 전용 값 상자. 올리기 아이콘 + `data/uploads` + 오른쪽 캡션 '끌어 놓은 파일의 사본 · 분석이 끝나면 지워요'. 바꾸는 입력칸 없음 | — |
 | 5 | 밖으로 나가는 데이터 카드 | 영역 | 카드 제목 '밖으로 나가는 데이터', 표(5.1), 끝 문장(5.2) | — |
-| 5.1 | 데이터 표 | 표 | 열 어디로 · 무엇이 · 언제. 고정 다섯 줄: OpenAI · 음성 조각 · 자막 없는 영상을 받아쓸 때 / OpenAI · 스크립트 텍스트 · 요약 · 챕터 · 추천 질문을 만들 때 / OpenAI · 질문, 앞선 대화, 관련 스크립트 · 질문할 때 / OpenAI · 한 줄 요약 · 인사이트 · 챕터 제목 · 인포그래픽을 만들 때 / YouTube · 영상 주소 · 정보 · 자막 · 음성 · 미리 보기 썸네일을 받을 때 | — |
+| 5.1 | 데이터 표 | 표 | 열 어디로 · 무엇이 · 언제. 고정 여섯 줄: OpenAI · 음성 조각 · 자막 없는 영상을 받아쓸 때 / OpenAI · 스크립트 텍스트 · 요약 · 챕터 · 추천 질문을 만들 때 / OpenAI · 질문, 앞선 대화, 관련 스크립트 · 질문할 때 / OpenAI · 한 줄 요약 · 인사이트 · 챕터 제목 · 인포그래픽을 만들 때 / YouTube · 영상 주소 · 정보 · 자막 · 음성 · 미리 보기 썸네일을 받을 때 / YouTube · 영상 주소 · 결과 화면에서 영상을 재생할 때(재생 판을 누를 때만) | — |
 | 5.2 | 나가지 않는 것 | 텍스트 | '원본 영상 파일, 분석 결과, API 키는 이 PC 밖으로 나가지 않습니다.' | — |
 | 6 | 버튼 줄 | 영역 | 페이지 맨 아래 오른쪽 정렬. 왼쪽 취소, 오른쪽 끝 저장 | — |
 | 6.1 | 취소 | 버튼 | 공통 1.8의 보조 버튼 | 모델 변경을 버리고 [[#UI-1]]. 키는 되돌리지 않는다 |
@@ -3802,7 +3954,7 @@ button, input, select, textarea { font-family: inherit; }
 - 올린 사본 자리(4.2)는 `data/uploads`와 캡션 '끌어 놓은 파일의 사본 · 분석이 끝나면 지워요'만 보인다. 경로는 앱 폴더 안이라 바꾸지 않는다. 지금 남은 사본의 수 · 크기는 보이지 않는다 (VA-UI-001 UI-5).
 - 이미지 모델(7.1)은 gpt-image-2 하나다. 품질(7.3)은 낮음(첫 값) · 중간이고, 처음 열면 저장된 품질이 골라져 있다. 7.4의 값과 7.5의 {배}는 서버가 준 품질별 한 장 값이다([[VA-PRD-001#R13]]). UI-4 인포그래픽 카드 · UI-8의 값도 같다.
 - 7.1 · 7.3을 바꿔도 저장(6.2)을 누르기 전에는 저장되지 않는다 — 모델 선택(3.1 · 3.3)과 함께 `.env`에 저장된다([[VA-INFRA-001#C6]]). 취소(6.1)는 함께 버린다.
-- 데이터 표(5.1)는 고정 다섯 줄이고 누를 것이 없다. 끝에 5.2를 둔다. 이 목록은 [[VA-PRD-001#N3]]·[[VA-INFRA-001#C9]]보다 넓다(VA-UI-001 8장).
+- 데이터 표(5.1)는 고정 여섯 줄이고 누를 것이 없다. 끝에 5.2를 둔다. 이 목록은 [[VA-PRD-001#N3]]·[[VA-INFRA-001#C9]]보다 넓다(VA-UI-001 8장).
 - 저장(6.2)은 **모델 선택과 인포그래픽 품질**을 저장하고 UI-1로 간다. 취소(6.1)는 모델 변경을 버리고 UI-1로 간다. 키는 이미 2.4에서 저장됐으므로 6.1이 되돌리지 않는다.
 - 저장하지 않은 모델 변경이 있을 때 헤더 로고나 '분석한 영상'으로 떠나면 취소(6.1)와 같이 버린다 (VA-UI-001에 없음)
 
@@ -4086,7 +4238,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 </div>
-<div class="var"><b>지우지 못함</b> — 지우기에 실패했을 때 버튼 줄 왼쪽에 실패 한 줄(3.1) · 캔버스에 없음</div>
+<div class="var"><b>지우지 못함</b> — 지우기에 실패했을 때 버튼 줄 왼쪽에 실패 한 줄(3.1) · 네 번째 캔버스 ③</div>
 <div class="crop dim">
 <div role="alertdialog" aria-modal="true" aria-labelledby="del-title" aria-describedby="del-desc" style="width: 540px; box-sizing: border-box; padding: 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 20px;">
 <span style="width: 48px; height: 48px; border-radius: 12px; background: #F7E6E2; color: #A33A2B; display: flex; align-items: center; justify-content: center;">
@@ -4524,7 +4676,7 @@ button, input, select, textarea { font-family: inherit; }
 </div>
 </div>
 </div>
-<div class="var"><b>저장하지 못함</b> — 파일 쓰기나 클립보드 복사가 실패했을 때 버튼 줄 왼쪽에 실패 한 줄(5.1) · 캔버스에 없음</div>
+<div class="var"><b>저장하지 못함</b> — 파일 쓰기나 클립보드 복사가 실패했을 때 버튼 줄 왼쪽에 실패 한 줄(5.1) · 네 번째 캔버스 ③</div>
 <div class="crop dim">
 <div role="dialog" aria-modal="true" aria-labelledby="exp-title" style="width: 660px; box-sizing: border-box; padding: 28px 32px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 28px 80px rgba(27, 26, 23, 0.32); display: flex; flex-direction: column; gap: 18px;">
 <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
@@ -4839,7 +4991,7 @@ mindmap
 </div>
 </div>
 </div>
-<div class="var"><b>다시 만들기</b> — 이미 그림이 있을 때 3 아래 한 줄(3.3) · 캔버스에 없음</div>
+<div class="var"><b>다시 만들기</b> — 이미 그림이 있을 때 3 아래 한 줄(3.3) · 네 번째 캔버스 ③</div>
 <div class="crop dim">
 <div style="width: 580px; box-sizing: border-box; padding: 24px 32px; border-radius: 18px; background: #FFFFFF;">
 <div style="box-sizing: border-box; padding: 14px 16px; border-radius: 12px; border: 1px solid #E2DDD3; display: flex; flex-direction: column; gap: 8px;">

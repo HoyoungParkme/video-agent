@@ -1,4 +1,4 @@
-"""core/errors — problem+json 21종과 핸들러 셋(VA-API-001 2장)."""
+"""core/errors — problem+json 22종과 핸들러 셋(VA-API-001 2장)."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ TABLE = {
     "llm-unavailable": 502,
     "export-failed": 500,
     "frames-unavailable": 409,
+    "media-unavailable": 409,
     "infographic-busy": 409,
     "no-space": 507,
     "upload-incomplete": 400,

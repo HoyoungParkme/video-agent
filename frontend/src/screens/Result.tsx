@@ -58,6 +58,7 @@ import Infographic from "@/screens/Infographic";
 import InfographicView from "@/screens/InfographicView";
 import Glance from "@/screens/result/Glance";
 import InfographicCard from "@/screens/result/InfographicCard";
+import Player, { type PlayerHandle } from "@/screens/result/Player";
 import { analyzedLabel, languageName } from "@/labels";
 
 // 결과를 받지 못했는데 서버에 잠깐 닿지 못한 것이면 다시 받는 간격(UI-4 규칙)
@@ -297,6 +298,8 @@ export default function Result({ id }: { id: number }) {
   const [draft, setDraft] = useState("");
   const script = useRef<HTMLDivElement>(null);
   const chatList = useRef<HTMLDivElement>(null);
+  // 플레이어(16) — 연 뒤에는 시각 누르기가 그 시각부터 재생시킨다(공통 1.3 다섯째)
+  const player = useRef<PlayerHandle>(null);
   // 대화 목록이 숨어 있는(스크립트 탭) 사이 새 턴 · 대기 · 실패가 생겼는가 — 돌아오면 끝을 보인다(UI-4 규칙)
   const chatMissed = useRef(false);
   const settings = useSettings();
@@ -465,6 +468,7 @@ export default function Result({ id }: { id: number }) {
     setSelected(sec);
     setPicks((n) => n + 1);
     setTab("script");
+    player.current?.playAt(sec);
     // 주소에 남긴다 — 바꿔 써서 방문 기록은 늘지 않는다. 누른 시각 그대로(구간 시각은 소수, 공통 1.3).
     // t만 바꾸고 다른 값 · #은 그대로 둔다
     const url = new URL(window.location.href);
@@ -747,6 +751,13 @@ export default function Result({ id }: { id: number }) {
 
       <aside aria-label="스크립트와 질문" className="panel" data-el="7">
         <div className="panel-inner">
+          <Player
+            ref={player}
+            video={video}
+            frame={result.chapters[0]?.frame?.url ?? null}
+            start={selected ?? 0}
+            long={long}
+          />
           <div role="tablist" aria-label="스크립트와 질문" className="tabs" onKeyDown={onTabKey}>
             <button
               type="button"

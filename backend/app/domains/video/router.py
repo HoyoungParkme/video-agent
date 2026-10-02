@@ -1,4 +1,5 @@
-"""/api/inbox · /api/videos · /api/uploads · /api/videos/{id} — HTTP 입출력만(VA-API-001 3.2 · 3.3).
+"""/api/inbox · /api/videos · /api/uploads · /api/videos/{id}(GET · DELETE · …/media) — HTTP
+입출력만(VA-API-001 3.2 · 3.3).
 
 라우터가 서비스 둘을 차례로 부르는 곳이 있다 — 등록 뒤의 예상치(JobService.estimate), 삭제 전의
 취소(JobService.cancel · AnalysisService.cancel_tasks)와 삭제 뒤의 깨우기(JobService.wake).
@@ -14,6 +15,7 @@ from typing import Annotated
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import ClientDisconnect
 
@@ -108,6 +110,29 @@ async def _drain(body: AsyncIterator[bytes]) -> None:
 async def get_video(video_id: int, videos: Videos) -> VideoDetail:
     """영상 하나와 최근 작업 요약."""
     return await videos.get(video_id)
+
+
+# 원본 재생의 형식 — 확장자로 정한다(VA-API-001 GET …/media). 받는 확장자는 등록과 같은 일곱
+MEDIA_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".webm": "video/webm",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".wav": "audio/wav",
+}
+
+
+@router.api_route("/videos/{video_id}/media", methods=["GET", "HEAD"])
+async def get_media(video_id: int, videos: Videos) -> FileResponse:
+    """원본 재생 — inbox 원본을 그대로. 구간 요청(Range)은 206, HEAD는 본문 없이(INFRA C13).
+
+    HEAD는 재생이 실패했을 때 화면이 원본이 있는지 물어 까닭(원본 없음 · 형식)을 가를 때 쓴다.
+    """
+    path = await videos.media(video_id)
+    media_type = MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
+    return FileResponse(path, media_type=media_type)
 
 
 @router.delete("/videos/{video_id}", status_code=204)

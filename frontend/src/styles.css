@@ -851,7 +851,43 @@ html { scroll-padding-top: calc(var(--header-h) + var(--banner-h, 0px) + var(--s
 .ig-actions { display: flex; gap: var(--space-8); }
 .panel { min-width: 0; border-left: 1px solid var(--c-line); background: var(--c-faint); }
 /* 배너가 떠 있으면 배너 · 헤더 아래에 붙고 그만큼 줄어든다 — 질문 입력 영역이 창 밖으로 밀리지 않게(UI-4 규칙) */
-.panel-inner { position: sticky; top: calc(var(--header-h) + var(--banner-h, 0px)); height: calc(100vh - var(--header-h) - var(--banner-h, 0px)); display: flex; flex-direction: column; }
+/* 플레이어 자리 높이(--player-h) — 16:9(292px)이되, 창이 낮으면 대화 목록에 160px이 남게 줄인다(최소 160px, UI-4 규칙).
+   455 = 막대 44 + 아래선 1 + 탭 바 60 + 질문 입력 영역 190 + 대화 목록 160 */
+.panel-inner { position: sticky; top: calc(var(--header-h) + var(--banner-h, 0px)); height: calc(100vh - var(--header-h) - var(--banner-h, 0px)); display: flex; flex-direction: column; --player-h: clamp(160px, calc(100vh - var(--header-h) - var(--banner-h, 0px) - 455px), 292px); }
+/* UI-4 16 플레이어 — 패널 맨 위, 16:9 자리 + 막대(VA-UI-002 UI-4 규칙, 네 번째 캔버스 ①). 접으면 막대만 */
+.player { flex-shrink: 0; display: flex; flex-direction: column; border-bottom: 1px solid var(--c-line); background: var(--c-faint); }
+.player-area { position: relative; width: 100%; height: var(--player-h); overflow: hidden; background: var(--c-ink); }
+.player-area.is-audio { height: auto; padding: var(--space-12) var(--space-16); background: var(--c-faint); }
+/* 재생할 수 없음 — 글과 버튼이 다 보이게, 자리보다 길면 늘어난다 */
+.player-area.is-failed { height: auto; padding: 0; }
+.player-area[hidden] { display: none; }
+.player-screen { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--c-ink); }
+.player-screen iframe { display: block; width: 100%; height: 100%; border: 0; }
+.player-audio-el { display: block; width: 100%; }
+.player-facade { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: var(--c-ink); cursor: pointer; }
+.player-facade[aria-disabled="true"] { cursor: default; }
+.player-facade:focus-visible { outline-offset: -4px; }
+.player-facade-img { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.player-facade-dim { position: absolute; inset: 0; background: var(--c-overlay); }
+.player-facade-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-10); }
+.player-play { width: 64px; height: 64px; border-radius: 32px; background: var(--c-bg); display: flex; align-items: center; justify-content: center; }
+.player-glyph { fill: var(--c-ink); margin-left: 3px; }
+.player-start { font-size: var(--text-16); font-weight: 600; color: var(--c-bg); }
+.player-hint { font-size: var(--text-13); color: var(--c-line); }
+.player-loading { font-size: var(--text-15); font-weight: 600; color: var(--c-bg); }
+.player-failed { position: relative; min-height: var(--player-h); padding: 28px 40px; background: var(--c-chip); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-10); text-align: center; }
+.player-failed-icon { width: 44px; height: 44px; border-radius: 22px; background: var(--c-danger-soft); color: var(--c-danger); display: flex; align-items: center; justify-content: center; }
+.player-failed-title { font-size: var(--text-16); font-weight: 600; }
+.player-failed-body { font-size: var(--text-14); line-height: 1.55; color: var(--c-ink-3); }
+.player-bar { height: 44px; padding: 0 6px 0 var(--space-20); display: flex; align-items: center; gap: var(--space-10); color: var(--c-ink-2); }
+.player-bar-text { flex-grow: 1; min-width: 0; font-size: var(--text-13); color: var(--c-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-audio { height: 72px; padding: 0 6px 0 var(--space-16); display: flex; align-items: center; gap: var(--space-12); color: var(--c-ink-2); }
+.player-audio-play { width: 44px; height: 44px; flex-shrink: 0; padding: 0; border: 0; border-radius: 22px; background: var(--c-ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.player-audio-play .player-glyph { fill: var(--c-bg); margin-left: 2px; }
+.player-audio-text { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-13); color: var(--c-ink-3); }
+.player-audio-title { font-size: var(--text-14); font-weight: 600; color: var(--c-ink); }
+.player-note-line { min-height: 44px; padding: var(--space-10) var(--space-20); display: flex; align-items: center; gap: var(--space-10); font-size: var(--text-13); line-height: 1.5; color: var(--c-ink-3); }
+.player-note-line .icon { color: var(--c-ink-2); }
 .tabs { height: 60px; flex-shrink: 0; padding: 0 var(--space-20); display: flex; align-items: flex-end; gap: var(--space-4); border-bottom: 1px solid var(--c-line); }
 .tab {
   height: 52px; padding: 0 var(--space-14); display: flex; align-items: center; gap: var(--space-8);

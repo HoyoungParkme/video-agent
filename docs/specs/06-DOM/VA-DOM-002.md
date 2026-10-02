@@ -82,13 +82,13 @@ app/
 │   │                       올리기 디스크 여유분 · 장면 폭 · 이미지 모델 목록 · 품질마다 한 장 값 · 인포그래픽 크기)
 │   │                       키와 고른 모델은 여기 없다 — 돌면서 바뀌므로 SettingsService가 .env 파일에서 읽는다
 │   ├── db.py               async 엔진 · 세션
-│   ├── errors.py           problem+json 종류마다 예외 클래스 하나 ([[VA-API-001]] 2장의 21종)
+│   ├── errors.py           problem+json 종류마다 예외 클래스 하나 ([[VA-API-001]] 2장의 22종)
 │   ├── settings.py         SettingsService — 키 상태 · 모델 선택(받아쓰기 · 텍스트 · 인포그래픽 모델과 품질) (4.5). .env 파일을 읽고 쓴다. 키 확인은 infra/openai를 부른다
 │   └── settings_router.py  /api/settings 셋. core에 라우터가 있는 유일한 곳 (아래 「기본형과 다른 점」)
 │
 ├── domains/
 │   ├── video/              영상 — inbox · 올리기 · 등록 · 목록 · 삭제. 올린 사본의 수명도 여기
-│   │   ├── router.py       /api/inbox · /api/videos · /api/uploads(본문 스트림) · /api/videos/{id} (GET · DELETE)
+│   │   ├── router.py       /api/inbox · /api/videos · /api/uploads(본문 스트림) · /api/videos/{id} (GET · DELETE) · /api/videos/{id}/media(원본 재생 — 구간 응답)
 │   │   ├── schemas.py      Video · VideoSummary · VideoDetail · RegisterRequest · RegisterResponse · InboxListing
 │   │   ├── service.py      VideoService
 │   │   ├── crud.py
@@ -192,7 +192,8 @@ frontend/
     ├── screens/               화면 하나 = 파일 하나. 와이어프레임 항목과 1:1 —
     │   │                      Home(UI-1) · Estimate(UI-2) · Progress(UI-3) · Result(UI-4) · Settings(UI-5) · Delete(UI-6) · Export(UI-7) ·
     │   │                      Infographic(UI-8) · InfographicView(UI-9)
-    │   └── result/            UI-4만 쓰는 부분 — Glance(12 ~ 14 한눈에 보기: 막대 · 파트 띠 · 점 · 마인드맵) · InfographicCard(15)
+    │   └── result/            UI-4만 쓰는 부분 — Glance(12 ~ 14 한눈에 보기: 막대 · 파트 띠 · 점 · 마인드맵) · InfographicCard(15) ·
+    │                          Player(16 영상 같이 보기: 재생 판 · YouTube IFrame Player API · <video> · <audio>, [[VA-INFRA-001#C13]])
     ├── components/            두 화면 이상이 쓰는 조각만. 와이어프레임 1장 공통 컴포넌트와 1:1 —
     │                          Header · Dialog · TimeChip · KeyBanner · Toast · FailureAlert · EmptyBox · buttons
     ├── api/client.ts          서버 호출 한곳. 화면이 직접 fetch 하지 않는다. 형태는 [[VA-API-001]] 4장 스키마 그대로.
@@ -736,6 +737,7 @@ classDiagram
         +get(video_id: int) VideoDetail
         +delete(video_id: int) None
         +release_upload(video: Video) None
+        +media(video_id: int) Path
         +sweep_uploads() int
         -info_of(req: RegisterRequest) SourceInfo
         -to_dto(row: VideoRow, job: JobSummary, chat_count: int) Video
@@ -767,12 +769,14 @@ classDiagram
 | `delete` | [[VA-API-001#DELETE/api/videos/{id}]] | [[VA-UC-001#UC-H6]] 4 · [[VA-UC-001#UC-H2]] 3a | not-found |
 | `release_upload` | pipeline(작업이 `done`이 된 뒤 — `main.py`가 감싸 넘긴 것) · `delete` · `sweep_uploads` | [[VA-UC-001#UC-H2]] 4 | |
 | `sweep_uploads` | `main.py` 시작 절차(`JobService.fail_orphans` 뒤) | [[VA-UC-001#UC-H2]] 최소 보장 | |
+| `media` | [[VA-API-001#GET/api/videos/{id}/media]] | [[VA-UC-001#UC-H3]] 6 · 6b · 6c | not-found · media-unavailable |
 
 **규칙이 사는 곳**
 - `register`: 순서는 [[VA-API-001#POST/api/videos]] 1~7번 그대로 — 키 확인(`SettingsService.require_key`) → 형식 → 정보 조회(포트) → 3시간 상한 → 중복 판정(`source_id` unique) → 생성 또는 덮어쓰기. URL 형식은 watch · youtu.be · shorts 셋. 받는 확장자는 mp4 · mkv · mov · webm · mp3 · m4a · wav. inbox 밖 경로(`..` · 절대 경로 · 하위 폴더)는 거부. 작업이 없는 기존 영상은 `SourceInfo`로 덮어쓴다
 - `upload`: 순서는 [[VA-API-001#POST/api/uploads]] 1~7번 그대로 — 키 확인(`register`와 같다, 본문을 읽기 전) → 이름 · 크기(`X-File-Name` · `Content-Length`, 받는 확장자는 `register`와 같은 목록) → 디스크 여유(`Content-Length` + 여유분, 설정값) → `data/uploads/.part-{무작위}`에 1MB씩 쓰며 SHA-256(inbox 등록과 같은 해시 — 내용이 같으면 `source_id`가 같다) → `MediaProbePort.probe`로 길이 · 음성 → 중복 판정 → 없으면 `.part`를 `{SHA-256}.{확장자}`로 옮기고 `uploaded = true`로 만든다. `title` · `origin`은 원래 파일 이름이다. 받은 크기가 `Content-Length`와 다르거나 연결이 끊기면 `upload-incomplete`이고, 어느 판정에서 멈추든 `.part`는 남지 않는다([[VA-UC-001#UC-H2]] 최소 보장)
 - 중복 판정(`register` · `upload`): 작업이 있는 영상이면 그것을 돌려준다 — 올리기면 `.part`를 지운다. 작업이 없는(등록만 된) 영상이면 새 정보로 덮어쓴다 — 올리기면 사본을 옮겨 두고 `uploaded = true`가 된다(7장 되먹임). 작업이 있는 로컬 영상의 이름(`origin`)만 지금 것으로 고치는 규칙은 inbox 영상에만 쓴다 — 올린 영상의 사본 이름은 원래 이름의 확장자를 따르므로 이름을 바꾸지 않는다
 - `list`: 작업이 있는 영상만. `JobService.latest_by_videos`로 작업 요약을, `ChatService.count_by_videos`로 대화 수를 한 번에 받아(N+1 금지) `to_dto`로 합친다. 순서는 작업 시작 최근 순
+- `media`: 경로는 영상 행에서만 — `sources.local_path(origin, source_id, uploaded)`. 요청에서 경로를 받지 않는다. YouTube 영상 · 올린 파일은 재생하지 않는다(media-unavailable — 올린 사본은 분석이 끝나면 지운다), inbox 원본이 없으면 not-found(`resource: media`). 파일을 여는 것 · 구간 요청 · 형식은 라우터의 `FileResponse`가 한다([[VA-INFRA-001#C13]])
 - `to_dto`: `status`와 `analyzed_at`을 최근 작업에서 계산한다(2.1). 이 계산이 이 서비스에만 있다 — 라우터 · 다른 묶음은 `Video.status`를 읽기만 한다. `upload_bytes`는 올린 사본 파일이 있으면 그 크기다(파일을 본다)
 - `delete`: 딸린 행은 FK cascade(장면 · 인포그래픽 행도). 커밋 뒤 영상에 딸린 파일을 지운다 — `data/tmp/{video_id}` · `data/frames/{video_id}` · `data/infographics/{video_id}.png` · 올린 사본(`release_upload`). inbox 원본과 올린 파일의 원래 파일, 내보낸 노트 · 그림은 건드리지 않는다([[VA-INFRA-001#C4]]). 작업 · 뒤 일 멈춤은 라우터가 먼저 `JobService.cancel` · `AnalysisService.cancel_tasks`를 불러서 한다(3.1). 사전 안내에서 취소한 올린 영상도 이 길로 지운다([[VA-UC-001#UC-H2]] 3a)
 - `release_upload`: `video.uploaded`면 `sources.local_path`가 가리키는 사본을 지운다. 없으면 아무것도 안 한다. 행은 건드리지 않는다 — `uploaded`는 그대로다([[VA-DOM-001]] 5장 6)

@@ -10,7 +10,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 ## 0. 이 문서가 다루는 것
 
-`domains/video/service.py`의 함수 10개. 클래스 명세 [[VA-DOM-002#VideoService]]의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나 = 코드 파일 하나** — 이 파일을 짤 때 이 문서를 본다. 포트 · 어댑터(`youtube_info` · `media_probe`)는 4.6 · 4.7의 MS 문서에서.
+`domains/video/service.py`의 함수 11개. 클래스 명세 [[VA-DOM-002#VideoService]]의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나 = 코드 파일 하나** — 이 파일을 짤 때 이 문서를 본다. 포트 · 어댑터(`youtube_info` · `media_probe`)는 4.6 · 4.7의 MS 문서에서.
 
 형식은 명세 작성 규약 2.10 — 시그니처 · 근거 · 입력 · 처리 · 출력 · 예외 · 호출하는 것 · 테스트 관점, 분기는 `if 조건 → 결과`, 간략형 허용. 내부 타입(`SourceInfo` 등)은 [[VA-DOM-002]] 2.6, 응답 형태(`Video` `VideoSummary` `VideoDetail` `InboxListing`)는 [[VA-API-001]] 4장.
 
@@ -31,6 +31,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 | [[#VideoService.upload]] | 올린 파일 등록 — 키 → 이름 → 디스크 → 쓰며 해시 → 정보 → 중복 → 사본 |
 | [[#VideoService.list]] | 작업이 있는 영상 목록, 최근 순 |
 | [[#VideoService.get]] | 영상 하나 + 작업 요약 |
+| [[#VideoService.media]] | 원본 재생 경로 — inbox 원본만 |
 | [[#VideoService.delete]] | 영상과 딸린 것 전부 삭제 — 행 · 임시 음성 · 장면 · 인포그래픽 · 올린 사본 |
 | [[#VideoService.release_upload]] | 올린 사본 놓기 (작업이 done이 된 뒤 · 지울 때) |
 | [[#VideoService.sweep_uploads]] | 시작 때 올리다 만 것 · 주인 없는 사본 · 끝난 작업의 사본 청소 |
@@ -182,6 +183,18 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 ---
 
+#### VideoService.media 원본 재생 경로
+
+**시그니처** `async def media(video_id: int) -> Path`
+
+근거: [[VA-API-001#GET/api/videos/{id}/media]] · [[VA-UC-001#UC-H3]] 6 · 6b · 6c · [[VA-INFRA-001#C13]] · [[VA-DOM-002]] VideoService
+
+**처리** `DB: videos 행` — 없으면 `!not-found(resource=video)` · if `source_kind == youtube` → `!media-unavailable(reason_kind=youtube)` · if `uploaded` → `!media-unavailable(reason_kind=uploaded)` — 올린 사본은 분석이 끝나면 지운다. 실패한 작업이라 사본이 남아 있어도 재생하지 않는다(결과 화면은 분석이 끝난 영상만 연다) · `path = sources.local_path(origin, source_id, False)` · `FS: 있나` — 없으면 `!not-found(resource=media)` → path. 파일을 여는 것 · 구간 요청(`Range`) · HEAD · 형식(`Content-Type`)은 라우터의 `FileResponse`가 한다([[VA-API-001#GET/api/videos/{id}/media]]의 확장자 표)
+
+**테스트 관점** inbox 영상 → 그 경로 · 구간 요청에 206 · `Content-Range` · 그 바이트(라우터) · HEAD에 본문 없이 길이(라우터) · 확장자마다 `Content-Type`(라우터) · YouTube 영상 → media-unavailable(youtube) · 올린 영상 → media-unavailable(uploaded) · inbox에서 옮긴 원본 → not-found(media) · 없는 영상 → not-found(video) · 요청에서 경로를 받지 않는다(id만)
+
+---
+
 #### VideoService.delete 영상과 딸린 것 전부 삭제
 
 **시그니처** `async def delete(video_id: int) -> None`
@@ -280,4 +293,5 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 - [x] 올릴 때 디스크 여유분([[VA-API-001]] 6장 미결) — 결정: 고정 1 GiB(`UPLOAD_SPARE_BYTES`). 파일 크기의 몇 %로 두면 작은 파일에 여유가 모자란다. API 미결은 다음 API 수정 때 닫는다
 - [x] 올리기 시간 제한 — 결정: 그대로 둔다. 카드 D4 실측: 588MB가 약 3초(같은 PC, 진짜 스택). web의 API 라우트는 Node `http.request`로 넘겨 기다림 제한이 없고, 남은 제한은 web(Node 서버)이 요청 전체를 받는 300초(`requestTimeout` 기본값)다 — 같은 PC 속도면 수십 GB다([[VA-API-001]] 6장 미결과 같은 항목)
 - [ ] 사전 안내가 열린 채 서버가 다시 뜨면 시작 청소가 그 영상의 사본을 지운다(작업이 없다) — [분석 시작]이 추출 단계에서 실패하고, 다시 올려야 한다. 드물어 그대로 둔다. 겪으면 청소 조건을 「작업이 없고 하루 지난 사본」으로 좁힌다
+- [ ] inbox 원본을 같은 이름의 다른 파일로 바꾸면 앞 영상의 재생(`VideoService.media`)이 새 파일을 내보낸다 — 경로를 영상 행의 이름으로만 정해서다(장면 채우기도 같다). 재생마다 내용 해시를 다시 잴 수는 없고(588MB에 수 초 · 구간 요청마다), 등록 때 크기 · 수정 시각을 적어 두고 비교하려면 DB가 바뀐다. 드물어 그대로 둔다(카드 E7 코드 리뷰)
 - [x] UI-1이 열려 있는 동안 `list`를 다시 부르는 주기 — [[VA-SEQ-001]] 3장과 같은 항목. 결정(카드 B1): 진행 중 · 대기 중 행이 있는 동안 3초, 없으면 부르지 않는다([[VA-UI-002#UI-1]] 규칙)

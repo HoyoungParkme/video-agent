@@ -19,6 +19,7 @@ const INBOX = [
   ["silent_demo.mp4", { duration: 600, audio: false }], // 음성 트랙이 없다
   ["notes.mp4", null], // 영상 · 음성이 아니다(열 수 없다)
   ["marathon_0901.mp4", { duration: 15150, audio: true }], // S6 — 4:12:30, 3시간 초과
+  ["player_demo.mp4", { duration: 600, audio: true }], // S3 영상 같이 보기 — 10분, 1조각(카드 E7)
 ];
 
 // 64×36 JPEG(청록 그러데이션) — 진짜 ffmpeg로 만든 것
