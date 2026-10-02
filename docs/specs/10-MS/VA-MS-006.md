@@ -483,9 +483,9 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001, VA-PRD-0
 
 근거: [[VA-DOM-002]] 5장 12 · [[VA-DOM-001#Video]](원본 자리) · [[VA-INFRA-001#C4]] · [[VA-MS-001#VideoService.upload]] · [[VA-MS-002#pipeline.run]] · [[VA-MS-003#AnalysisService.make_frames]]
 
-**처리** if `uploaded` → `config.UPLOAD_DIR / f"{source_id}{Path(origin).suffix.lower()}"` · else → `config.INBOX_DIR / origin` · `→ Path`. 파일이 있는지는 보지 않는다 — 부르는 쪽이 본다. 순수 함수(설정만 읽는다, [[#captions.pick]]처럼)
+**처리** if `uploaded` → `config.UPLOAD_DIR / f"{source_id}{Path(origin).suffix.lower()}"` · elif `origin`이 `drive:`로 시작 → `config.DRIVE_DIR / origin[len('drive:'):]`(Google Drive, [[VA-INFRA-001#C14]]) · else → `config.INBOX_DIR / origin` · `→ Path`. 파일이 있는지는 보지 않는다 — 부르는 쪽이 본다. 순수 함수(설정만 읽는다, [[#captions.pick]]처럼)
 
-**테스트 관점** inbox `a.mp4` → `INBOX_DIR/a.mp4` · 올린 `Talk.MOV`(sha `ab…`) → `UPLOAD_DIR/ab….mov` · 올린 파일의 이름만 달라도 확장자가 같으면 같은 경로 · `my.talk.mp4` → 확장자는 `.mp4`
+**테스트 관점** inbox `a.mp4` → `INBOX_DIR/a.mp4` · 올린 `Talk.MOV`(sha `ab…`) → `UPLOAD_DIR/ab….mov` · 올린 파일의 이름만 달라도 확장자가 같으면 같은 경로 · `my.talk.mp4` → 확장자는 `.mp4` · `drive:강의/a.mp4` → `DRIVE_DIR/강의/a.mp4`
 
 ---
 
