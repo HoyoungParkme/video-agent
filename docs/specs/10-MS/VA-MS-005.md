@@ -65,13 +65,13 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-UC-001, VA-INFRA-001]
 1. `key = read_env().get("OPENAI_API_KEY")` · 빈 문자열은 없는 것으로 본다(`.env.example`을 복사한 직후)
 2. `masked` = if `key` → 앞 3자 + `…` + 끝 4자(12자보다 짧은 값 — 손으로 잘못 적은 것 — 은 끝을 보이지 않고 앞 3자 + `…`) · else → `None` · `stored_in` = if `key` → `'.env에 저장됨'` · else → `None`
 3. `status = KeyStatus(state=last_check.state, masked, stored_in, checked_at=last_check.checked_at, reason_kind=last_check.reason_kind, reason=last_check.reason)` — **OpenAI에 아무것도 보내지 않는다.** 다만 파일에 키가 없으면 `last_check`와 상관없이 `state=missing` · `reason_kind=None` · `reason=None`이다(앱이 도는 동안 손으로 지운 경우 — 키가 사는 곳은 파일이다)
-4. `m = current_models()` · `→ Settings(key=status, models=Models(stt=m.stt.id, text=m.text.id), model_options=config.MODEL_OPTIONS, image=ImageSettings(model=m.image_model, quality=m.image_quality.id, models=config.IMAGE_OPTIONS.models, qualities=config.IMAGE_OPTIONS.qualities), inbox_path=config.INBOX_DISPLAY_PATH)` — 응답의 `Models`는 id 둘이다. `image.qualities`의 한 장 값이 UI-4 카드 '한 장 약 ${값}' · UI-5 · UI-8 예상 비용이다([[VA-API-001#GET/api/settings]])
+4. `m = current_models()` · `→ Settings(key=status, models=Models(stt=m.stt.id, text=m.text.id), model_options=config.MODEL_OPTIONS, image=ImageSettings(model=m.image_model, quality=m.image_quality.id, models=config.IMAGE_OPTIONS.models, qualities=config.IMAGE_OPTIONS.qualities), inbox_path=config.INBOX_DISPLAY_PATH, drive=DriveConnection(name='Google Drive', path=config.DRIVE_DISPLAY_PATH) if config.DRIVE_DISPLAY_PATH else None)` — 연결하지 않았으면 `drive=None`이고 UI-1에 입구가 없다([[VA-INFRA-001#C14]]) — 응답의 `Models`는 id 둘이다. `image.qualities`의 한 장 값이 UI-4 카드 '한 장 약 ${값}' · UI-5 · UI-8 예상 비용이다([[VA-API-001#GET/api/settings]])
 
 **출력** `Settings`. 페이지 넷이 배너를 그리려고 부른다 — 값싸야 한다(작은 파일 읽기 한 번)
 
 **호출하는 것** [[#SettingsService.read_env]] · [[#SettingsService.current_models]]
 
-**테스트 관점** 가짜 OpenAI 클라이언트의 호출 수가 0 · 키 `sk-abcdefghijklmnop1234` → `masked='sk-…1234'`, `stored_in='.env에 저장됨'` · `OPENAI_API_KEY=`(빈 값) → `masked=None`, `stored_in=None`, `state=missing` · `last_check`가 `ok`인데 파일에서 키를 지웠다 → `missing` · `last_check`가 `invalid`면 `reason`이 그대로 나온다 · 환경 변수에 다른 키가 있어도 파일 것 · 이미지 줄이 없으면 `image.model=gpt-image-2` · `image.quality=low` · `qualities`에 한 장 값 둘
+**테스트 관점** 가짜 OpenAI 클라이언트의 호출 수가 0 · 키 `sk-abcdefghijklmnop1234` → `masked='sk-…1234'`, `stored_in='.env에 저장됨'` · `OPENAI_API_KEY=`(빈 값) → `masked=None`, `stored_in=None`, `state=missing` · `last_check`가 `ok`인데 파일에서 키를 지웠다 → `missing` · `last_check`가 `invalid`면 `reason`이 그대로 나온다 · 환경 변수에 다른 키가 있어도 파일 것 · 이미지 줄이 없으면 `image.model=gpt-image-2` · `image.quality=low` · `qualities`에 한 장 값 둘 · Drive 표시 경로가 있으면 `drive.name='Google Drive'` · 없으면 `drive=None`
 
 ---
 
