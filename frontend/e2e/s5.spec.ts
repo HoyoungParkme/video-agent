@@ -3,7 +3,8 @@
  * 브라우저 시각을 7일 뒤로 두고 목록에서 연다 — 다시 분석하지 않는다(OpenAI 호출 없음). 내보낸 파일은
  * api의 데이터 폴더(e2e/.tmp/data/export)에서 읽어 GET 본문과 대 본다. 노트는 한눈에 보기 절(Mermaid 둘)을
  * 갖고, 파일 노트에만 스크립트 절과 장면 그림 줄이 있다 — 장면 그림은 노트 곁에 함께 쓴다.
- * 대기열에서 지우는 두 경우와 저장 실패 · 지우기 취소도 본다.
+ * 대기열에서 지우는 두 경우와 저장 실패 · 지우기 취소도 본다. 완료 알림은 마우스를 올린 동안 남고, 같은 알림이
+ * 다시 뜨면 처음부터 센다(카드 E6, 공통 1.5).
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -261,4 +262,35 @@ test("지우지 않고 닫는다 — 덮개는 닫지 않고, Esc · 취소는 �
   await inAlert(page, "3.2").click();
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(row(page, id)).toHaveCount(1); // 그대로
+});
+
+test("완료 알림 — 같은 알림이 다시 뜨면 처음부터 세고, 마우스를 올린 동안은 남는다", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  await openResult(page, "https://youtu.be/e2eNoteVid1");
+  const toast = el(page, "11");
+  const save = async () => {
+    await el(page, "1.2").click();
+    await inDialog(page, "5.3").click();
+    await expect(toast).toContainText("에 저장했어요");
+  };
+
+  // 같은 글이 다시 떠도 4초를 처음부터 — 첫 알림에서 5초가 지나도 보인다
+  await save();
+  await page.waitForTimeout(2500);
+  await save();
+  await page.waitForTimeout(2500);
+  await expect(toast).toBeVisible();
+
+  // 마우스를 올린 동안은 4초가 지나도 남고, 내리면 4초 뒤 사라진다
+  await toast.hover();
+  await page.waitForTimeout(5000);
+  await expect(toast).toBeVisible();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(1000);
+  await expect(toast).toBeVisible();
+  await expect(toast).toHaveCount(0, { timeout: 5000 });
 });

@@ -1,4 +1,4 @@
-"""problem+json 에러 21종 — 종류마다 예외 클래스 하나(VA-API-001 2장, DEV-5).
+"""problem+json 에러 22종 — 종류마다 예외 클래스 하나(VA-API-001 2장, DEV-5).
 
 서비스는 이 예외를 던지기만 하고 라우터는 잡지 않는다. main.py가 건 핸들러가 응답으로 바꾸고,
 표에 없는 예외는 포괄 핸들러가 `internal`로 만든다.
@@ -42,7 +42,7 @@ class Problem(Exception):
 
 
 class NotFound(Problem):
-    """영상 · 작업 · inbox 파일 없음. resource · id"""
+    """영상 · 작업 · inbox 파일 · 장면 · 인포그래픽 그림 · 재생할 원본 없음. resource · id"""
 
     kind, status, title = "not-found", 404, "찾을 수 없어요"
 
@@ -149,6 +149,13 @@ class FramesUnavailable(Problem):
     kind, status, title = "frames-unavailable", 409, "장면을 만들 수 없어요"
 
 
+class MediaUnavailable(Problem):
+    """앱이 원본을 내보내지 않는 영상의 재생을 청함 — YouTube(브라우저가 YouTube 플레이어로 본다) ·
+    올린 파일(분석이 끝나면 사본을 지운다). reason_kind"""
+
+    kind, status, title = "media-unavailable", 409, "이 영상은 원본을 재생할 수 없어요"
+
+
 class NoSpace(Problem):
     """올린 파일을 둘 디스크 여유가 모자라다 — 본문을 받기 전에 본다. needed_bytes · free_bytes"""
 
@@ -193,7 +200,7 @@ async def _on_unexpected(_: Request, exc: Exception) -> JSONResponse:
 
 
 def install(app: FastAPI) -> None:
-    """앱에 핸들러 셋을 건다 — 21종 · 요청 형식 오류 · 포괄."""
+    """앱에 핸들러 셋을 건다 — 22종 · 요청 형식 오류 · 포괄."""
     app.add_exception_handler(Problem, _on_problem)
     app.add_exception_handler(RequestValidationError, _on_validation)
     app.add_exception_handler(Exception, _on_unexpected)

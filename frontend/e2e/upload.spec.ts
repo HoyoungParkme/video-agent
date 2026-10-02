@@ -90,6 +90,11 @@ test("파일을 골라 올린다 — 올린 파일 판 → 분석 → 끝나면 
   await expect(page).toHaveURL(/\/videos\/\d+\/progress$/);
   await expect(page).toHaveURL(/\/videos\/\d+$/, { timeout: 30_000 }); // 끝나면 결과로
   await expect.poll(uploads).toEqual([]); // done 뒤 사본을 지운다
+  // 올린 파일은 재생하지 않는다 — 플레이어 자리에 까닭 한 줄(UI-4 16.10, 카드 E7)
+  await expect(el(page, "16.10")).toHaveText(
+    "올린 파일은 분석이 끝나면 지워서 여기서 재생할 수 없어요",
+  );
+  await expect(el(page, "16.1")).toHaveCount(0);
 
   await page.goto("/");
   const row = page.locator(".video-row", { hasText: "meetup_upload.mp4" });

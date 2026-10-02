@@ -28,6 +28,7 @@ from starlette.requests import ClientDisconnect
 from app.core.config import config
 from app.core.errors import (
     Internal,
+    MediaUnavailable,
     NoAudioTrack,
     NoSpace,
     NotFound,
@@ -181,6 +182,7 @@ class VideoService:
     - register(): 키 확인 → 형식 → 정보 → 길이 상한 → 중복 → 생성 또는 덮어쓰기
     - upload(): 키 → 이름 · 형식 → 디스크 → 받으며 해시 → 판정 → 중복 → 사본(원본 자리)
     - list() · get(): 작업이 있는 영상 목록(최근 순) · 영상 하나와 최근 작업
+    - media(): 원본 재생 경로 — inbox 원본만(YouTube · 올린 파일은 재생하지 않는다)
     - delete(): 영상과 딸린 것 전부 — 행은 cascade, 임시 폴더는 커밋 뒤
     - release_upload(): 올린 사본을 놓는다(작업이 done이 된 뒤)
     - sweep_uploads(): 시작 때 올리다 만 것 · 주인 없는 사본 · 끝난 작업의 사본을 지운다
@@ -516,6 +518,35 @@ class VideoService:
         job = await self.jobs.latest(video_id)
         count = (await self.chats.count_by_videos([video_id])).get(video_id, 0)
         return VideoDetail(video=self.to_dto(row, job, count), job=job)
+
+    async def media(self, video_id: int) -> Path:
+        """VA-MS-001#VideoService.media
+
+        원본 재생 경로 — inbox 원본만. 경로는 영상 행에서만 정하고 요청에서 받지 않는다. 파일을
+        여는 것 · 구간 요청 · 형식은 라우터의 FileResponse가 한다(INFRA C13).
+
+        Args:
+            video_id: 영상 id
+
+        Returns:
+            inbox 원본 경로
+
+        Raises:
+            NotFound: 영상이 없다(resource=video) · inbox 원본이 없다(resource=media — 옮겼다)
+            MediaUnavailable: YouTube 영상(youtube) · 올린 파일(uploaded — 분석이 끝나면 사본을
+                지운다. 실패한 작업이라 사본이 남아 있어도 재생하지 않는다)
+        """
+        row = await crud.by_id(self.session, video_id)
+        if row is None:
+            raise NotFound(resource="video", id=video_id)
+        if row.source_kind == SourceKind.youtube:
+            raise MediaUnavailable(reason_kind="youtube")
+        if row.uploaded:
+            raise MediaUnavailable(reason_kind="uploaded")
+        path = sources.local_path(row.origin, row.source_id, False)
+        if not await asyncio.to_thread(path.is_file):
+            raise NotFound(resource="media", id=video_id)
+        return path
 
     async def delete(self, video_id: int) -> None:
         """VA-MS-001#VideoService.delete

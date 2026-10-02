@@ -160,6 +160,16 @@ test("인터넷 끊김 · 다른 영상이 도는 동안 다시 시도 — 대�
   const after = await fakeOpenAI(request);
   expect(after.transcriptions - before.transcriptions).toBe(1);
   expect(after.transcribed.at(-1)).toBe(2);
+
+  // 음성 파일 결과의 플레이어 — 그림이 없어 16.11 한 줄. 접으면 막대만이고 접기(16.7)는 늘 하나다(카드 E7)
+  await expect(el(page, "16.11")).toContainText("음성 파일 · 00:00부터 재생");
+  await expect(el(page, "16.7")).toHaveCount(1);
+  await el(page, "16.7").click();
+  await expect(el(page, "16.6")).toHaveText("영상 — 펼치면 이 자리에서 재생해요");
+  await expect(el(page, "16.11")).toHaveCount(0);
+  await expect(el(page, "16.7")).toHaveCount(1);
+  await el(page, "16.7").click();
+  await expect(el(page, "16.11")).toBeVisible();
 });
 
 test("핵심 요약 단계에서 실패 → 그 단계부터 다시 시도한다", async ({ page, request }) => {

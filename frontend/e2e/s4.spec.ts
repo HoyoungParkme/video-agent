@@ -2,6 +2,7 @@
  * S4 — 영상에 질문하기(VA-SCN-001 S4, VA-CODE-001 B3). 추천 질문으로 시작해 근거 칩을 따라가고, 이어 묻고,
  * 영상에 없는 것을 묻는다. 다시 열어도 기록이 남는다. 답변 실패는 다시 시도로, 3시간 스크립트는 질문과 맞는
  * 챕터만 보낸다. 가짜 OpenAI가 받은 스크립트 범위 · 앞선 턴 수를 기록한다(e2e/fake-openai.mjs).
+ * 탭을 오가도 대화 목록은 읽던 위치이고, 떠난 사이 답이 오면 끝이다(카드 E6, UI-4 규칙).
  */
 import { expect, test, type Page } from "@playwright/test";
 
@@ -96,7 +97,8 @@ test("답변 실패 — 이유 한 줄과 다시 시도, 실패한 질문은 세
 const settle = () => new Promise((resolve) => setTimeout(resolve, 300));
 
 test("답이 기록보다 먼저 와도 — 저장 전에 읽은 기록에 합쳐 보인다", async ({ page, request }) => {
-  const url = await openResult(page, "https://youtu.be/e2eAskVid01");
+  // 질문이 없는 영상 — 있으면 기록을 열 때 받아 엇갈리지 않고, 이미 물어본 알약은 보내지 않는다(카드 E8)
+  const url = await openResult(page, "https://youtu.be/e2eRaceAns1");
   await fakeOpenAI(request, { reset: true, chat_delay_ms: 800 }); // 답을 저장하기 전에 기록을 읽는다
   let answered = () => {};
   const done = new Promise<void>((resolve) => (answered = resolve));
@@ -120,7 +122,7 @@ test("답이 기록보다 먼저 와도 — 저장 전에 읽은 기록에 합�
 });
 
 test("기록이 답보다 먼저 와도 — 저장 뒤에 읽은 기록과 겹치지 않는다", async ({ page, request }) => {
-  const url = await openResult(page, "https://youtu.be/e2eAskVid01");
+  const url = await openResult(page, "https://youtu.be/e2eRaceLst1"); // 질문이 없는 영상(위와 같은 까닭)
   await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
   let saved = () => {};
   const committed = new Promise<void>((resolve) => (saved = resolve));
@@ -231,4 +233,179 @@ test("연결 문구 배너 — 질문이 서버의 다시 확인을 통과하면
   );
   await expect(banner).toHaveCount(0); // 설정을 다시 받아 배너가 사라진다
   await expect(el(page, "10.2")).toHaveCount(0);
+});
+
+test("탭을 오가도 읽던 대화 위치 — 떠난 사이 답이 오면 맨 아래", async ({ page, request }) => {
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  await openResult(page, "https://youtu.be/e2eChatPos1");
+  await el(page, "7.2").click();
+  for (let i = 1; i <= 6; i += 1) {
+    await box(page).fill(`${i}번째 질문 — 청킹은 어떻게 바꿨나?`);
+    await box(page).press("Enter");
+    await expect(el(page, "7.3")).toHaveText(String(i));
+  }
+  const list = el(page, "9");
+  // 끝에서 남은 거리 — 0이면 맨 아래
+  const fromEnd = () =>
+    list.evaluate((e) => Math.round(e.scrollHeight - e.clientHeight - e.scrollTop));
+  await expect.poll(fromEnd).toBeLessThanOrEqual(1);
+
+  // 가운데쯤으로 올려 두고, 거기서 보이는 근거 칩으로 스크립트에 다녀온다 — 읽던 자리 그대로
+  const mid = await list.evaluate((e) => {
+    e.scrollTop = Math.round((e.scrollHeight - e.clientHeight) / 2);
+    return e.scrollTop;
+  });
+  expect(mid).toBeGreaterThan(0);
+  const shown = await list.evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return [...e.querySelectorAll(".turn .time-chip")].findIndex((c) => {
+      const b = c.getBoundingClientRect();
+      return b.top >= r.top && b.bottom <= r.bottom;
+    });
+  });
+  expect(shown).toBeGreaterThanOrEqual(0);
+  await list.locator(".turn .time-chip").nth(shown).click();
+  await expect(el(page, "7.1")).toHaveAttribute("aria-selected", "true");
+  await el(page, "7.2").click();
+  expect(await list.evaluate((e) => e.scrollTop)).toBe(mid);
+
+  // 답을 기다리는 동안 스크립트에 갔다가 답이 온 뒤 돌아오면 맨 아래 — 새 답이 보인다
+  await fakeOpenAI(request, { chat_delay_ms: 1500 });
+  await box(page).fill("7번째 질문 — 지연은 어떻게 되돌렸나?");
+  await box(page).press("Enter");
+  await expect(el(page, "9.7")).toBeVisible();
+  await el(page, "7.1").click();
+  await expect(el(page, "7.3")).toHaveText("7");
+  await el(page, "7.2").click();
+  await expect.poll(fromEnd).toBeLessThanOrEqual(1);
+
+  // 다시 열어 질문하기 탭을 처음 열 때도 맨 아래
+  await page.reload();
+  await el(page, "7.2").click();
+  await expect(page.locator(".turn")).toHaveCount(7);
+  await expect.poll(fromEnd).toBeLessThanOrEqual(1);
+});
+
+test("보낸 추천 질문 — 다시 열면 체크 · 답 보기, 누르면 그 답으로 가고 보내지 않는다(카드 E8)", async ({
+  page,
+  request,
+}) => {
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  const url = await openResult(page, "https://youtu.be/e2eAskedQ01");
+  const pills = page.locator(".pill");
+  const chips = page.locator(".chat-chip");
+  const turns = page.locator(".turn");
+  const ASKED = "청킹 전략을 바꾼 근거는? — 이미 물어봤어요, 누르면 그 답으로";
+  await expect(el(page, "5.2")).toHaveCount(0); // 아직 묻지 않았다
+
+  // 첫 추천 질문을 알약으로 보내고, 같은 글을 입력칸으로 한 번 더 — 대화가 길어지게 다른 질문도
+  await pills.first().click();
+  await expect(el(page, "7.3")).toHaveText("1");
+  await expect(pills.first()).toHaveAttribute("aria-label", ASKED); // 답이 오면 바로 체크
+  const typed = [
+    "그거 성능은?",
+    "  청킹 전략을 바꾼 근거는?  ",
+    "운영은 누가 맡나?",
+    "다음 계획은?",
+  ];
+  for (const [i, q] of typed.entries()) {
+    await box(page).fill(q);
+    await box(page).press("Enter");
+    await expect(el(page, "7.3")).toHaveText(String(i + 2));
+  }
+  const sent = (await fakeOpenAI(request)).asks.length;
+
+  // 다시 열면 — 그 알약은 체크와 '답 보기', 칩은 체크. 나머지 둘은 그대로
+  await page.goto(url);
+  await expect(pills.first()).toHaveAttribute("aria-label", ASKED);
+  await expect(el(page, "5.2")).toHaveText("답 보기");
+  await expect(pills.nth(1)).not.toHaveAttribute("aria-label", /.+/);
+  await expect(chips.first()).toHaveClass(/is-asked/);
+  await expect(chips.first()).toHaveAttribute("aria-label", ASKED);
+  await expect(chips.nth(1)).not.toHaveClass(/is-asked/);
+
+  // 누르면 질문하기 탭에서 그 턴(같은 글이 둘이면 가장 최근 — 세 번째 턴)이 대화 목록 맨 위. 보내지 않는다
+  const list = el(page, "9");
+  const fromTop = async (n: number) => {
+    const row = await turns.nth(n).boundingBox();
+    const box = await list.boundingBox();
+    return Math.round((row?.y ?? 0) - (box?.y ?? 0));
+  };
+  await pills.first().click();
+  await expect(el(page, "7.2")).toHaveAttribute("aria-selected", "true");
+  await expect(turns).toHaveCount(5);
+  await expect.poll(() => fromTop(2), { message: "알약 → 그 턴이 맨 위" }).toBe(20); // 목록 위 안쪽 여백만큼
+  await expect(el(page, "9.7")).toHaveCount(0);
+  await expect(el(page, "7.3")).toHaveText("5");
+  // 칩도 같다 — 끝으로 내려 두고 누른다
+  await list.evaluate((e) => (e.scrollTop = e.scrollHeight));
+  await chips.first().click();
+  await expect.poll(() => fromTop(2), { message: "칩 → 그 턴이 맨 위" }).toBe(20);
+  expect((await fakeOpenAI(request)).asks.length).toBe(sent);
+
+  // 기록을 받는 동안 누르면 탭만 — 이미 물어본 것인지 아직 모른다
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/videos/*/chat", async (route) => {
+    if (route.request().method() === "GET") await held;
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await page.goto(url);
+  await pills.nth(2).click();
+  await expect(el(page, "7.2")).toHaveAttribute("aria-selected", "true");
+  release();
+  await expect(el(page, "5.2")).toBeVisible();
+  await expect(turns).toHaveCount(5);
+  expect((await fakeOpenAI(request)).asks.length).toBe(sent);
+  await page.unroute("**/api/videos/*/chat");
+
+  // 아직 묻지 않은 추천 질문은 그대로 보낸다
+  await pills.nth(2).click();
+  await expect(el(page, "7.3")).toHaveText("6");
+  expect((await fakeOpenAI(request)).asks.length).toBe(sent + 1);
+});
+
+test("이 화면에서 물은 추천 질문 — 기록을 받기 전에 다시 눌러도 또 보내지 않고, 탭을 오가도 기록은 한 번만 청한다", async ({
+  page,
+  request,
+}) => {
+  await fakeOpenAI(request, { reset: true, chat_delay_ms: 0 });
+  const url = await openResult(page, "https://youtu.be/e2eAskedQ02");
+  const CHAT = "**/api/videos/*/chat";
+  // 기록 GET을 붙잡아 둔다 — 답은 오는데 기록은 늦다
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(CHAT, async (route) => {
+    if (route.request().method() === "GET") await held;
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await page.locator(".pill").first().click();
+  await expect(el(page, "7.3")).toHaveText("1"); // 답이 왔다 — 기록은 아직
+  await page.locator(".pill").first().click(); // 질문 수가 0이 아닌데 기록을 받는 중 — 탭만
+  await page.locator(".chat-chip").first().click();
+  release();
+  await expect(page.locator(".pill").first()).toHaveAttribute("aria-label", /이미 물어봤어요/);
+  await expect(page.locator(".turn")).toHaveCount(1);
+  expect((await fakeOpenAI(request)).asks.length).toBe(1);
+  await page.unroute(CHAT);
+
+  // 질문이 있는 영상을 열면 기록을 바로 청한다 — 받는 동안 탭을 오가도 다시 청하지 않는다
+  let gets = 0;
+  let open = () => {};
+  const late = new Promise<void>((resolve) => (open = resolve));
+  await page.route(CHAT, async (route) => {
+    if (route.request().method() === "GET") {
+      gets += 1;
+      await late;
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await page.goto(url);
+  await expect(el(page, "7.1")).toHaveAttribute("aria-selected", "true");
+  await el(page, "7.2").click();
+  await el(page, "7.1").click();
+  await el(page, "7.2").click();
+  open();
+  await expect(page.locator(".turn")).toHaveCount(1);
+  expect(gets).toBe(1);
 });

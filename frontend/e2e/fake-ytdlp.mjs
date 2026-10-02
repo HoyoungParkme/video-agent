@@ -18,6 +18,15 @@ const VIDEOS = {
   e2eCaption5: { title: "평가 세트 만드는 법", duration: 1200, subtitles: { ko: [] } },
   // 영상에 질문하기 — S4
   e2eAskVid01: { title: "RAG 검색 품질 회고", duration: 3000, subtitles: { ko: [] } },
+  // 탭을 오가도 읽던 대화 위치(카드 E6)
+  e2eChatPos1: { title: "읽던 자리를 지키는 대화", duration: 1800, subtitles: { ko: [] } },
+  // 기록과 답이 엇갈려도 — 질문이 없는 영상이라 추천 질문을 누르면 기록 GET과 질문 POST가 함께 간다(S4)
+  e2eRaceAns1: { title: "답이 먼저 오는 대화", duration: 1800, subtitles: { ko: [] } },
+  e2eRaceLst1: { title: "기록이 먼저 오는 대화", duration: 1800, subtitles: { ko: [] } },
+  // 보낸 추천 질문 — 체크 · 답 보기, 누르면 그 답으로(카드 E8)
+  e2eAskedQ01: { title: "이미 물어본 추천 질문", duration: 1800, subtitles: { ko: [] } },
+  // 이 화면에서 물은 추천 질문 — 기록이 늦어도 또 보내지 않는다(카드 E8 코드 리뷰)
+  e2eAskedQ02: { title: "기록이 늦은 추천 질문", duration: 1800, subtitles: { ko: [] } },
   // 3시간 — 10초마다 70자 줄이라 대화 토큰 상한(3만)을 넘는다. 질문과 맞는 챕터만 보낸다
   e2eLong3h01: {
     title: "데이터 카탈로그 워크숍 종일",
@@ -28,6 +37,10 @@ const VIDEOS = {
   },
   // 키보드로 보는 3시간 워크숍 — 한눈에 보기 세 줄(파트 · 점 · 막대)과 탭(a11y)
   e2eA11yLng1: { title: "키보드로 보는 워크숍", duration: 10800, subtitles: { ko: [] } },
+  // 시각을 고른 뒤의 자리 · 주소 ?t= — 37.5초마다라 구간 시각 절반이 소수다(카드 E6)
+  e2eScroll01: { title: "주소에 남는 시각", duration: 3000, subtitles: { ko: [] }, step: 37.5 },
+  // 영상 같이 보기 — 재생 판 · 그 시각부터 · 접기 · 재생할 수 없음(카드 E7)
+  e2ePlayer01: { title: "같이 보는 발표", duration: 3000, subtitles: { ko: [] } },
   // 며칠 뒤 다시 열어 묻고 내보내고 지운다 — S5
   e2eNoteVid1: { title: "벡터 DB 운영 노트", duration: 1800, subtitles: { ko: [] } },
   // 대기열에서 지운다 — 도는 영상 · 기다리는 영상 둘(s5)
@@ -116,13 +129,16 @@ if (video.error) {
 }
 
 /**
- * step초마다 한 줄(기본 100초 — 가짜 OpenAI의 시각 01:40 · 10:00 …이 이 안에 든다).
- * width를 주면 줄을 그 글자 수로 채운다 — 긴 스크립트를 만든다.
+ * step초마다 한 줄(기본 100초 — 가짜 OpenAI의 시각 01:40 · 10:00 …이 이 안에 든다). step이 소수면
+ * 줄 시각도 소수다. width를 주면 줄을 그 글자 수로 채운다 — 긴 스크립트를 만든다.
  */
 function vtt({ duration, step = 100, width }) {
   const ts = (s) => {
     const two = (n) => String(n).padStart(2, "0");
-    return `${two(Math.floor(s / 3600))}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}.000`;
+    const total = Math.round(s * 1000); // 밀리초로 먼저 반올림 — .9995가 1000ms로 넘치지 않게
+    const whole = Math.floor(total / 1000);
+    const ms = String(total % 1000).padStart(3, "0");
+    return `${two(Math.floor(whole / 3600))}:${two(Math.floor((whole % 3600) / 60))}:${two(whole % 60)}.${ms}`;
   };
   const cues = [];
   for (let s = 0, n = 1; s < duration; s += step, n += 1) {

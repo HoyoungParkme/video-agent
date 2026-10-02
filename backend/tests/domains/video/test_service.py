@@ -20,6 +20,7 @@ from app.core.db import SessionLocal
 from app.core.errors import (
     Internal,
     KeyMissing,
+    MediaUnavailable,
     NoAudioTrack,
     NoSpace,
     NotFound,
@@ -36,9 +37,10 @@ from app.domains.analysis.models import FrameSource, InfographicRow, Infographic
 from app.domains.job.models import ChunkState, JobStatus
 from app.domains.job.service import JobService
 from app.domains.video import service as service_module
-from app.domains.video.models import VideoRow
+from app.domains.video.models import SourceKind, VideoRow
 from app.domains.video.schemas import LocalSource, YouTubeSource
 from app.domains.video.service import VideoService
+from app.shared import sources
 
 APP = Path(__file__).resolve().parents[3] / "app"
 shutil_usage = namedtuple("shutil_usage", "total used free", defaults=(0, 0, 0))
@@ -781,6 +783,47 @@ async def test_get_after_finish(db, make, youtube, probe) -> None:
     detail = await VideoService(db, youtube, probe).get(video.id)
     assert detail.video.status == "analyzed"
     assert detail.video.analyzed_at == detail.job.finished_at is not None
+
+
+# --- media
+
+
+async def test_media_inbox_original(db, make, youtube, probe, tmp_path, monkeypatch) -> None:
+    """inbox 영상 → 그 경로. 경로는 행의 이름으로만 정한다(id만 받는다)."""
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    (tmp_path / "workshop_0912.mp4").write_bytes(b"recording")
+    row = await make.video(
+        source_kind=SourceKind.local, source_id="a" * 64, origin="workshop_0912.mp4"
+    )
+    assert await VideoService(db, youtube, probe).media(row.id) == tmp_path / "workshop_0912.mp4"
+
+
+async def test_media_not_served(db, make, youtube, probe, tmp_path, monkeypatch) -> None:
+    """YouTube · 올린 파일은 media-unavailable, 옮긴 원본 · 없는 영상은 not-found."""
+    monkeypatch.setattr(config, "INBOX_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+    svc = VideoService(db, youtube, probe)
+    yt = await make.video()
+    with pytest.raises(MediaUnavailable) as e:
+        await svc.media(yt.id)
+    assert e.value.extra == {"reason_kind": "youtube"}
+    # 올린 사본이 아직 남아 있어도(실패한 작업) 재생하지 않는다
+    up = await make.video(
+        source_kind=SourceKind.local, source_id="b" * 64, origin="talk.mp4", uploaded=True
+    )
+    copy = sources.local_path(up.origin, up.source_id, True)
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    copy.write_bytes(b"copy")
+    with pytest.raises(MediaUnavailable) as e:
+        await svc.media(up.id)
+    assert e.value.extra == {"reason_kind": "uploaded"}
+    moved = await make.video(source_kind=SourceKind.local, source_id="c" * 64, origin="moved.mp4")
+    with pytest.raises(NotFound) as e:
+        await svc.media(moved.id)
+    assert e.value.extra == {"resource": "media", "id": moved.id}
+    with pytest.raises(NotFound) as e:
+        await svc.media(999_999)
+    assert e.value.extra == {"resource": "video", "id": 999_999}
 
 
 # --- delete
