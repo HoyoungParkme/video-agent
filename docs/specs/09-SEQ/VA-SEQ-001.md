@@ -91,8 +91,9 @@ upstream: [VA-DOM-002, VA-API-001, VA-UC-001, VA-UI-002, VA-DOM-003]
 | [[VA-API-001#POST/api/videos/{id}/infographic]] · [[VA-API-001#GET/api/videos/{id}/infographic]] | [[#SEQ-18]] | ○ | OpenAI(키 확인 · 이미지) · 파일 |
 | [[VA-API-001#GET/api/videos/{id}/frames/{seq}]] | [[#SEQ-C1]] | | 파일 |
 | [[VA-API-001#GET/api/videos/{id}/infographic/image]] | [[#SEQ-C1]] | | 파일 |
+| [[VA-API-001#GET/api/videos/{id}/media]] | [[#SEQ-C1]] | | 파일(inbox 원본, 구간) |
 
-25행 중 묶음을 넘는 것이 18행이다. 넘지 않는 것은 설정 셋 · inbox · 대기열 워커 · 그림 파일 둘뿐이다. 진행 폴링은 장면 칸 때문에 결과 묶음을 한 번 부르게 됐고(카드 D2), 대화 기록 조회도 영상이 있는지 보느라 `VideoService`를 한 번 부른다.
+26행 중 묶음을 넘는 것이 18행이다. 넘지 않는 것은 설정 셋 · inbox · 대기열 워커 · 그림 파일 둘 · 원본 재생뿐이다. 진행 폴링은 장면 칸 때문에 결과 묶음을 한 번 부르게 됐고(카드 D2), 대화 기록 조회도 영상이 있는지 보느라 `VideoService`를 한 번 부른다.
 
 ---
 
