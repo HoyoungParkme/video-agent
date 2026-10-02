@@ -10,15 +10,15 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 ## 0. 이 문서가 다루는 것
 
-`domains/video/service.py`의 함수 11개. 클래스 명세 [[VA-DOM-002#VideoService]]의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나 = 코드 파일 하나** — 이 파일을 짤 때 이 문서를 본다. 포트 · 어댑터(`youtube_info` · `media_probe`)는 4.6 · 4.7의 MS 문서에서.
+`domains/video/service.py`의 함수 12개. 클래스 명세 [[VA-DOM-002#VideoService]]의 시그니처를 함수 내부까지 내린 것. **MS 문서 하나 = 클래스 명세 4장 절 하나 = 코드 파일 하나** — 이 파일을 짤 때 이 문서를 본다. 포트 · 어댑터(`youtube_info` · `media_probe`)는 4.6 · 4.7의 MS 문서에서.
 
 형식은 명세 작성 규약 2.10 — 시그니처 · 근거 · 입력 · 처리 · 출력 · 예외 · 호출하는 것 · 테스트 관점, 분기는 `if 조건 → 결과`, 간략형 허용. 내부 타입(`SourceInfo` 등)은 [[VA-DOM-002]] 2.6, 응답 형태(`Video` `VideoSummary` `VideoDetail` `InboxListing`)는 [[VA-API-001]] 4장.
 
 **표기** — `→` 반환 · 결과, `!` 예외(이름은 [[VA-API-001]] 2장의 `urn:va:` 뒤 부분), `DB:` 테이블 접근(`crud`를 거친다), `FS:` 파일 접근, `·` 같은 단계 안 구분.
 
-**이 서비스가 아는 것** — `videos` 테이블, inbox 폴더, `data/uploads/`(올린 사본 — 수명을 이 서비스가 쥔다, [[VA-DOM-001]] 4장), 지울 때만 `data/tmp/` · `data/frames/` · `data/infographics/`. 작업 요약과 대화 수는 `JobService` · `ChatService`에 ID로 묻는다([[VA-DOM-002]] 3.2). 로컬 원본의 경로는 `sources.local_path`(shared) 하나가 푼다 — inbox 파일이면 `INBOX_DIR / origin`, 올린 사본이면 `UPLOAD_DIR / {source_id}{origin의 확장자}`([[VA-DOM-002]] 5장 12). 세션은 라우터가 열고, 함수는 그 안에서 돈다. `register` · `upload` · `delete`만 트랜잭션 범위를 말한다.
+**이 서비스가 아는 것** — `videos` 테이블, inbox 폴더, 연결한 Google Drive 폴더(읽기만, [[VA-INFRA-001#C14]]), `data/uploads/`(올린 사본 — 수명을 이 서비스가 쥔다, [[VA-DOM-001]] 4장), 지울 때만 `data/tmp/` · `data/frames/` · `data/infographics/`. 작업 요약과 대화 수는 `JobService` · `ChatService`에 ID로 묻는다([[VA-DOM-002]] 3.2). 로컬 원본의 경로는 `sources.local_path`(shared) 하나가 푼다 — inbox 파일이면 `INBOX_DIR / origin`, 올린 사본이면 `UPLOAD_DIR / {source_id}{origin의 확장자}`([[VA-DOM-002]] 5장 12). 세션은 라우터가 열고, 함수는 그 안에서 돈다. `register` · `upload` · `delete`만 트랜잭션 범위를 말한다.
 
-**설정값** — `config.INBOX_DIR`(컨테이너 안 마운트 경로) · `config.INBOX_DISPLAY_PATH`(사용자에게 보일 호스트 경로) · `config.DATA_DIR` · `config.MAX_DURATION_SEC = 10800` · `ACCEPTED = {mp4, mkv, mov, webm} ∪ {mp3, m4a, wav}` · `config.PROBE_CONCURRENCY = 4` · `config.UPLOAD_DIR = {DATA_DIR}/uploads` · `config.UPLOAD_SPARE_BYTES = 1 GiB` — 올릴 때 파일 크기에 더해 남아 있어야 할 여유. 분석이 그 뒤에 쓰는 것(3시간 mp3 약 86 MB와 조각 · 장면)을 넉넉히 덮는 고정값이다([[VA-API-001]] 6장 미결을 여기서 정한다) · `config.UPLOAD_WRITE_BYTES = 1 MiB` — 받은 조각을 이만큼 모아 스레드에서 쓴다(이벤트 루프를 막지 않게).
+**설정값** — `config.INBOX_DIR`(컨테이너 안 마운트 경로) · `config.INBOX_DISPLAY_PATH`(사용자에게 보일 호스트 경로) · `config.DRIVE_DIR`(Google Drive 마운트 경로 `/app/drive`) · `config.DRIVE_DISPLAY_PATH`(보일 경로 — 비면 연결하지 않음) · `config.DRIVE_ID_BYTES = 16MB`(Drive 지문의 앞뒤 크기) · `config.DATA_DIR` · `config.MAX_DURATION_SEC = 10800` · `ACCEPTED = {mp4, mkv, mov, webm} ∪ {mp3, m4a, wav}` · `config.PROBE_CONCURRENCY = 4` · `config.UPLOAD_DIR = {DATA_DIR}/uploads` · `config.UPLOAD_SPARE_BYTES = 1 GiB` — 올릴 때 파일 크기에 더해 남아 있어야 할 여유. 분석이 그 뒤에 쓰는 것(3시간 mp3 약 86 MB와 조각 · 장면)을 넉넉히 덮는 고정값이다([[VA-API-001]] 6장 미결을 여기서 정한다) · `config.UPLOAD_WRITE_BYTES = 1 MiB` — 받은 조각을 이만큼 모아 스레드에서 쓴다(이벤트 루프를 막지 않게).
 
 ---
 
@@ -27,6 +27,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 | 함수 | 한 줄 |
 |---|---|
 | [[#VideoService.list_inbox]] | inbox 파일 목록 — 길이 · 크기까지 |
+| [[#VideoService.browse]] | Google Drive 폴더 하나 — 하위 폴더 · 영상, 자연 순서. 길이는 재지 않는다 |
 | [[#VideoService.register]] | 등록 — 키 확인 → 형식 → 정보 → 상한 → 중복 → 생성 |
 | [[#VideoService.upload]] | 올린 파일 등록 — 키 → 이름 → 디스크 → 쓰며 해시 → 정보 → 중복 → 사본 |
 | [[#VideoService.list]] | 작업이 있는 영상 목록, 최근 순 |
@@ -64,19 +65,44 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 ---
 
+#### VideoService.browse Google Drive 폴더 하나
+
+**시그니처** `async def browse(path: str) -> DriveListing`
+
+근거: [[VA-SEQ-001#SEQ-C1]] · [[VA-API-001#GET/api/drive]] · [[VA-UC-001#UC-H2]] 1번, 1f · 1g · [[VA-INFRA-001#C14]] · [[VA-UI-002#UI-1]] 「내 파일」
+
+**처리**
+1. if `not config.DRIVE_DISPLAY_PATH` → `! not-found(resource=drive)` (연결하지 않았다 — 화면은 입구를 보이지 않으므로 손으로 부른 것)
+2. `rel = drive_rel(path)` — 빈 문자열이면 맨 위. `/`로 나눈 칸 중 빈 칸 · `.` · `..` · `.`으로 시작하는 칸이 있거나 절대 경로면 `! path-outside-inbox` · `dir = DRIVE_DIR / rel` · `FS: realpath(dir)`가 `realpath(DRIVE_DIR)` 안이 아니면(심볼릭 링크로 나감) `! path-outside-inbox` — 등록([[#VideoService.register]])과 같은 함수
+3. `FS: DRIVE_DIR 맨 위 항목` — 읽기에 실패하거나 비었으면 `! drive-unavailable` (Google Drive 앱이 꺼지면 마운트가 빈다. 빈 내 드라이브는 없다고 본다)
+4. if `dir`이 폴더가 아니면 `! not-found(resource=drive_folder, id=rel)`
+5. `FS: dir 바로 아래 항목` — 폴더면(숨김 제외) `folders`, 파일이고 숨김이 아니고 확장자(소문자) ∈ `ACCEPTED`면 `files`에 `DriveFile(name, size_bytes=stat.st_size, kind, modified_at=stat.st_mtime UTC)`. 길이는 재지 않는다 · 항목 하나의 stat이 실패하면(읽는 사이 사라짐) 그 항목만 뺀다 · 목록 읽기 자체가 실패하면 `! drive-unavailable`
+6. 둘 다 자연 순서 — 이름을 숫자 칸과 글자 칸으로 나눠 숫자는 수로, 글자는 소문자로 견준다 → `DriveListing(path=rel, folders, files)`
+
+**출력** `DriveListing`
+
+**예외** `not-found`(drive · drive_folder) · `path-outside-inbox` · `drive-unavailable`
+
+**호출하는 것** 없음(파일 시스템만)
+
+**테스트 관점** 임시 폴더를 연결 폴더로: 맨 위 → 하위 폴더와 영상 · `1.a.mp4 · 10.b.mp4 · 2.c.mp4` → 1 · 2 · 10 순서 · 하위 폴더 안으로 · 숨김 폴더 · 숨김 파일 · `desktop.ini` · pdf는 안 보인다 · `MP4` 대문자 확장자도 받는다 · `..` · `/etc` · `a/../..` · `.hidden/x` → `path-outside-inbox` · 연결 폴더 밖을 가리키는 심볼릭 링크 → `path-outside-inbox` · 없는 폴더 → `not-found(drive_folder)` · 연결하지 않음(표시 경로 빔) → `not-found(drive)` · 맨 위가 비었음 → `drive-unavailable` · 빈 하위 폴더 → 둘 다 `[]`, 200 · 크기 · 수정 시각이 실린다, 길이는 없다
+
+---
+
 #### VideoService.register 등록 — 사전 안내 전까지
 
 **시그니처** `async def register(req: RegisterRequest) -> Video`
 
 근거: [[VA-SEQ-001#SEQ-1]] · [[VA-API-001#POST/api/videos]] 1~7번 · [[VA-UC-001#UC-H1]] 1~2번 · [[VA-UC-001#UC-H2]] 1~2번 · [[VA-UC-001#UC-S1]] · [[VA-UC-001#UC-S5]] 1번
 
-**입력** `req` — `{source: youtube, url}` 또는 `{source: local, path}`. `path`는 inbox 안 파일 이름
+**입력** `req` — `{source: youtube, url}` 또는 `{source: local, place, path}`. `place = inbox`면 `path`는 inbox 안 파일 이름, `drive`면 연결 폴더 안의 상대 경로(하위 폴더 허용)
 
 **처리** — 걸리는 곳에서 멈춘다. 순서가 규칙이다
 1. `SettingsService.check_stored_key()` — 저장된 키로 OpenAI에 가벼운 요청 한 번(분석 버튼을 누를 때 확인, [[VA-UI-002#UI-5]] 규칙) · `SettingsService.require_key()` · if 키 없음 → `! key-missing` · if 확인 실패 → `! key-invalid {reason_kind, reason, checked_at}`
 2. 형식 —
    - if `req.source == youtube` → `vid = 영상 ID 추출(req.url)`. 받는 형태는 셋: `youtube.com/watch?v={id}` · `youtu.be/{id}` · `youtube.com/shorts/{id}` (`www.` · `m.` 허용, `id`는 `[A-Za-z0-9_-]{11}`) · if 못 뽑음 → `! url-invalid {accepted: [watch, youtu.be, shorts]}`
-   - else → `name = req.path` · if `/`·`\`가 들어 있거나 `.`으로 시작하거나 `..`이 들어 있음 → `! path-outside-inbox` · if 확장자 ∉ `ACCEPTED` → `! unsupported-file {reason: 받지 않는 형식, accepted}` · `path = config.INBOX_DIR / name` · if 파일 없음 → `! not-found {resource: inbox_file, id: name}`
+   - elif `req.place == inbox` → `name = req.path` · if `/`·`\`가 들어 있거나 `.`으로 시작하거나 `..`이 들어 있음 → `! path-outside-inbox` · if 확장자 ∉ `ACCEPTED` → `! unsupported-file {reason: 받지 않는 형식, accepted}` · `path = config.INBOX_DIR / name` · if 파일 없음 → `! not-found {resource: inbox_file, id: name}`
+   - else(`drive`) → if `not config.DRIVE_DISPLAY_PATH` → `! not-found(resource=drive)` · `rel = drive_rel(req.path)`([[#VideoService.browse]] 2번과 같은 함수 — 칸 검사 · 실제 경로가 안인지) · if 확장자 ∉ `ACCEPTED` → `! unsupported-file` · `FS: DRIVE_DIR 맨 위` 읽기 실패 · 빔 → `! drive-unavailable` · if 파일 없음 → `! not-found {resource: drive_file, id: rel}`
 3. `info = info_of(req)` — 정보 조회와 길이 상한. `source-unavailable` · `unsupported-file` · `no-audio-track` · `video-too-long`(길이를 알려야 화면이 시작 불가 판에 보인다)은 거기서 난다
 4. **트랜잭션**: `row = DB: videos where source_id = info.source_id` (중복 판정 — YouTube는 영상 ID, 로컬은 내용 해시라 주소 형태 · 파일 이름이 달라도 같다)
    - if `row` 있음 → `job = JobService.latest(row.id)` · if `job is None`(사전 안내에서 취소했던 영상) → `DB: videos update row ← info` (title · channel · duration_sec · origin · has_captions · caption_language · caption_kind. `id` · `created_at`은 그대로) · else → 그대로 둔다. 단 inbox 영상(`uploaded=false`)이고 `origin`이 다르면(이름을 바꿨다) `origin`만 지금 이름으로 고친다 — 다시 시도하는 파이프라인이 `sources.local_path`로 `INBOX_DIR / origin`을 읽는다([[VA-MS-002#pipeline.resume]]). 제목은 그대로. 올린 영상은 고치지 않는다 — 사본 이름이 원래 이름의 확장자를 따르고 다시 시도는 사본을 읽는다. 작업이 없는 올린 영상(사본은 취소 때 지웠다)을 inbox에서 고르면 `info`로 덮어써 inbox 영상이 된다(`uploaded=false`)
@@ -93,14 +119,15 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 |---|---|
 | 저장된 키 없음 · 확인 실패 | `key-missing` · `key-invalid` |
 | YouTube 주소 형태 아님 | `url-invalid` |
-| inbox 밖 경로 · 받지 않는 확장자 · 파일 없음 | `path-outside-inbox` · `unsupported-file` · `not-found` |
+| inbox · Google Drive 밖 경로 · 받지 않는 확장자 · 파일 없음 · Drive 연결 안 함 | `path-outside-inbox` · `unsupported-file` · `not-found` |
+| Google Drive에 닿지 못함 | `drive-unavailable` |
 | YouTube 정보 조회 실패 | `source-unavailable` (info_of) |
 | 파일을 못 열음 · 음성 트랙 없음 | `unsupported-file` · `no-audio-track` (info_of) |
 | 3시간 초과 | `video-too-long` (info_of) |
 
 **호출하는 것** `SettingsService.check_stored_key` · `SettingsService.require_key` · [[#VideoService.info_of]] · `JobService.latest` · `ChatService.count_by_videos` · [[#VideoService.to_dto]]
 
-**테스트 관점** 키 없음 → `key-missing`이고 YouTube · ffprobe에 닿지 않는다 · `https://youtu.be/dQw4w9WgXcQ`와 `https://www.youtube.com/watch?v=dQw4w9WgXcQ`는 같은 `source_id` · `shorts/` 주소도 받는다 · `https://vimeo.com/…` → `url-invalid` · `../etc/passwd` · `sub/a.mp4` → `path-outside-inbox` · `notes.txt` → `unsupported-file` · 같은 파일을 이름만 바꿔 넣으면 같은 영상 · 취소했던 영상을 다시 넣으면 제목이 새 정보로 바뀌고 `status=registered` · 작업이 있는 영상을 다시 넣으면 행이 안 바뀌고 `status`가 작업을 따른다 · 작업이 실패한 로컬 파일을 이름만 바꿔 넣으면 `origin`만 새 이름이고 제목 · 작업은 그대로 · 작업이 있는 올린 영상과 같은 내용을 inbox에서 고르면 행이 안 바뀐다(`origin`도) · 작업이 없는 올린 영상과 같은 내용을 inbox에서 고르면 `uploaded=false`로 덮어쓴다 · 3시간 1초 → `video-too-long`, 행이 안 생긴다 · 동시에 두 번 넣어도 행은 하나
+**테스트 관점** 키 없음 → `key-missing`이고 YouTube · ffprobe에 닿지 않는다 · `https://youtu.be/dQw4w9WgXcQ`와 `https://www.youtube.com/watch?v=dQw4w9WgXcQ`는 같은 `source_id` · `shorts/` 주소도 받는다 · `https://vimeo.com/…` → `url-invalid` · `../etc/passwd` · `sub/a.mp4` → `path-outside-inbox` · `notes.txt` → `unsupported-file` · 같은 파일을 이름만 바꿔 넣으면 같은 영상 · 취소했던 영상을 다시 넣으면 제목이 새 정보로 바뀌고 `status=registered` · 작업이 있는 영상을 다시 넣으면 행이 안 바뀌고 `status`가 작업을 따른다 · 작업이 실패한 로컬 파일을 이름만 바꿔 넣으면 `origin`만 새 이름이고 제목 · 작업은 그대로 · 작업이 있는 올린 영상과 같은 내용을 inbox에서 고르면 행이 안 바뀐다(`origin`도) · 작업이 없는 올린 영상과 같은 내용을 inbox에서 고르면 `uploaded=false`로 덮어쓴다 · 3시간 1초 → `video-too-long`, 행이 안 생긴다 · 동시에 두 번 넣어도 행은 하나 · Drive 하위 폴더 파일 → 등록, `origin = drive:{상대 경로}`, 제목은 파일 이름 · Drive `../x.mp4` · 심볼릭 링크 밖 → `path-outside-inbox` · Drive 연결 안 함 → `not-found(drive)` · Drive 맨 위가 빔 → `drive-unavailable` · 같은 Drive 파일을 다시 → 같은 영상
 
 ---
 
@@ -191,7 +218,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **처리** `DB: videos 행` — 없으면 `!not-found(resource=video)` · if `source_kind == youtube` → `!media-unavailable(reason_kind=youtube)` · if `uploaded` → `!media-unavailable(reason_kind=uploaded)` — 올린 사본은 분석이 끝나면 지운다. 실패한 작업이라 사본이 남아 있어도 재생하지 않는다(결과 화면은 분석이 끝난 영상만 연다) · `path = sources.local_path(origin, source_id, False)` · `FS: 있나` — 없으면 `!not-found(resource=media)` → path. 파일을 여는 것 · 구간 요청(`Range`) · HEAD · 형식(`Content-Type`)은 라우터의 `FileResponse`가 한다([[VA-API-001#GET/api/videos/{id}/media]]의 확장자 표)
 
-**테스트 관점** inbox 영상 → 그 경로 · 구간 요청에 206 · `Content-Range` · 그 바이트(라우터) · HEAD에 본문 없이 길이(라우터) · 확장자마다 `Content-Type`(라우터) · YouTube 영상 → media-unavailable(youtube) · 올린 영상 → media-unavailable(uploaded) · inbox에서 옮긴 원본 → not-found(media) · 없는 영상 → not-found(video) · 요청에서 경로를 받지 않는다(id만)
+**테스트 관점** inbox 영상 → 그 경로 · 구간 요청에 206 · `Content-Range` · 그 바이트(라우터) · HEAD에 본문 없이 길이(라우터) · 확장자마다 `Content-Type`(라우터) · YouTube 영상 → media-unavailable(youtube) · 올린 영상 → media-unavailable(uploaded) · inbox에서 옮긴 원본 → not-found(media) · Google Drive 영상 → 연결 폴더 안의 그 경로 · Drive에서 옮긴 원본 → not-found(media) · 없는 영상 → not-found(video) · 요청에서 경로를 받지 않는다(id만)
 
 ---
 
@@ -254,7 +281,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **처리**
 - if `req.source == youtube` → `info = YouTubeInfoPort.info(req.url)` · if 실패 → `! source-unavailable {reason, hint}` (`hint`는 yt-dlp 추출기 오류일 때 'yt-dlp 업데이트', 아니면 null. [[VA-INFRA-001#C7]]) · `→ SourceInfo(youtube, source_id=영상 ID, title, channel, duration_sec, origin=정규화한 주소 https://www.youtube.com/watch?v={id}, uploaded=False, has_captions, caption_language, caption_kind)` — 수동 자막이 있으면 `manual`, 자동뿐이면 `auto`, 없으면 `has_captions=false` · if `duration_sec > config.MAX_DURATION_SEC` → `! video-too-long {duration_sec, max_sec}`
-- else → `(duration_sec, has_audio) = MediaProbePort.probe(path)` · if 못 열음 → `! unsupported-file {reason, accepted}` · if `not has_audio` → `! no-audio-track {duration_sec}` · if `duration_sec > config.MAX_DURATION_SEC` → `! video-too-long {duration_sec, max_sec}` — 해시보다 먼저 본다(4시간짜리 큰 파일을 다 읽고 나서 거절하지 않게, 카드 B5) · `sha = FS: 파일을 1MB씩 읽어 SHA-256` (수 GB면 몇 초 걸린다 — 화면은 버튼 대기 표시) · `→ SourceInfo(local, source_id=sha, title=파일 이름, channel=None, duration_sec, origin=파일 이름, uploaded=False, has_captions=False, None, None)` — 열기 · 음성 · 길이 판정은 [[#VideoService.upload]] 5번과 같은 함수다
+- else → `(duration_sec, has_audio) = MediaProbePort.probe(path)` · if 못 열음 → `! unsupported-file {reason, accepted}` · if `not has_audio` → `! no-audio-track {duration_sec}` · if `duration_sec > config.MAX_DURATION_SEC` → `! video-too-long {duration_sec, max_sec}` — 해시보다 먼저 본다(4시간짜리 큰 파일을 다 읽고 나서 거절하지 않게, 카드 B5) · inbox면 `sha = FS: 파일을 1MB씩 읽어 SHA-256` (수 GB면 몇 초 걸린다 — 화면은 버튼 대기 표시) · `→ SourceInfo(local, source_id=sha, title=파일 이름, channel=None, duration_sec, origin=파일 이름, uploaded=False, has_captions=False, None, None)` · Google Drive면 `sha = SHA-256(크기 ‖ 앞 DRIVE_ID_BYTES ‖ 뒤 DRIVE_ID_BYTES)` — 끝까지 읽지 않는다(Drive가 클라우드에서 받는 만큼 걸린다 — 4.4GB에 약 70초, 앞뒤만이면 2.3초, [[VA-INFRA-001#C14]]). 파일이 `2 × DRIVE_ID_BYTES`보다 작으면 통째로 · `→ SourceInfo(local, source_id=sha, title=파일 이름(마지막 칸), …, origin=f"drive:{rel}", uploaded=False, …)` — 열기 · 음성 · 길이 판정은 [[#VideoService.upload]] 5번과 같은 함수다
 
 **출력** `SourceInfo`
 
@@ -264,7 +291,7 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 
 **호출하는 것** `YouTubeInfoPort.info` · `MediaProbePort.probe`
 
-**테스트 관점** 가짜 포트로: 비공개 영상 → `source-unavailable`에 `reason` 있음 · 수동 자막 + 자동 자막 → `manual` · 자동만 → `auto` · 자막 없음 → `has_captions=false`, 언어 null · 음성 없는 mp4 → `no-audio-track`에 길이 있음 · 4시간 YouTube → `video-too-long`에 길이 · 4시간 로컬 파일 → 해시를 읽지 않고 `video-too-long` · 같은 내용의 파일 둘 → 같은 `source_id` · mp3 → `has_audio=true`로 통과
+**테스트 관점** 가짜 포트로: 비공개 영상 → `source-unavailable`에 `reason` 있음 · 수동 자막 + 자동 자막 → `manual` · 자동만 → `auto` · 자막 없음 → `has_captions=false`, 언어 null · 음성 없는 mp4 → `no-audio-track`에 길이 있음 · 4시간 YouTube → `video-too-long`에 길이 · 4시간 로컬 파일 → 해시를 읽지 않고 `video-too-long` · 같은 내용의 파일 둘 → 같은 `source_id` · mp3 → `has_audio=true`로 통과 · Drive 파일은 앞뒤만 읽는다(가운데를 바꿔도 같은 `source_id` — 크기가 같고 앞뒤가 같으면 같은 영상으로 본다) · 크기가 다르면 다른 `source_id` · 32MB보다 작은 Drive 파일 → 통째 해시
 
 ---
 
@@ -293,5 +320,5 @@ upstream: [VA-DOM-002, VA-SEQ-001, VA-API-001, VA-DOM-003, VA-UC-001]
 - [x] 올릴 때 디스크 여유분([[VA-API-001]] 6장 미결) — 결정: 고정 1 GiB(`UPLOAD_SPARE_BYTES`). 파일 크기의 몇 %로 두면 작은 파일에 여유가 모자란다. API 미결은 다음 API 수정 때 닫는다
 - [x] 올리기 시간 제한 — 결정: 그대로 둔다. 카드 D4 실측: 588MB가 약 3초(같은 PC, 진짜 스택). web의 API 라우트는 Node `http.request`로 넘겨 기다림 제한이 없고, 남은 제한은 web(Node 서버)이 요청 전체를 받는 300초(`requestTimeout` 기본값)다 — 같은 PC 속도면 수십 GB다([[VA-API-001]] 6장 미결과 같은 항목)
 - [ ] 사전 안내가 열린 채 서버가 다시 뜨면 시작 청소가 그 영상의 사본을 지운다(작업이 없다) — [분석 시작]이 추출 단계에서 실패하고, 다시 올려야 한다. 드물어 그대로 둔다. 겪으면 청소 조건을 「작업이 없고 하루 지난 사본」으로 좁힌다
-- [ ] inbox 원본을 같은 이름의 다른 파일로 바꾸면 앞 영상의 재생(`VideoService.media`)이 새 파일을 내보낸다 — 경로를 영상 행의 이름으로만 정해서다(장면 채우기도 같다). 재생마다 내용 해시를 다시 잴 수는 없고(588MB에 수 초 · 구간 요청마다), 등록 때 크기 · 수정 시각을 적어 두고 비교하려면 DB가 바뀐다. 드물어 그대로 둔다(카드 E7 코드 리뷰)
+- [ ] inbox · Google Drive 원본을 같은 이름의 다른 파일로 바꾸면 앞 영상의 재생(`VideoService.media`)이 새 파일을 내보낸다 — 경로를 영상 행의 이름으로만 정해서다(장면 채우기도 같다). 재생마다 내용 해시를 다시 잴 수는 없고(588MB에 수 초 · 구간 요청마다), 등록 때 크기 · 수정 시각을 적어 두고 비교하려면 DB가 바뀐다. 드물어 그대로 둔다(카드 E7 코드 리뷰)
 - [x] UI-1이 열려 있는 동안 `list`를 다시 부르는 주기 — [[VA-SEQ-001]] 3장과 같은 항목. 결정(카드 B1): 진행 중 · 대기 중 행이 있는 동안 3초, 없으면 부르지 않는다([[VA-UI-002#UI-1]] 규칙)
